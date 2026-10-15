@@ -224,16 +224,28 @@ fn hundred_navigations_in_a_second_write_once() {
     let tmp = tempfile::tempdir().unwrap();
     let mut h = H::new(&tmp, None, Config::default());
     assert_eq!(h.core.session_writes, 0, "initial loads are not a change");
+    // Шаги по расписанию «старт + i·10 мс»: грубый таймер (macOS) не растягивает
+    // серию — отставшие шаги идут без сна.
     let started = Instant::now();
-    for i in 0..100 {
+    let mut last = started;
+    let mut max_gap = Duration::ZERO;
+    for i in 0..100u32 {
+        let due = started + Duration::from_millis(10) * i;
+        if let Some(wait) = due.checked_duration_since(Instant::now()) {
+            thread::sleep(wait);
+        }
         let d = if i % 2 == 0 { "b" } else { "c" };
         h.core
             .dispatch(Command::new("panel.go").arg("path", dir(d)));
         h.core.pump(Duration::from_millis(5));
-        thread::sleep(Duration::from_millis(9));
+        let now = Instant::now();
+        max_gap = max_gap.max(now - last);
+        last = now;
     }
+    // Одна запись требует, чтобы пауза между изменениями не доходила до 2 с.
+    assert!(max_gap < Duration::from_secs(1), "gap {max_gap:?}");
     assert!(
-        started.elapsed() < Duration::from_secs(3),
+        started.elapsed() < Duration::from_millis(1500),
         "series took {:?}",
         started.elapsed()
     );
