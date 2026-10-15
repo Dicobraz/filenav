@@ -13,6 +13,9 @@ pub mod fake;
 mod handlers;
 pub mod history;
 pub mod ids;
+pub mod jobs;
+#[cfg(test)]
+mod jobs_tests;
 pub mod loc;
 pub mod mask;
 pub mod msg;
@@ -36,10 +39,13 @@ pub use cmd::{
 pub use entry::{Attrs, Entry, EntryKind};
 pub use history::{HistEntry, NavHistory, VisitedDirs};
 pub use ids::{Gen, JobId, PromptId, Side, TabId};
+pub use jobs::{
+    Job, JobHandle, JobRegistry, JobSpec, JobState, JobSummary, Phase, Progress, ProgressSnap,
+};
 pub use loc::{LocError, Location};
 pub use mask::{Mask, MaskError};
 pub use msg::{Cx, Msg, MsgInbox, MsgSink, SendError, TrySendError, Waker, msg};
-pub use prompt::{Anchor, Choice, PromptDetail, PromptSpec};
+pub use prompt::{Anchor, Choice, Prompt, PromptDetail, PromptSpec, Prompts, Reply};
 pub use runtime::{Lane, Runtime, RuntimeConfig, TaskCx};
 pub use selection::Selection;
 pub use services::{
