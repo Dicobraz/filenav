@@ -14,6 +14,6 @@ mod tests {
     #[test]
     fn version_smoke() {
         assert_eq!(super::version(), env!("CARGO_PKG_VERSION"));
-        assert!(!super::version().is_empty());
+        assert_ne!(super::version(), "");
     }
 }
