@@ -1,6 +1,7 @@
 //! Сообщения воркеры → UI-поток: `Msg`, `MsgSink` (bounded, с бэкпрешером),
 //! коалесцирующее пробуждение `WakeFlag` → `Waker` (ADR-0003).
 
+use std::collections::VecDeque;
 use std::fmt;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -10,7 +11,10 @@ use std::time::Duration;
 use crossbeam_channel::{Receiver, SendTimeoutError, Sender, TrySendError as ChanTrySendError};
 
 use crate::cancel::CancelToken;
+use crate::cmd::Command;
 use crate::runtime::Runtime;
+use crate::services::Services;
+use crate::state::{AppState, Level, UiEvent};
 
 /// Будит UI-поток (в app — `egui::Context::request_repaint*`).
 pub trait Waker: Send + Sync + 'static {
@@ -25,23 +29,68 @@ pub trait Msg: Send + 'static {
     fn apply(self: Box<Self>, cx: &mut Cx<'_>);
 }
 
-/// Контекст применения `Msg` и выполнения handlers. Поля `state`, `services` и
-/// очередь `dispatch`/`ui`/`toast` добавляет шина Core (S1-07).
-#[non_exhaustive]
+/// Контекст выполнения handler и применения `Msg`. Создаёт только Core.
+///
+/// После handler или `Msg` шина поднимает `state.rev` (ключ кэшей UI и сигнал
+/// перерисовки), если не вызван [`Cx::keep_rev`]. В `Handler::on_pump` — наоборот:
+/// `rev` не трогается, при изменениях handler вызывает `cx.state.touch()` сам.
 pub struct Cx<'a> {
+    pub state: &'a mut AppState,
     pub rt: &'a Runtime,
+    pub services: &'a Services,
+    queue: &'a mut VecDeque<Command>,
+    keep_rev: bool,
 }
 
 impl<'a> Cx<'a> {
-    #[cfg_attr(not(test), expect(dead_code, reason = "создаёт шина Core (S1-07)"))]
-    pub(crate) fn new(rt: &'a Runtime) -> Self {
-        Cx { rt }
+    pub(crate) fn new(
+        state: &'a mut AppState,
+        rt: &'a Runtime,
+        services: &'a Services,
+        queue: &'a mut VecDeque<Command>,
+    ) -> Self {
+        Cx {
+            state,
+            rt,
+            services,
+            queue,
+            keep_rev: false,
+        }
+    }
+
+    /// В конец очереди текущего pump (FIFO): выполнится в этом же pump или `dispatch`.
+    pub fn dispatch(&mut self, c: Command) {
+        self.queue.push_back(c);
+    }
+
+    pub fn ui(&mut self, e: UiEvent) {
+        self.state.push_ui(e);
+    }
+
+    pub fn toast(&mut self, level: Level, text: impl Into<String>) {
+        self.ui(UiEvent::Toast {
+            level,
+            text: text.into(),
+        });
+    }
+
+    /// Состояние не менялось: не поднимать `rev` (например, `panel.viewport`
+    /// без изменения прокрутки).
+    pub fn keep_rev(&mut self) {
+        self.keep_rev = true;
+    }
+
+    pub(crate) fn rev_kept(&self) -> bool {
+        self.keep_rev
     }
 }
 
 impl fmt::Debug for Cx<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Cx").finish_non_exhaustive()
+        f.debug_struct("Cx")
+            .field("queued", &self.queue.len())
+            .field("keep_rev", &self.keep_rev)
+            .finish_non_exhaustive()
     }
 }
 

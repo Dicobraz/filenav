@@ -14,6 +14,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::cancel::CancelToken;
 use crate::msg::{self, MsgInbox, MsgSink, WakeFlag, Waker};
+use crate::state::Level;
+use crate::text::tr;
 
 /// Полоса I/O-пула.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -245,6 +247,11 @@ impl Runtime {
         self.flag.waker()
     }
 
+    /// Общий `WakeFlag` для `CommandSender` шины.
+    pub(crate) fn wake_flag(&self) -> Arc<WakeFlag> {
+        self.flag.clone()
+    }
+
     /// Токен, производный от корневого: shutdown его отменит. Токены задач
     /// следует выводить отсюда (`rt.token().child()` и т.д.).
     pub fn token(&self) -> CancelToken {
@@ -307,8 +314,11 @@ fn run(task: Task, sink: &MsgSink) {
         sink: sink.clone(),
     };
     if let Err(p) = catch_unwind(AssertUnwindSafe(move || f(cx))) {
-        // Тост о панике отправит шина Core через Cx::toast (S1-07).
         tracing::error!(task = name, panic = panic_text(p.as_ref()), "task panicked");
+        // Полный канал или shutdown — тост теряется, запись в логе остаётся.
+        let _ = sink.try_send(msg::msg("task.panic", move |cx| {
+            cx.toast(Level::Error, tr("core-task-panicked", &[("task", name)]));
+        }));
     }
 }
 
@@ -323,7 +333,7 @@ fn panic_text(p: &(dyn Any + Send)) -> &str {
 mod tests {
     use super::{Lane, Runtime, RuntimeConfig};
     use crate::cancel::CancelToken;
-    use crate::msg::{Cx, SendError, TrySendError, Waker, msg};
+    use crate::msg::{SendError, TrySendError, Waker, msg};
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{Arc, Condvar, Mutex};
     use std::thread;
@@ -456,28 +466,25 @@ mod tests {
     }
 
     #[test]
-    fn msgs_are_applied_in_ui_thread() {
+    fn task_msgs_reach_inbox_and_wake() {
         let (rt, inbox, w) = rt();
-        let applied = Arc::new(AtomicUsize::new(0));
-        let a = applied.clone();
         rt.spawn(Lane::Interactive, "listing", rt.token(), move |cx| {
-            let a = a.clone();
-            cx.sink
-                .send(
-                    msg("listed", move |_cx: &mut Cx<'_>| {
-                        a.fetch_add(1, Ordering::SeqCst);
-                    }),
-                    &cx.cancel,
-                )
-                .unwrap();
+            cx.sink.send(msg("listed", |_| {}), &cx.cancel).unwrap();
         });
         assert!(w.wait(Duration::from_secs(5)));
         inbox.begin_pump();
-        let m = inbox.try_recv().unwrap();
-        assert_eq!(m.name(), "listed");
-        m.apply(&mut Cx::new(&rt));
-        assert_eq!(applied.load(Ordering::SeqCst), 1);
+        assert_eq!(inbox.try_recv().map(|m| m.name()), Some("listed"));
         assert!(inbox.try_recv().is_none());
+        assert_eq!(rt.shutdown(inbox, Duration::from_secs(5)), 0);
+    }
+
+    #[test]
+    fn panic_sends_toast_msg() {
+        let (rt, inbox, w) = rt();
+        rt.spawn(Lane::Bulk, "boom", rt.token(), |_| panic!("test panic"));
+        assert!(w.wait(Duration::from_secs(5)));
+        inbox.begin_pump();
+        assert_eq!(inbox.try_recv().map(|m| m.name()), Some("task.panic"));
         assert_eq!(rt.shutdown(inbox, Duration::from_secs(5)), 0);
     }
 

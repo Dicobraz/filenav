@@ -202,18 +202,12 @@ impl AppState {
         self.rev += 1;
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "очередь событий ведёт шина Core (S1-07)")
-    )]
+    /// Событие для фронтенда. Тоже изменение: поднимает `rev`, чтобы UI перерисовался.
     pub(crate) fn push_ui(&mut self, e: UiEvent) {
         self.ui_events.push(e);
+        self.touch();
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "очередь событий ведёт шина Core (S1-07)")
-    )]
     pub(crate) fn take_ui_events(&mut self) -> Vec<UiEvent> {
         std::mem::take(&mut self.ui_events)
     }
