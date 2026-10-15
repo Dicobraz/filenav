@@ -1,12 +1,27 @@
 //! `app.*`. Выход: опрос handlers (`Handler::on_quit`) делает Core после этой
-//! команды; перечитывание конфига — S1-10, запись сессии — S1-11.
+//! команды; запись сессии — S1-11.
+
+use std::sync::Arc;
 
 use super::meta;
 use crate::bus::Handler;
 use crate::cmd::{CmdError, Command, CommandMeta};
-use crate::msg::Cx;
+use crate::config::Config;
+use crate::msg::{Cx, msg};
+use crate::paths::Paths;
+use crate::runtime::Lane;
 
-pub(crate) struct AppHandler;
+pub(crate) struct AppHandler {
+    paths: Arc<Paths>,
+}
+
+impl AppHandler {
+    pub(crate) fn new(paths: Paths) -> Self {
+        AppHandler {
+            paths: Arc::new(paths),
+        }
+    }
+}
 
 static COMMANDS: [CommandMeta; 3] = [
     meta("app.quit", "Quit", &[], false),
@@ -24,8 +39,21 @@ impl Handler for AppHandler {
     }
 
     fn handle(&mut self, cmd: &Command, cx: &mut Cx<'_>) -> Result<(), CmdError> {
-        // app.quit завершает Core (Core::finish_quit); остальное — до S1-10/S1-11 без действия.
-        tracing::debug!(cmd = cmd.id.as_str(), "app command");
+        if cmd.id.as_str() == "app.reload_config" {
+            // Чтение файла — не в UI-потоке.
+            let paths = self.paths.clone();
+            cx.rt
+                .spawn(Lane::Bulk, "config.reload", cx.rt.token(), move |tcx| {
+                    let (config, warnings) = Config::load(&paths);
+                    let apply = msg("config.loaded", move |cx| {
+                        cx.state.set_config(Arc::new(config), &warnings);
+                    });
+                    let _ = tcx.sink.send(apply, &tcx.cancel);
+                });
+        } else {
+            // app.quit завершает Core (Core::finish_quit); app.save_session — S1-11.
+            tracing::debug!(cmd = cmd.id.as_str(), "app command");
+        }
         cx.keep_rev();
         Ok(())
     }

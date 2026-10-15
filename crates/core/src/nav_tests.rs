@@ -695,3 +695,54 @@ fn locs_list_in_go_args_validate() {
     assert_eq!(t.len(), 1);
     assert!(t[0].1.starts_with("panel.go: arg path"), "{t:?}");
 }
+
+#[test]
+fn config_applies_to_tabs_and_reloads() {
+    use crate::config::Config;
+    use crate::paths::Paths;
+    let tmp = tempfile::tempdir().unwrap();
+    let paths = Paths::in_dir(tmp.path());
+    std::fs::write(
+        paths.config_file(),
+        "[panels]\nview_mode = \"brief\"\nhistory_cap = 2\n[panels.sort]\nkey = \"size\"\n[general]\nlanguage = \"bad_tag\"\n",
+    )
+    .unwrap();
+    let (config, warnings) = Config::load(&paths);
+    let fake = Arc::new(FakeListing::new(8));
+    fake.set_dir(dir("a"), files(&["x/", "f1.txt", "f2.rs"]));
+    let w = Arc::new(TestWaker::default());
+    let mut boot = Boot::new(dir("a"), dir("a"));
+    boot.paths = paths.clone();
+    boot.config = config;
+    boot.warnings = warnings;
+    let services = Services {
+        listing: fake.clone(),
+        open_resolvers: Vec::new(),
+    };
+    let mut h = H {
+        core: Core::new(boot, services, w.clone()),
+        fake,
+        w,
+    };
+    h.settle();
+    assert_eq!(h.tab().view_mode, crate::tab::ViewMode::Brief);
+    assert_eq!(h.tab().sort.key, SortKey::Size);
+    let banner = h.core.state().banner.clone().expect("config banner");
+    assert!(banner.text.contains("general.language"), "{}", banner.text);
+    h.cmd("tab.new");
+    assert_eq!(h.tab().view_mode, crate::tab::ViewMode::Brief);
+
+    std::fs::write(paths.config_file(), "[panels]\nview_mode = \"wide\"\n").unwrap();
+    h.cmd("app.reload_config");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while h.core.state().config.panels.view_mode != crate::tab::ViewMode::Wide {
+        assert!(Instant::now() < deadline, "config not reloaded");
+        h.settle();
+    }
+    assert!(
+        h.core.state().banner.is_none(),
+        "clean reload clears the config banner"
+    );
+    h.cmd("tab.new");
+    assert_eq!(h.tab().view_mode, crate::tab::ViewMode::Wide);
+}

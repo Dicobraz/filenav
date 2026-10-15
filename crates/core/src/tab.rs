@@ -8,6 +8,7 @@ use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 
 use crate::cancel::CancelToken;
+use crate::config::Config;
 use crate::entry::Entry;
 use crate::history::NavHistory;
 use crate::ids::{Gen, TabId};
@@ -131,7 +132,9 @@ impl Listing {
     }
 }
 
+/// Сортировка. Недостающие в конфиге поля берутся из `Default`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SortSpec {
     pub key: SortKey,
     pub desc: bool,
@@ -242,6 +245,16 @@ impl Tab {
             load_seq: 0,
             cols: 1,
         }
+    }
+
+    /// Новый таб с настройками панелей из конфига (сортировка, вид, скрытые, история).
+    pub fn with_config(id: TabId, loc: Location, c: &Config) -> Self {
+        let mut t = Tab::new(id, loc);
+        t.sort = c.panels.sort;
+        t.view_mode = c.panels.view_mode;
+        t.show_hidden = c.general.show_hidden;
+        t.history = NavHistory::new(c.panels.history_cap.into());
+        t
     }
 
     /// `..` есть везде, кроме корня (у корня контейнера она ведёт в `outer`).

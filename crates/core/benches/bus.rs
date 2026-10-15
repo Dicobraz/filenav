@@ -53,7 +53,7 @@ impl Handler for Bench {
 
 fn core() -> Core {
     let mut boot = Boot::new(Location::local("/"), Location::local("/"));
-    boot.runtime = RuntimeConfig {
+    boot.config.runtime = RuntimeConfig {
         msg_capacity: N_MSGS * 2,
         ..RuntimeConfig::default()
     };
