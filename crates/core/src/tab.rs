@@ -212,6 +212,8 @@ pub struct Tab {
     pub(crate) load_seq: u32,
     /// Колонок в области панели (`panel.viewport`), для `panel.cursor.left/right`.
     pub(crate) cols: u32,
+    /// Таб из сессии: если каталога нет, подниматься к родителю (осталось шагов).
+    pub(crate) restore_up: u8,
 }
 
 /// Перечитываемый листинг до замены текущего.
@@ -244,6 +246,7 @@ impl Tab {
             incoming: None,
             load_seq: 0,
             cols: 1,
+            restore_up: 0,
         }
     }
 

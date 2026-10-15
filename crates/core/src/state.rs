@@ -159,6 +159,16 @@ pub struct AppState {
     pub(crate) quit_prompt: Option<PromptId>,
     /// Текущий баннер — о проблемах конфига (снимается при чистой перезагрузке).
     config_banner: bool,
+    pub(crate) session: SessionMarks,
+}
+
+/// Отметки для записи сессии (Core, конец pump).
+#[derive(Debug, Default)]
+pub(crate) struct SessionMarks {
+    /// Что-то из сессии изменилось (табы, пути, вид, закладки).
+    pub(crate) dirty: bool,
+    /// `app.save_session`: записать без ожидания.
+    pub(crate) force: bool,
 }
 
 impl AppState {
@@ -188,7 +198,17 @@ impl AppState {
             next_tab,
             quit_prompt: None,
             config_banner: false,
+            session: SessionMarks::default(),
         }
+    }
+
+    pub(crate) fn reset_tab_ids(&mut self, next: u32) {
+        self.next_tab = next;
+    }
+
+    /// Отметить изменение, которое попадает в сессию.
+    pub(crate) fn mark_session_dirty(&mut self) {
+        self.session.dirty = true;
     }
 
     /// Применить конфиг: ёмкость истории каталогов и баннер о проблемах. Табы

@@ -1,5 +1,5 @@
 //! `app.*`. Выход: опрос handlers (`Handler::on_quit`) делает Core после этой
-//! команды; запись сессии — S1-11.
+//! команды; запись сессии — Core в конце pump.
 
 use std::sync::Arc;
 
@@ -50,10 +50,10 @@ impl Handler for AppHandler {
                     });
                     let _ = tcx.sink.send(apply, &tcx.cancel);
                 });
-        } else {
-            // app.quit завершает Core (Core::finish_quit); app.save_session — S1-11.
-            tracing::debug!(cmd = cmd.id.as_str(), "app command");
+        } else if cmd.id.as_str() == "app.save_session" {
+            cx.state.session.force = true;
         }
+        // app.quit завершает Core (Core::finish_quit).
         cx.keep_rev();
         Ok(())
     }

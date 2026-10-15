@@ -28,6 +28,9 @@ pub mod prompt;
 pub mod runtime;
 pub mod selection;
 pub mod services;
+pub mod session;
+#[cfg(test)]
+mod session_tests;
 pub mod state;
 pub mod tab;
 mod text;
@@ -55,6 +58,9 @@ pub use selection::Selection;
 pub use services::{
     ArrangeReq, ArrangeSpec, ListingService, ListingUpdate, LoadReq, NullListing, OpenResolver,
     Patch, Services, TabEvent, listing_msg,
+};
+pub use session::{
+    BookmarkSession, PanelSession, SESSION_VERSION, Session, TabSession, WindowGeom,
 };
 pub use state::{AppState, Banner, Extensions, Focus, Level, OverlayKind, Panel, UiEvent};
 pub use tab::{

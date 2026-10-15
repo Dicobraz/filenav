@@ -108,6 +108,31 @@ pub(crate) fn navigate(
     top: u32,
     push_history: bool,
 ) {
+    if let Some(t) = cx.state.tab_mut(id) {
+        t.restore_up = 0;
+    }
+    load_into(cx, id, loc, focus, top, push_history);
+}
+
+/// Загрузка таба из сессии: при ошибке таб поднимается к существующему родителю.
+pub(crate) fn navigate_restored(
+    cx: &mut Cx<'_>,
+    id: TabId,
+    loc: Location,
+    focus: Option<CompactString>,
+    top: u32,
+) {
+    load_into(cx, id, loc, focus, top, false);
+}
+
+fn load_into(
+    cx: &mut Cx<'_>,
+    id: TabId,
+    loc: Location,
+    focus: Option<CompactString>,
+    top: u32,
+    push_history: bool,
+) {
     let (rt, services) = (cx.rt, cx.services);
     let Some(tab) = cx.state.tab_mut(id) else {
         return;
@@ -140,6 +165,7 @@ pub(crate) fn navigate(
     tab.touch();
     let view = arrange_spec(tab);
     cx.state.visited.touch(&loc);
+    cx.state.mark_session_dirty();
     let req = LoadReq {
         tab: id,
         generation,
@@ -198,6 +224,10 @@ pub(crate) fn arrange(cx: &mut Cx<'_>, id: TabId) {
     };
     tab.listing.arrange_seq += 1;
     tab.touch();
+    cx.state.mark_session_dirty();
+    let Some(tab) = cx.state.tab_mut(id) else {
+        return;
+    };
     if matches!(tab.listing.status, ListingStatus::Loading { .. }) && tab.listing.entries.is_empty()
     {
         // Порядок для уже пришедших записей пересчитается на `Done`.
@@ -227,9 +257,16 @@ pub(crate) fn apply_update(cx: &mut Cx<'_>, id: TabId, generation: Gen, u: Listi
     {
         apply_incoming(cx, id, u);
     } else if tab.listing.generation == generation {
-        let need_arrange = apply_shown(tab, u);
-        if need_arrange {
-            arrange(cx, id);
+        match apply_shown(tab, u) {
+            Follow::Nothing => {}
+            Follow::Arrange => arrange(cx, id),
+            Follow::Up => {
+                let up = tab.loc.parent();
+                tab.restore_up -= 1;
+                if let Some(parent) = up {
+                    navigate_restored(cx, id, parent, None, 0);
+                }
+            }
         }
     } else {
         // Устаревшее поколение: таб уже ушёл или перечитан.
@@ -339,9 +376,17 @@ fn append_chunk(l: &mut Listing, entries: Vec<Entry>, visible: &[u32]) {
     Arc::make_mut(&mut l.order).extend(visible.iter().copied().filter(|&i| i < len));
 }
 
-/// Обновление показанного листинга. Возвращает `true`, если нужен arrange
-/// (загрузка закончилась, а сортировка менялась по ходу).
-fn apply_shown(tab: &mut Tab, u: ListingUpdate) -> bool {
+/// Что сделать после обновления показанного листинга.
+enum Follow {
+    Nothing,
+    /// Загрузка закончилась, а сортировка менялась по ходу.
+    Arrange,
+    /// Каталог из сессии не открылся: подняться к родителю.
+    Up,
+}
+
+/// Обновление показанного листинга.
+fn apply_shown(tab: &mut Tab, u: ListingUpdate) -> Follow {
     match u {
         ListingUpdate::Chunk { entries, visible } => {
             let base_pos = tab.listing.order.len();
@@ -364,7 +409,7 @@ fn apply_shown(tab: &mut Tab, u: ListingUpdate) -> bool {
             seq,
         } => {
             if tab.listing.entries.len() as u32 != for_len || seq != tab.listing.arrange_seq {
-                return false;
+                return Follow::Nothing;
             }
             let keep = cursor_idx(tab);
             tab.listing.order = order;
@@ -372,22 +417,31 @@ fn apply_shown(tab: &mut Tab, u: ListingUpdate) -> bool {
         }
         ListingUpdate::Patch(p) => {
             if !apply_patch(tab, p) {
-                return false;
+                return Follow::Nothing;
             }
         }
         ListingUpdate::Done => {
             tab.listing.status = ListingStatus::Complete;
             tab.pending_focus = None;
+            tab.restore_up = 0;
             tab.touch();
-            return tab.load_seq != tab.listing.arrange_seq;
+            return if tab.load_seq == tab.listing.arrange_seq {
+                Follow::Nothing
+            } else {
+                Follow::Arrange
+            };
         }
         ListingUpdate::Failed(e) => {
             tab.listing.status = ListingStatus::Failed(e);
+            tab.touch();
+            if tab.restore_up > 0 && tab.loc.parent().is_some() {
+                return Follow::Up;
+            }
             tab.pending_focus = None;
         }
     }
     tab.touch();
-    false
+    Follow::Nothing
 }
 
 /// После смены порядка: `pending_focus`, иначе та же запись, иначе кламп.

@@ -3,7 +3,7 @@
 
 use std::collections::VecDeque;
 use std::fmt;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use crossbeam_channel::{Receiver, Sender};
@@ -18,10 +18,11 @@ use crate::ids::TabId;
 use crate::loc::Location;
 use crate::msg::{Cx, MsgInbox, WakeFlag, Waker};
 use crate::nav;
-use crate::paths::Paths;
+use crate::paths::{Paths, write_atomic};
 use crate::prompt::PromptSpec;
-use crate::runtime::Runtime;
+use crate::runtime::{Lane, Runtime};
 use crate::services::{Services, TabEvent};
+use crate::session::{Session, WindowGeom};
 use crate::state::{AppState, Focus, Level, Panel, UiEvent};
 use crate::tab::Tab;
 use crate::text::tr;
@@ -55,7 +56,7 @@ pub enum QuitDecision {
     Veto(PromptSpec),
 }
 
-/// Начальные данные Core. Сессию и признак падения (S1 §2.5) добавят S1-11, S1-12.
+/// Начальные данные Core. Признак падения (S1 §2.5) добавит S1-12.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct Boot {
@@ -63,17 +64,23 @@ pub struct Boot {
     pub config: Config,
     /// Предупреждения `Config::load`; показываются баннером.
     pub warnings: Vec<ConfigWarning>,
+    /// Сессия прошлого запуска; применяется при `general.restore_session`.
+    pub session: Option<Session>,
+    /// Табы, если сессии нет.
     pub left: Location,
     pub right: Location,
 }
 
 impl Boot {
-    /// Конфиг по умолчанию, каталоги — `Paths::detect()`.
+    /// Для тестов и `--smoke`: конфиг по умолчанию, без сессии, каталоги —
+    /// во временном каталоге (профиль пользователя не трогается). Приложение
+    /// собирает `Boot` из `Paths::detect()`, `Config::load` и `Session::load`.
     pub fn new(left: Location, right: Location) -> Self {
         Boot {
-            paths: Paths::detect(),
+            paths: Paths::in_dir(std::env::temp_dir().join("filenav-ephemeral")),
             config: Config::default(),
             warnings: Vec::new(),
+            session: None,
             left,
             right,
         }
@@ -133,7 +140,21 @@ pub struct Core {
     cmd_tx: Sender<Command>,
     cmd_rx: Receiver<Command>,
     queue: VecDeque<Command>,
+    paths: Paths,
+    window: Option<WindowGeom>,
+    /// Время последнего изменения, попадающего в сессию (ещё не записанного).
+    session_changed: Option<Instant>,
+    session_debounce: Duration,
+    /// Последний записанный номер версии сессии: писатель единственный, старые
+    /// версии пропускает.
+    session_writer: Arc<Mutex<u64>>,
+    session_seq: u64,
+    #[cfg(test)]
+    pub(crate) session_writes: u32,
 }
+
+/// Сессия пишется через столько после последнего изменения (S1 §2.8).
+const SESSION_DEBOUNCE: Duration = Duration::from_secs(2);
 
 impl Core {
     /// Создаёт Runtime, состояние с одним табом на панель, регистрирует handlers
@@ -147,7 +168,12 @@ impl Core {
             Panel::new(Tab::with_config(TabId(1), boot.left.clone(), &config)),
             Panel::new(Tab::with_config(TabId(2), boot.right.clone(), &config)),
         );
+        let restore = config.general.restore_session;
         state.set_config(config, &boot.warnings);
+        let window = boot.session.as_ref().and_then(|s| s.window);
+        if let Some(s) = boot.session.filter(|_| restore) {
+            s.apply(&mut state);
+        }
         let mut core = Core {
             state,
             rt,
@@ -159,6 +185,14 @@ impl Core {
             cmd_tx,
             cmd_rx,
             queue: VecDeque::new(),
+            paths: boot.paths.clone(),
+            window,
+            session_changed: None,
+            session_debounce: SESSION_DEBOUNCE,
+            session_writer: Arc::default(),
+            session_seq: 0,
+            #[cfg(test)]
+            session_writes: 0,
         };
         core.register(Box::new(PanelHandler));
         core.register(Box::new(SelHandler));
@@ -166,11 +200,38 @@ impl Core {
         core.register(Box::new(AppHandler::new(boot.paths)));
         core.register(Box::new(JobHandler));
         core.register(Box::new(PromptHandler));
-        for (id, loc) in [(TabId(1), boot.left), (TabId(2), boot.right)] {
-            core.services.listing.tab_event(TabEvent::Shown(id));
+        let tabs: Vec<_> = core
+            .state
+            .panels
+            .iter_mut()
+            .flat_map(|p| {
+                let active = p.active;
+                p.tabs.iter_mut().enumerate().map(move |(i, t)| {
+                    let focus = t.pending_focus.take();
+                    (
+                        t.id,
+                        t.loc.clone(),
+                        focus,
+                        t.cursor.top,
+                        t.restore_up > 0,
+                        i == active,
+                    )
+                })
+            })
+            .collect();
+        for (id, loc, focus, top, restored, shown) in tabs {
+            if shown {
+                core.services.listing.tab_event(TabEvent::Shown(id));
+            }
             let mut cx = Cx::new(&mut core.state, &core.rt, &core.services, &mut core.queue);
-            nav::navigate(&mut cx, id, loc, None, 0, false);
+            if restored {
+                nav::navigate_restored(&mut cx, id, loc, focus, top);
+            } else {
+                nav::navigate(&mut cx, id, loc, focus, top, false);
+            }
         }
+        // Стартовые загрузки — не изменение сессии.
+        core.state.session.dirty = false;
         core
     }
 
@@ -268,10 +329,73 @@ impl Core {
                 break;
             }
         }
+        self.session_tick();
         Pump {
             more: !self.queue.is_empty() || !self.inbox.is_empty() || !self.cmd_rx.is_empty(),
             changed: self.state.rev != rev0,
         }
+    }
+
+    /// Геометрия окна для сессии.
+    pub fn set_window(&mut self, g: WindowGeom) {
+        if self.window != Some(g) {
+            self.window = Some(g);
+            self.state.mark_session_dirty();
+        }
+    }
+
+    /// Запись сессии через `session_debounce` после последнего изменения:
+    /// снимок — здесь (микросекунды), запись — на Bulk-полосе.
+    fn session_tick(&mut self) {
+        let now = Instant::now();
+        if std::mem::take(&mut self.state.session.dirty) {
+            self.session_changed = Some(now);
+        }
+        let force = std::mem::take(&mut self.state.session.force);
+        match self.session_changed {
+            Some(t) if !force && now - t < self.session_debounce => {
+                self.rt
+                    .waker()
+                    .wake_after(self.session_debounce.saturating_sub(now - t));
+            }
+            Some(_) => self.write_session(),
+            None if force => self.write_session(),
+            None => {}
+        }
+    }
+
+    fn write_session(&mut self) {
+        self.session_changed = None;
+        let text = match toml::to_string(&Session::capture(&self.state, self.window)) {
+            Ok(t) => t,
+            Err(e) => {
+                tracing::error!(error = %e, "cannot serialize session");
+                return;
+            }
+        };
+        self.session_seq += 1;
+        let (seq, writer, file) = (
+            self.session_seq,
+            self.session_writer.clone(),
+            self.paths.session_file(),
+        );
+        #[cfg(test)]
+        {
+            self.session_writes += 1;
+        }
+        self.rt
+            .spawn(Lane::Bulk, "session.save", self.rt.token(), move |_| {
+                let mut last = writer.lock().unwrap_or_else(PoisonError::into_inner);
+                if *last >= seq {
+                    return;
+                }
+                match write_atomic(&file, text.as_bytes()) {
+                    Ok(()) => *last = seq,
+                    Err(e) => {
+                        tracing::warn!(error = %e, file = %file.display(), "cannot save session");
+                    }
+                }
+            });
     }
 
     pub fn take_ui_events(&mut self) -> Vec<UiEvent> {
@@ -289,14 +413,32 @@ impl Core {
         QuitDecision::Allow
     }
 
-    /// Останавливает Runtime (см. [`Runtime::shutdown`]); `CommandSender` после
-    /// этого получает `Closed`. Возвращает число отпущенных потоков. Финальную
-    /// запись сессии добавит S1-11.
-    pub fn shutdown(mut self, timeout: Duration) -> usize {
+    /// Отменяет задачи, останавливает Runtime (см. [`Runtime::shutdown`];
+    /// `CommandSender` после этого получает `Closed`) и синхронно пишет сессию.
+    /// Возвращает записанную сессию.
+    pub fn shutdown(mut self, timeout: Duration) -> Session {
         // Токены задач не производны от корня Runtime: отменить явно.
         self.state.jobs.cancel_all();
-        let Core { rt, inbox, .. } = self;
-        rt.shutdown(inbox, timeout)
+        let session = Session::capture(&self.state, self.window);
+        let Core {
+            rt,
+            inbox,
+            paths,
+            session_writer,
+            ..
+        } = self;
+        let stuck = rt.shutdown(inbox, timeout);
+        if stuck > 0 {
+            tracing::warn!(stuck, "threads still running after shutdown");
+        }
+        // Ждём фоновую запись, если она идёт, и пишем поверх неё.
+        let _guard = session_writer
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if let Err(e) = session.save(&paths) {
+            tracing::error!(error = %e, "cannot save session on exit");
+        }
+        session
     }
 
     fn exec(&mut self, cmd: &Command, refreshed: Option<&mut FxHashSet<Option<i64>>>) {
@@ -447,9 +589,8 @@ mod tests {
             *self.pending.lock().unwrap() = true;
             self.cv.notify_all();
         }
-        fn wake_after(&self, _d: Duration) {
-            self.wake();
-        }
+        /// Отложенное пробуждение (как `request_repaint_after`): тесты качают pump сами.
+        fn wake_after(&self, _d: Duration) {}
     }
 
     impl TestWaker {
@@ -752,7 +893,7 @@ mod tests {
         assert!(!c.pump(Duration::from_secs(1)).more);
         assert_eq!(log.borrow().len(), 100);
         let s = c.sender();
-        assert_eq!(c.shutdown(Duration::from_secs(5)), 0);
+        let _ = c.shutdown(Duration::from_secs(5));
         assert!(s.send(Command::new("test.log")).is_err());
     }
 
