@@ -15,7 +15,10 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
-filenav-core.workspace = true
+eframe.workspace = true
+# FakeListing: настоящий листинг ФС — S4.
+filenav-core = { workspace = true, features = ["fake"] }
+filenav-ui.workspace = true
 tracing.workspace = true
 tracing-appender.workspace = true
 tracing-subscriber.workspace = true

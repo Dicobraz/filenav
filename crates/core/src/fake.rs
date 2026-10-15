@@ -38,6 +38,17 @@ struct Inner {
 pub struct FakeListing {
     inner: Mutex<Inner>,
     chunk: usize,
+    tree: Option<FakeTree>,
+}
+
+/// Бесконечное детерминированное дерево: каталог без явного содержимого
+/// генерируется по пути (до S4 — чтобы по окну можно было ходить).
+#[derive(Clone, Copy, Debug)]
+pub struct FakeTree {
+    pub dirs: u32,
+    pub files: u32,
+    /// Глубже — только файлы.
+    pub max_depth: u32,
 }
 
 impl Default for FakeListing {
@@ -60,7 +71,40 @@ impl FakeListing {
         FakeListing {
             inner: Mutex::default(),
             chunk: chunk.max(1),
+            tree: None,
         }
+    }
+
+    /// Неизвестные каталоги генерируются по `tree` вместо `Failed`.
+    #[must_use]
+    pub fn with_tree(mut self, tree: FakeTree) -> Self {
+        self.tree = Some(tree);
+        self
+    }
+
+    fn generate(tree: FakeTree, loc: &Location) -> Vec<Entry> {
+        let depth = loc.path.components().count() as u32;
+        let seed = loc
+            .path
+            .to_string_lossy()
+            .bytes()
+            .fold(0u64, |h, b| h.wrapping_mul(31).wrapping_add(u64::from(b)));
+        let dirs = if depth < tree.max_depth { tree.dirs } else { 0 };
+        let exts = ["txt", "rs", "toml", "md", "png", "zip", "exe", "log"];
+        let mut v = Vec::with_capacity((dirs + tree.files + 1) as usize);
+        v.extend((0..dirs).map(|i| Self::dir(&format!("folder-{i:02}"))));
+        v.extend((0..tree.files).map(|i| {
+            let mut e = Self::file(
+                &format!("file-{i:04}.{}", exts[i as usize % exts.len()]),
+                seed.wrapping_add(u64::from(i) * 7919) % 50_000_000,
+            );
+            e.mtime = 1_700_000_000_000_000_000 + i64::from(i) * 60_000_000_000;
+            e
+        }));
+        let mut hidden = Self::file(".hidden", 1);
+        hidden.attrs = Attrs(Attrs::HIDDEN | Attrs::DOTFILE);
+        v.push(hidden);
+        v
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
@@ -170,7 +214,10 @@ impl ListingService for FakeListing {
                 loc: req.loc.clone(),
                 cancel: req.cancel.clone(),
             });
-            g.dirs.get(&req.loc).cloned()
+            g.dirs
+                .get(&req.loc)
+                .cloned()
+                .or_else(|| self.tree.map(|t| Arc::new(Self::generate(t, &req.loc))))
         };
         let chunk = self.chunk;
         rt.spawn(
