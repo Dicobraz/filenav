@@ -3,7 +3,7 @@
 use compact_str::CompactString;
 
 /// Элемент листинга, не больше 48 байт.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Entry {
     /// Имя для отображения. При `Attrs::ESCAPED_NAME` содержит обратимо
     /// экранированные не-UTF-8 юниты; имя для ОС даёт `vfs::name::to_os`.

@@ -7,11 +7,15 @@
 pub mod cancel;
 pub mod cmd;
 pub mod entry;
+pub mod history;
 pub mod ids;
 pub mod loc;
 pub mod mask;
 pub mod msg;
 pub mod runtime;
+pub mod selection;
+pub mod state;
+pub mod tab;
 
 pub use cancel::{CancelToken, Cancelled};
 pub use cmd::{
@@ -19,11 +23,18 @@ pub use cmd::{
     Value, ValueKind,
 };
 pub use entry::{Attrs, Entry, EntryKind};
+pub use history::{HistEntry, NavHistory, VisitedDirs};
 pub use ids::{Gen, JobId, PromptId, Side, TabId};
 pub use loc::{LocError, Location};
 pub use mask::{Mask, MaskError};
 pub use msg::{Cx, Msg, MsgInbox, MsgSink, SendError, TrySendError, Waker, msg};
 pub use runtime::{Lane, Runtime, RuntimeConfig, TaskCx};
+pub use selection::Selection;
+pub use state::{AppState, Banner, Extensions, Focus, Level, OverlayKind, Panel, UiEvent};
+pub use tab::{
+    Cursor, Listing, ListingStats, ListingStatus, PanelMode, Row, SortKey, SortSpec, Tab, Targets,
+    ViewMode,
+};
 
 /// Версия крейта из `Cargo.toml`.
 pub fn version() -> &'static str {
