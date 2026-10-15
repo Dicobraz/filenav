@@ -10,5 +10,6 @@
 | 0006 | [S0-contracts-v3](../specs/S0-contracts-v3.md) |
 | 0007 | [S0-contracts-v4](../specs/S0-contracts-v4.md) |
 | 0008 | [S0-contracts-v5](../specs/S0-contracts-v5.md) |
+| 0009 | [Строковая форма Location (uri)](0009-location-uri.md) — предложено |
 
-Новые ADR начинаются с 0009: `NNNN-кратко.md`.
+Новые ADR — со следующего свободного номера: `NNNN-кратко.md`.

@@ -1,8 +1,20 @@
 //! FileNav — ядро: состояние, шина команд, runtime.
 //!
-//! Заглушка S1-01, владелец — S1.
+//! Владелец — S1. API — specs/S1.md §2 с изменениями S0-contracts-v2…v5.
 
 #![forbid(unsafe_code)]
+
+pub mod cancel;
+pub mod entry;
+pub mod ids;
+pub mod loc;
+pub mod mask;
+
+pub use cancel::{CancelToken, Cancelled};
+pub use entry::{Attrs, Entry, EntryKind};
+pub use ids::{Gen, JobId, PromptId, Side, TabId};
+pub use loc::{LocError, Location};
+pub use mask::{Mask, MaskError};
 
 /// Версия крейта из `Cargo.toml`.
 pub fn version() -> &'static str {
