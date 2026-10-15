@@ -4,6 +4,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod bus;
 pub mod cancel;
 pub mod cmd;
 pub mod entry;
@@ -12,11 +13,15 @@ pub mod ids;
 pub mod loc;
 pub mod mask;
 pub mod msg;
+pub mod prompt;
 pub mod runtime;
 pub mod selection;
+pub mod services;
 pub mod state;
 pub mod tab;
+mod text;
 
+pub use bus::{Boot, Closed, CommandSender, Core, Handler, Pump, QuitDecision};
 pub use cancel::{CancelToken, Cancelled};
 pub use cmd::{
     ArgSpec, Args, CmdError, Command, CommandId, CommandMeta, CommandRegistry, Origin, SideRef,
@@ -28,8 +33,10 @@ pub use ids::{Gen, JobId, PromptId, Side, TabId};
 pub use loc::{LocError, Location};
 pub use mask::{Mask, MaskError};
 pub use msg::{Cx, Msg, MsgInbox, MsgSink, SendError, TrySendError, Waker, msg};
+pub use prompt::{Anchor, Choice, PromptDetail, PromptSpec};
 pub use runtime::{Lane, Runtime, RuntimeConfig, TaskCx};
 pub use selection::Selection;
+pub use services::Services;
 pub use state::{AppState, Banner, Extensions, Focus, Level, OverlayKind, Panel, UiEvent};
 pub use tab::{
     Cursor, Listing, ListingStats, ListingStatus, PanelMode, Row, SortKey, SortSpec, Tab, Targets,

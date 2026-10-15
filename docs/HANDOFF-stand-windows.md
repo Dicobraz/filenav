@@ -19,7 +19,7 @@ Claude Code работает нативно на Windows 11 владельца. 
 | Уровень | Где | Что ловит | Кто |
 |---|---|---|---|
 | L0 | стенд: fmt, clippy, nextest, release-сборка, `--smoke` | вся логика, Windows-код (`sys/windows.rs`, windows-sys API), размер бинаря | Code, перед каждым PR |
-| L0 | стенд: `cargo clippy --target x86_64-unknown-linux-gnu` / `aarch64-apple-darwin` | `cfg`-ошибки unix/mac-кода, пока зависимости собираются без C-тулчейна цели | Code, если задача трогает не-Windows код |
+| L0 | стенд: `cargo clippy --lib --bins --target x86_64-unknown-linux-gnu` / `aarch64-apple-darwin` | `cfg`-ошибки unix/mac-кода, пока зависимости собираются без C-тулчейна цели (dev-зависимости вроде criterion его требуют, поэтому без тестов и бенчей) | Code, если задача трогает не-Windows код |
 | L1 | GitHub Actions: windows-latest, ubuntu-latest, macos-latest | тесты на всех ОС, Linux/macOS-сборка, deny, размер бинаря | CI, автоматически |
 | L2 | стенд, владелец | GUI, ConPTY, хоткеи и раскладки, Mica, перф-бюджеты | владелец по чек-листу в PR |
 
@@ -37,7 +37,7 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo nextest run --workspace --locked
 cargo test --doc --workspace --locked
 cargo build --release -p filenav-app --locked
-cargo clippy --workspace --all-targets --locked --target x86_64-unknown-linux-gnu -- -D warnings
+cargo clippy --workspace --lib --bins --locked --target x86_64-unknown-linux-gnu -- -D warnings
 cargo deny check
 cargo run -p filenav-app
 ```
