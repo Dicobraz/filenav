@@ -11,6 +11,7 @@ use smallvec::SmallVec;
 use crate::cmd::{Args, Command, CommandId};
 use crate::history::VisitedDirs;
 use crate::ids::{PromptId, Side, TabId};
+use crate::loc::Location;
 use crate::tab::Tab;
 
 /// Куда идёт ввод (S0 v3 №1, v5 №1).
@@ -138,26 +139,46 @@ pub struct AppState {
     /// Глобальный MRU каталогов (Alt+F12).
     pub visited: VisitedDirs,
     pub banner: Option<Banner>,
+    /// Закладки каталогов 0–9 (`panel.bookmark.*`, S0 v3 №4); хранятся в сессии.
+    pub bookmarks: [Option<Location>; 10],
     pub ext: Extensions,
     /// Растёт при любой мутации — ключ кэшей UI.
     pub rev: u64,
     pub quit: bool,
     ui_events: Vec<UiEvent>,
+    next_tab: u32,
 }
 
 impl AppState {
     pub fn new(left: Panel, right: Panel) -> Self {
+        let next_tab = left
+            .tabs
+            .iter()
+            .chain(&right.tabs)
+            .map(|t| t.id.0)
+            .max()
+            .unwrap_or(0)
+            + 1;
         AppState {
             panels: [left, right],
             active: Side::Left,
             focus: Focus::Panel,
             visited: VisitedDirs::default(),
             banner: None,
+            bookmarks: Default::default(),
             ext: Extensions::default(),
             rev: 0,
             quit: false,
             ui_events: Vec::new(),
+            next_tab,
         }
+    }
+
+    /// Новый уникальный id таба.
+    pub(crate) fn alloc_tab_id(&mut self) -> TabId {
+        let id = TabId(self.next_tab);
+        self.next_tab += 1;
+        id
     }
 
     pub fn panel(&self, s: Side) -> &Panel {

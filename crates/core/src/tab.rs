@@ -7,6 +7,7 @@ use std::time::Instant;
 use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 
+use crate::cancel::CancelToken;
 use crate::entry::Entry;
 use crate::history::NavHistory;
 use crate::ids::{Gen, TabId};
@@ -89,6 +90,9 @@ pub struct Listing {
     pub status: ListingStatus,
     pub stats: ListingStats,
     pub generation: Gen,
+    /// Растёт на `panel.sort`, `filter`, `hidden.toggle`; `Order`/`Patch` со старым
+    /// `seq` отбрасываются (S0 v2 №3).
+    pub arrange_seq: u32,
 }
 
 impl Listing {
@@ -100,6 +104,7 @@ impl Listing {
             status: ListingStatus::Idle,
             stats: ListingStats::default(),
             generation,
+            arrange_seq: 0,
         }
     }
 
@@ -121,6 +126,7 @@ impl Listing {
             status: ListingStatus::Complete,
             stats,
             generation,
+            arrange_seq: 0,
         }
     }
 }
@@ -195,8 +201,21 @@ pub struct Tab {
     pub history: NavHistory,
     /// Растёт при любой мутации таба — ключ кэшей UI.
     pub rev: u64,
-    // Токен текущей загрузки и double-buffer для `panel.refresh` (приватные поля
-    // `cancel`, `incoming` из S1 §2.4) добавит навигация в S1-08.
+    /// Отмена текущей загрузки.
+    pub(crate) cancel: Option<CancelToken>,
+    /// Double-buffer для `panel.refresh`.
+    pub(crate) incoming: Option<Incoming>,
+    /// `seq`, с которым запрошена загрузка (сравнивается с `arrange_seq` на `Done`).
+    pub(crate) load_seq: u32,
+    /// Колонок в области панели (`panel.viewport`), для `panel.cursor.left/right`.
+    pub(crate) cols: u32,
+}
+
+/// Перечитываемый листинг до замены текущего.
+#[derive(Debug)]
+pub(crate) struct Incoming {
+    pub(crate) listing: Listing,
+    pub(crate) started: Instant,
 }
 
 impl Tab {
@@ -218,6 +237,10 @@ impl Tab {
             mode: PanelMode::Files,
             history: NavHistory::default(),
             rev: 0,
+            cancel: None,
+            incoming: None,
+            load_seq: 0,
+            cols: 1,
         }
     }
 

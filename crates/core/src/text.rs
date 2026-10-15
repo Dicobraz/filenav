@@ -8,6 +8,11 @@ pub(crate) fn tr(key: &'static str, args: &[(&str, &str)]) -> String {
         "core-unknown-command" => "Unknown command: {$id}",
         "core-command-failed" => "{$id}: {$error}",
         "core-task-panicked" => "Task {$task} failed unexpectedly",
+        "core-not-found" => "Not found: {$name}",
+        "core-no-match" => "Nothing matches {$mask}",
+        "core-no-bookmark" => "Bookmark {$n} is empty",
+        "core-last-tab" => "Cannot close the last tab",
+        "core-no-tab" => "No tab {$n}",
         _ => {
             debug_assert!(false, "no fallback for {key}");
             key

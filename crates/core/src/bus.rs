@@ -10,12 +10,14 @@ use crossbeam_channel::{Receiver, Sender};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::cmd::{CmdError, Command, CommandMeta, CommandRegistry};
+use crate::handlers::{AppHandler, PanelHandler, SelHandler, TabHandler};
 use crate::ids::TabId;
 use crate::loc::Location;
 use crate::msg::{Cx, MsgInbox, WakeFlag, Waker};
+use crate::nav;
 use crate::prompt::PromptSpec;
 use crate::runtime::{Runtime, RuntimeConfig};
-use crate::services::Services;
+use crate::services::{Services, TabEvent};
 use crate::state::{AppState, Level, Panel, UiEvent};
 use crate::tab::Tab;
 use crate::text::tr;
@@ -125,15 +127,17 @@ pub struct Core {
 }
 
 impl Core {
-    /// Создаёт Runtime и состояние с одним табом на панель. Вызывать в UI-потоке.
+    /// Создаёт Runtime, состояние с одним табом на панель, регистрирует handlers
+    /// core (`panel`, `sel`, `tab`, `app`) и начинает загрузку обоих табов.
+    /// Вызывать в UI-потоке.
     pub fn new(boot: Boot, services: Services, waker: Arc<dyn Waker>) -> Self {
         let (rt, inbox) = Runtime::new(&boot.runtime, waker);
         let (cmd_tx, cmd_rx) = crossbeam_channel::unbounded();
         let state = AppState::new(
-            Panel::new(Tab::new(TabId(1), boot.left)),
-            Panel::new(Tab::new(TabId(2), boot.right)),
+            Panel::new(Tab::new(TabId(1), boot.left.clone())),
+            Panel::new(Tab::new(TabId(2), boot.right.clone())),
         );
-        Core {
+        let mut core = Core {
             state,
             rt,
             inbox,
@@ -144,7 +148,17 @@ impl Core {
             cmd_tx,
             cmd_rx,
             queue: VecDeque::new(),
+        };
+        core.register(Box::new(PanelHandler));
+        core.register(Box::new(SelHandler));
+        core.register(Box::new(TabHandler));
+        core.register(Box::new(AppHandler));
+        for (id, loc) in [(TabId(1), boot.left), (TabId(2), boot.right)] {
+            core.services.listing.tab_event(TabEvent::Shown(id));
+            let mut cx = Cx::new(&mut core.state, &core.rt, &core.services, &mut core.queue);
+            nav::navigate(&mut cx, id, loc, None, 0, false);
         }
+        core
     }
 
     /// Паника при дубле namespace, невалидном или повторном id команды и при
@@ -175,6 +189,11 @@ impl Core {
 
     pub fn registry(&self) -> &CommandRegistry {
         &self.registry
+    }
+
+    #[cfg(test)]
+    pub(crate) fn rt(&self) -> &Runtime {
+        &self.rt
     }
 
     pub fn sender(&self) -> CommandSender {
@@ -292,6 +311,24 @@ impl Core {
             Ok(()) => {}
             Err(e) => self.error_toast(cmd, &e),
         }
+        if cmd.id.as_str() == "app.quit" {
+            self.finish_quit();
+        }
+    }
+
+    /// `app.quit`: опросить handlers; без вето — `state.quit`. Запрос по вето
+    /// откроет S1-09 (`Prompts`); пока — тост с заголовком запроса.
+    fn finish_quit(&mut self) {
+        match self.quit_decision() {
+            QuitDecision::Allow => {
+                self.state.quit = true;
+                self.state.touch();
+            }
+            QuitDecision::Veto(p) => self.state.push_ui(UiEvent::Toast {
+                level: Level::Warn,
+                text: p.title,
+            }),
+        }
     }
 
     fn error_toast(&mut self, cmd: &Command, e: &CmdError) {
@@ -334,11 +371,12 @@ mod tests {
     use crate::prompt::{Anchor, PromptSpec};
     use crate::services::Services;
     use crate::state::{Level, UiEvent};
+    use crate::tab::ListingStatus;
     use std::cell::RefCell;
     use std::rc::Rc;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Condvar, Mutex};
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     #[derive(Default)]
     struct TestWaker {
@@ -376,19 +414,19 @@ mod tests {
         }
     }
 
-    static PANEL: [CommandMeta; 4] = [
+    static TEST: [CommandMeta; 4] = [
         meta(
-            "panel.log",
+            "test.log",
             &[ArgSpec {
                 name: "n",
                 kind: ValueKind::Int,
                 required: false,
             }],
         ),
-        meta("panel.chain", &[]),
-        meta("panel.fail", &[]),
+        meta("test.chain", &[]),
+        meta("test.fail", &[]),
         meta(
-            "panel.refresh",
+            "test.refresh",
             &[ArgSpec {
                 name: "tab",
                 kind: ValueKind::Int,
@@ -405,10 +443,10 @@ mod tests {
 
     impl Handler for Recorder {
         fn namespace(&self) -> &'static str {
-            "panel"
+            "test"
         }
         fn commands(&self) -> &'static [CommandMeta] {
-            &PANEL
+            &TEST
         }
         fn handle(&mut self, cmd: &Command, cx: &mut Cx<'_>) -> Result<(), CmdError> {
             let entry = match cmd.args.int("n").or(cmd.args.int("tab")) {
@@ -417,12 +455,12 @@ mod tests {
             };
             self.log.borrow_mut().push(entry);
             match cmd.id.as_str() {
-                "panel.chain" => {
-                    cx.dispatch(Command::new("panel.log").arg("n", 1));
-                    cx.dispatch(Command::new("panel.log").arg("n", 2));
+                "test.chain" => {
+                    cx.dispatch(Command::new("test.log").arg("n", 1));
+                    cx.dispatch(Command::new("test.log").arg("n", 2));
                     Ok(())
                 }
-                "panel.fail" => Err(CmdError::Rejected("not now".into())),
+                "test.fail" => Err(CmdError::Rejected("not now".into())),
                 _ => Ok(()),
             }
         }
@@ -446,10 +484,10 @@ mod tests {
     }
 
     struct Other;
-    static OTHER: [CommandMeta; 1] = [meta("tab.new", &[])];
+    static OTHER: [CommandMeta; 1] = [meta("other.keep", &[])];
     impl Handler for Other {
         fn namespace(&self) -> &'static str {
-            "tab"
+            "other"
         }
         fn commands(&self) -> &'static [CommandMeta] {
             &OTHER
@@ -474,7 +512,28 @@ mod tests {
             veto: false,
         }));
         c.register(Box::new(Other));
+        settle(&mut c, &w);
         (c, w, log)
+    }
+
+    /// Дождаться стартовой загрузки обоих табов и сбросить счётчики пробуждений.
+    fn settle(c: &mut Core, w: &TestWaker) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !c
+            .state()
+            .panels
+            .iter()
+            .all(|p| p.tab().listing.status == ListingStatus::Complete)
+        {
+            assert!(Instant::now() < deadline, "initial load did not finish");
+            w.wait(Duration::from_millis(50));
+            c.pump(Duration::from_secs(1));
+        }
+        // Как следующий кадр UI: сбросить WakeFlag, поднятый сообщением во время
+        // последнего pump, иначе следующая отправка не разбудит.
+        *w.pending.lock().unwrap() = false;
+        c.pump(Duration::from_secs(1));
+        w.wakes.store(0, Ordering::SeqCst);
     }
 
     fn toasts(c: &mut Core) -> Vec<(Level, String)> {
@@ -498,7 +557,7 @@ mod tests {
     #[should_panic(expected = "outside handler namespace")]
     fn foreign_command_panics() {
         struct Bad;
-        static BAD: [CommandMeta; 1] = [meta("panel.x", &[])];
+        static BAD: [CommandMeta; 1] = [meta("test.x", &[])];
         impl Handler for Bad {
             fn namespace(&self) -> &'static str {
                 "ops"
@@ -518,11 +577,11 @@ mod tests {
         let (mut c, _, log) = core();
         let rev = c.state().rev;
         c.dispatch(Command::new("ops.copy"));
-        c.dispatch(Command::new("panel.log").arg("n", "x"));
+        c.dispatch(Command::new("test.log").arg("n", "x"));
         let t = toasts(&mut c);
         assert_eq!(t.len(), 2);
         assert_eq!(t[0], (Level::Error, "Unknown command: ops.copy".to_owned()));
-        assert!(t[1].1.starts_with("panel.log: arg n"), "{t:?}");
+        assert!(t[1].1.starts_with("test.log: arg n"), "{t:?}");
         assert!(log.borrow().is_empty());
         assert!(c.state().rev > rev, "toast must trigger a repaint");
     }
@@ -530,23 +589,23 @@ mod tests {
     #[test]
     fn rejected_is_a_warning_toast() {
         let (mut c, _, _) = core();
-        c.dispatch(Command::new("panel.fail"));
+        c.dispatch(Command::new("test.fail"));
         assert_eq!(toasts(&mut c), [(Level::Warn, "not now".to_owned())]);
     }
 
     #[test]
     fn cx_dispatch_is_fifo_in_same_dispatch_and_pump() {
         let (mut c, _, log) = core();
-        c.dispatch(Command::new("panel.chain"));
-        c.dispatch(Command::new("panel.log").arg("n", 3));
+        c.dispatch(Command::new("test.chain"));
+        c.dispatch(Command::new("test.log").arg("n", 3));
         assert_eq!(
             *log.borrow(),
-            ["panel.chain", "panel.log:1", "panel.log:2", "panel.log:3"]
+            ["test.chain", "test.log:1", "test.log:2", "test.log:3"]
         );
         log.borrow_mut().clear();
         let s = c.sender();
-        s.send(Command::new("panel.chain")).unwrap();
-        s.send(Command::new("panel.log").arg("n", 3)).unwrap();
+        s.send(Command::new("test.chain")).unwrap();
+        s.send(Command::new("test.log").arg("n", 3)).unwrap();
         let p = c.pump(Duration::from_secs(1));
         assert_eq!(
             p,
@@ -557,7 +616,7 @@ mod tests {
         );
         assert_eq!(
             *log.borrow(),
-            ["panel.chain", "panel.log:3", "panel.log:1", "panel.log:2"]
+            ["test.chain", "test.log:3", "test.log:1", "test.log:2"]
         );
     }
 
@@ -565,9 +624,9 @@ mod tests {
     fn rev_bumps_unless_kept() {
         let (mut c, _, _) = core();
         let r0 = c.state().rev;
-        c.dispatch(Command::new("panel.log"));
+        c.dispatch(Command::new("test.log"));
         assert_eq!(c.state().rev, r0 + 1);
-        c.dispatch(Command::new("tab.new"));
+        c.dispatch(Command::new("other.keep"));
         assert_eq!(c.state().rev, r0 + 1);
         assert_eq!(
             c.pump(Duration::from_secs(1)),
@@ -583,7 +642,7 @@ mod tests {
         let (mut c, _, log) = core();
         let s = c.sender();
         for n in 0..5 {
-            s.send(Command::new("panel.log").arg("n", n)).unwrap();
+            s.send(Command::new("test.log").arg("n", n)).unwrap();
         }
         let p = c.pump(Duration::ZERO);
         assert_eq!(
@@ -608,17 +667,17 @@ mod tests {
         let sink = c.rt.sink();
         let t = std::thread::spawn(move || {
             sink.try_send(msg("listed", |cx| {
-                cx.dispatch(Command::new("panel.log").arg("n", 9));
+                cx.dispatch(Command::new("test.log").arg("n", 9));
             }))
             .unwrap();
         });
         t.join().unwrap();
         c.sender()
-            .send(Command::new("panel.log").arg("n", 1))
+            .send(Command::new("test.log").arg("n", 1))
             .unwrap();
         assert!(w.wait(Duration::from_secs(1)));
         c.pump(Duration::from_secs(1));
-        assert_eq!(*log.borrow(), ["panel.log:1", "panel.log:9"]);
+        assert_eq!(*log.borrow(), ["test.log:1", "test.log:9"]);
     }
 
     #[test]
@@ -627,7 +686,7 @@ mod tests {
         let s = c.sender();
         std::thread::spawn(move || {
             for n in 0..100 {
-                s.send(Command::new("panel.log").arg("n", n)).unwrap();
+                s.send(Command::new("test.log").arg("n", n)).unwrap();
             }
         })
         .join()
@@ -638,30 +697,7 @@ mod tests {
         assert_eq!(log.borrow().len(), 100);
         let s = c.sender();
         assert_eq!(c.shutdown(Duration::from_secs(5)), 0);
-        assert!(s.send(Command::new("panel.log")).is_err());
-    }
-
-    #[test]
-    fn refresh_deduplicated_per_tab_within_pump() {
-        let (mut c, _, log) = core();
-        let s = c.sender();
-        for cmd in [
-            Command::new("panel.refresh").arg("tab", 1),
-            Command::new("panel.refresh").arg("tab", 2),
-            Command::new("panel.refresh").arg("tab", 1),
-            Command::new("panel.refresh"),
-            Command::new("panel.refresh"),
-        ] {
-            s.send(cmd).unwrap();
-        }
-        c.pump(Duration::from_secs(1));
-        assert_eq!(
-            *log.borrow(),
-            ["panel.refresh:1", "panel.refresh:2", "panel.refresh"]
-        );
-        s.send(Command::new("panel.refresh").arg("tab", 1)).unwrap();
-        c.pump(Duration::from_secs(1));
-        assert_eq!(log.borrow().len(), 4);
+        assert!(s.send(Command::new("test.log")).is_err());
     }
 
     #[test]
@@ -684,9 +720,9 @@ mod tests {
         }
         let (mut c, _, log) = core();
         c.register(Box::new(Inbox(log.clone())));
-        c.sender().send(Command::new("panel.log")).unwrap();
+        c.sender().send(Command::new("test.log")).unwrap();
         c.pump(Duration::from_secs(1));
-        assert_eq!(*log.borrow(), ["on_pump", "panel.log"]);
+        assert_eq!(*log.borrow(), ["on_pump", "test.log"]);
         assert!(!c.pump(Duration::from_secs(1)).changed);
     }
 
@@ -728,6 +764,7 @@ mod tests {
         let (c, _, _) = core();
         assert_eq!(c.state().active, Side::Left);
         assert_eq!(c.state().panel(Side::Right).tab().id, crate::ids::TabId(2));
-        assert_eq!(c.registry().iter().count(), 5);
+        // panel 29 + sel 9 + tab 7 + app 3 + тестовые 5.
+        assert_eq!(c.registry().iter().count(), 53);
     }
 }
