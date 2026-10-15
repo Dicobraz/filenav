@@ -1,0 +1,38 @@
+# cargo-deny: лицензии, advisories, дубли версий, источники (S1 §3, S1-02).
+
+[graph]
+all-features = false
+
+[advisories]
+yanked = "deny"
+
+[licenses]
+# S1 §3 + BSD-3-Clause (S0 v5, «Зависимости и политика»: encoding_rs).
+# LicenseRef-UnRAR не добавлять до решения владельца №37.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "BSL-1.0",
+]
+confidence-threshold = 0.9
+# Список — политика проекта, а не перечень текущих зависимостей.
+unused-allowed-license = "allow"
+
+[bans]
+multiple-versions = "deny"
+wildcards = "deny"
+allow-wildcard-paths = true
+# Дубли разрешаются только явным skip с причиной. winit не скипать никогда (S0 v3 №10):
+# версия winit должна быть ровно той, что тянет eframe.
+# windows-sys 0.59/0.61 (S0 v3) — добавить вместе с alacritty_terminal в S6,
+# сейчас дубля нет, а неиспользуемый skip даёт предупреждение.
+skip = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
