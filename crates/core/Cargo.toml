@@ -8,6 +8,10 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 
+[features]
+# FakeListing для тестов и бенчей других крейтов.
+fake = []
+
 [dependencies]
 compact_str.workspace = true
 crossbeam-channel.workspace = true

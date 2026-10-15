@@ -8,11 +8,17 @@ pub mod bus;
 pub mod cancel;
 pub mod cmd;
 pub mod entry;
+#[cfg(any(test, feature = "fake"))]
+pub mod fake;
+mod handlers;
 pub mod history;
 pub mod ids;
 pub mod loc;
 pub mod mask;
 pub mod msg;
+mod nav;
+#[cfg(test)]
+mod nav_tests;
 pub mod prompt;
 pub mod runtime;
 pub mod selection;
@@ -36,7 +42,10 @@ pub use msg::{Cx, Msg, MsgInbox, MsgSink, SendError, TrySendError, Waker, msg};
 pub use prompt::{Anchor, Choice, PromptDetail, PromptSpec};
 pub use runtime::{Lane, Runtime, RuntimeConfig, TaskCx};
 pub use selection::Selection;
-pub use services::Services;
+pub use services::{
+    ArrangeReq, ArrangeSpec, ListingService, ListingUpdate, LoadReq, NullListing, OpenResolver,
+    Patch, Services, TabEvent, listing_msg,
+};
 pub use state::{AppState, Banner, Extensions, Focus, Level, OverlayKind, Panel, UiEvent};
 pub use tab::{
     Cursor, Listing, ListingStats, ListingStatus, PanelMode, Row, SortKey, SortSpec, Tab, Targets,
