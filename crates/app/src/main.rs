@@ -3,11 +3,14 @@
 //! Старт (S1 §2.9): каталоги → конфиг → логи → обработчик паник → Core. Окно
 //! eframe, цикл кадра и `windows_subsystem` — S1-13.
 //!
-//! Флаги: `--smoke` — headless-прогон Core для CI (выход 0); `--crash-test`
-//! (только debug) — паника для проверки crash-файла и баннера.
+//! Флаги: `--smoke` — headless-прогон Core для CI (выход 0); только в debug:
+//! `--crash-test` — паника для проверки crash-файла и баннера, `--error-test` —
+//! ошибка в лог (и в журнал Windows).
 
 mod boot;
+mod sys;
 
+use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -19,7 +22,20 @@ fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 
-fn main() -> anyhow::Result<()> {
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            let text = format!("FileNav {} failed to start: {e:#}", version());
+            eprintln!("{text}");
+            tracing::error!(target: "filenav::startup", "{e:#}");
+            sys::event_log(sys::EventId::StartupFailed, &text);
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let flag = |f: &str| args.iter().any(|a| a == f);
     println!("filenav {}", version());
@@ -42,6 +58,10 @@ fn main() -> anyhow::Result<()> {
     tracing::info!(target: "startup.config", elapsed = ?t_config, warnings = warnings.len());
     tracing::debug!(?args, "starting");
 
+    // Только debug: проверка записи ошибки в журнал Windows.
+    if cfg!(debug_assertions) && flag("--error-test") {
+        tracing::error!(test = "error-test", "error test");
+    }
     // Только debug: проверка crash-файла и баннера (S1-12).
     assert!(
         !(cfg!(debug_assertions) && flag("--crash-test")),

@@ -148,3 +148,50 @@ fn log_files_are_pruned_to_keep_files() {
         "only log files are pruned"
     );
 }
+
+/// Строки событий FileNav из журнала «Приложение» (новые первыми).
+#[cfg(windows)]
+fn event_log_texts() -> String {
+    let o = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-Command",
+            "Get-EventLog -LogName Application -Source FileNav -Newest 30 \
+             -ErrorAction SilentlyContinue | ForEach-Object { \
+             \"$($_.InstanceId) $(($_.ReplacementStrings -join ' ') -replace '\\r?\\n', ' ')\" }",
+        ])
+        .output()
+        .unwrap();
+    String::from_utf8_lossy(&o.stdout).into_owned()
+}
+
+#[cfg(all(windows, debug_assertions))]
+#[test]
+fn crash_and_errors_go_to_windows_event_log() {
+    let app = App::new();
+    assert!(app.run(&["--error-test"], &[]).status.success());
+    let o = app.run(&["--crash-test"], &[]);
+    assert!(!o.status.success());
+    let crash = files(&app.logs(), "crash-");
+    let name = crash[0].file_name().unwrap().to_string_lossy().into_owned();
+    let events = event_log_texts();
+    let crash_line = events
+        .lines()
+        .find(|l| l.contains(&name))
+        .unwrap_or_else(|| panic!("no crash event for {name} in:\n{events}"));
+    assert!(crash_line.starts_with("1000 "), "{crash_line}");
+    assert!(crash_line.contains("crash test"), "{crash_line}");
+    assert!(
+        events
+            .lines()
+            .any(|l| l.starts_with("1001 ") && l.contains("error test")),
+        "{events}"
+    );
+    // Паника не дублируется событием 1001.
+    assert!(
+        !events
+            .lines()
+            .any(|l| l.starts_with("1001 ") && l.contains(&name)),
+        "{events}"
+    );
+}
