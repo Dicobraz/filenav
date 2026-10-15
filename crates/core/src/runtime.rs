@@ -492,10 +492,12 @@ mod tests {
     fn wake_is_coalesced_across_10k_sends() {
         const N: usize = 10_000;
         let (rt, inbox, w) = rt();
+        let (done_tx, done_rx) = crossbeam_channel::bounded(1);
         rt.spawn(Lane::Bulk, "flood", rt.token(), move |cx| {
             for _ in 0..N {
                 cx.sink.send(msg("m", |_| {}), &cx.cancel).unwrap();
             }
+            done_tx.send(()).unwrap();
         });
         // UI: pump только по пробуждению, как в кадре egui.
         let (mut pumps, mut got) = (0usize, 0usize);
@@ -507,7 +509,9 @@ mod tests {
                 got += 1;
             }
         }
-        // Пробуждение, пришедшее во время последнего чтения, UI тоже отработает кадром.
+        // Сообщение попадает в канал раньше, чем поднимается флаг: последнее
+        // пробуждение может прийти уже после чтения. UI отработает его пустым кадром.
+        done_rx.recv_timeout(Duration::from_secs(5)).unwrap();
         if w.wait(Duration::ZERO) {
             pumps += 1;
             inbox.begin_pump();

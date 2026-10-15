@@ -11,7 +11,9 @@ use smallvec::SmallVec;
 use crate::cmd::{Args, Command, CommandId};
 use crate::history::VisitedDirs;
 use crate::ids::{PromptId, Side, TabId};
+use crate::jobs::JobRegistry;
 use crate::loc::Location;
+use crate::prompt::Prompts;
 use crate::tab::Tab;
 
 /// Куда идёт ввод (S0 v3 №1, v5 №1).
@@ -130,12 +132,14 @@ impl fmt::Debug for Extensions {
 
 /// Состояние приложения.
 ///
-/// Поля `jobs`, `prompts` (S1-09) и `config` (S1-10) добавят свои задачи.
+/// Поле `config` добавит S1-10.
 #[derive(Debug)]
 pub struct AppState {
     pub panels: [Panel; 2],
     pub active: Side,
     pub focus: Focus,
+    pub jobs: JobRegistry,
+    pub prompts: Prompts,
     /// Глобальный MRU каталогов (Alt+F12).
     pub visited: VisitedDirs,
     pub banner: Option<Banner>,
@@ -147,6 +151,8 @@ pub struct AppState {
     pub quit: bool,
     ui_events: Vec<UiEvent>,
     next_tab: u32,
+    /// Запрос, открытый по вето на выход (`app.quit`).
+    pub(crate) quit_prompt: Option<PromptId>,
 }
 
 impl AppState {
@@ -163,6 +169,8 @@ impl AppState {
             panels: [left, right],
             active: Side::Left,
             focus: Focus::Panel,
+            jobs: JobRegistry::default(),
+            prompts: Prompts::default(),
             visited: VisitedDirs::default(),
             banner: None,
             bookmarks: Default::default(),
@@ -171,6 +179,7 @@ impl AppState {
             quit: false,
             ui_events: Vec::new(),
             next_tab,
+            quit_prompt: None,
         }
     }
 

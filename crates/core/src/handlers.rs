@@ -1,13 +1,16 @@
-//! Обработчики namespaces core (S1 §2.3): `panel`, `sel`, `tab`, `app`.
-//! `job` и `prompt` — S1-09.
+//! Обработчики namespaces core (S1 §2.3): `panel`, `sel`, `tab`, `app`, `job`, `prompt`.
 
 mod app;
+mod job;
 mod panel;
+mod prompt;
 mod sel;
 mod tabs;
 
 pub(crate) use app::AppHandler;
+pub(crate) use job::{JobHandler, job_id};
 pub(crate) use panel::PanelHandler;
+pub(crate) use prompt::PromptHandler;
 pub(crate) use sel::SelHandler;
 pub(crate) use tabs::TabHandler;
 
@@ -31,10 +34,13 @@ const fn meta(
     args: &'static [ArgSpec],
     repeatable: bool,
 ) -> CommandMeta {
-    let category = match id.as_bytes()[0] {
-        b'p' => "panel",
-        b's' => "selection",
-        b't' => "tab",
+    let b = id.as_bytes();
+    let category = match (b[0], b[1]) {
+        (b'p', b'a') => "panel",
+        (b'p', _) => "prompt",
+        (b's', _) => "selection",
+        (b't', _) => "tab",
+        (b'j', _) => "job",
         _ => "app",
     };
     CommandMeta {

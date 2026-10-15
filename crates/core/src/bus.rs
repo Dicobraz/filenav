@@ -10,7 +10,9 @@ use crossbeam_channel::{Receiver, Sender};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::cmd::{CmdError, Command, CommandMeta, CommandRegistry};
-use crate::handlers::{AppHandler, PanelHandler, SelHandler, TabHandler};
+use crate::handlers::{
+    AppHandler, JobHandler, PanelHandler, PromptHandler, SelHandler, TabHandler, job_id,
+};
 use crate::ids::TabId;
 use crate::loc::Location;
 use crate::msg::{Cx, MsgInbox, WakeFlag, Waker};
@@ -18,7 +20,7 @@ use crate::nav;
 use crate::prompt::PromptSpec;
 use crate::runtime::{Runtime, RuntimeConfig};
 use crate::services::{Services, TabEvent};
-use crate::state::{AppState, Level, Panel, UiEvent};
+use crate::state::{AppState, Focus, Level, Panel, UiEvent};
 use crate::tab::Tab;
 use crate::text::tr;
 
@@ -153,6 +155,8 @@ impl Core {
         core.register(Box::new(SelHandler));
         core.register(Box::new(TabHandler));
         core.register(Box::new(AppHandler));
+        core.register(Box::new(JobHandler));
+        core.register(Box::new(PromptHandler));
         for (id, loc) in [(TabId(1), boot.left), (TabId(2), boot.right)] {
             core.services.listing.tab_event(TabEvent::Shown(id));
             let mut cx = Cx::new(&mut core.state, &core.rt, &core.services, &mut core.queue);
@@ -194,6 +198,11 @@ impl Core {
     #[cfg(test)]
     pub(crate) fn rt(&self) -> &Runtime {
         &self.rt
+    }
+
+    #[cfg(test)]
+    pub(crate) fn state_mut_for_tests(&mut self) -> &mut AppState {
+        &mut self.state
     }
 
     pub fn sender(&self) -> CommandSender {
@@ -274,7 +283,9 @@ impl Core {
     /// Останавливает Runtime (см. [`Runtime::shutdown`]); `CommandSender` после
     /// этого получает `Closed`. Возвращает число отпущенных потоков. Финальную
     /// запись сессии добавит S1-11.
-    pub fn shutdown(self, timeout: Duration) -> usize {
+    pub fn shutdown(mut self, timeout: Duration) -> usize {
+        // Токены задач не производны от корня Runtime: отменить явно.
+        self.state.jobs.cancel_all();
         let Core { rt, inbox, .. } = self;
         rt.shutdown(inbox, timeout)
     }
@@ -290,9 +301,12 @@ impl Core {
             self.error_toast(cmd, &e);
             return;
         }
-        let Some(&i) = self.by_ns.get(cmd.id.namespace()) else {
-            // Реестр знает только команды зарегистрированных handlers.
-            unreachable!("validated command without handler: {}", cmd.id);
+        let i = match self.route(cmd) {
+            Ok(i) => i,
+            Err(e) => {
+                self.error_toast(cmd, &e);
+                return;
+            }
         };
         let t0 = Instant::now();
         let mut cx = Cx::new(&mut self.state, &self.rt, &self.services, &mut self.queue);
@@ -316,18 +330,51 @@ impl Core {
         }
     }
 
-    /// `app.quit`: опросить handlers; без вето — `state.quit`. Запрос по вето
-    /// откроет S1-09 (`Prompts`); пока — тост с заголовком запроса.
+    /// Handler команды: по namespace; `job.retry`/`job.priority` — handler
+    /// `owner_ns` задачи (S0 v2 №8).
+    fn route(&mut self, cmd: &Command) -> Result<usize, CmdError> {
+        let ns = match cmd.id.as_str() {
+            "job.retry" | "job.priority" => {
+                let id = job_id(cmd)?;
+                let owner = self
+                    .state
+                    .jobs
+                    .get(id)
+                    .ok_or_else(|| CmdError::arg("id", "no such job"))?
+                    .owner_ns;
+                if let Some(p) = cmd.args.int("p") {
+                    let p = u8::try_from(p).map_err(|_| CmdError::arg("p", "expected 0..255"))?;
+                    self.state.jobs.set_priority(id, p);
+                }
+                owner
+            }
+            _ => cmd.id.namespace(),
+        };
+        // Реестр знает только команды зарегистрированных handlers; владелец
+        // задачи мог не зарегистрироваться.
+        self.by_ns
+            .get(ns)
+            .copied()
+            .ok_or_else(|| CmdError::Unknown(cmd.id.as_str().into()))
+    }
+
+    /// `app.quit`: опросить handlers; без вето — `state.quit`. Вето открывает
+    /// запрос с фокусом; ответ `choice = "quit"` выходит, отменяя задачи.
     fn finish_quit(&mut self) {
         match self.quit_decision() {
             QuitDecision::Allow => {
                 self.state.quit = true;
                 self.state.touch();
             }
-            QuitDecision::Veto(p) => self.state.push_ui(UiEvent::Toast {
-                level: Level::Warn,
-                text: p.title,
-            }),
+            QuitDecision::Veto(spec) => {
+                if let Some(old) = self.state.quit_prompt.take() {
+                    self.state.prompts.cancel(old);
+                }
+                let (id, _rx) = self.state.prompts.open(spec, None);
+                self.state.quit_prompt = Some(id);
+                self.state.focus = Focus::Prompt(id);
+                self.state.push_ui(UiEvent::FocusChanged(Focus::Prompt(id)));
+            }
         }
     }
 
@@ -764,7 +811,7 @@ mod tests {
         let (c, _, _) = core();
         assert_eq!(c.state().active, Side::Left);
         assert_eq!(c.state().panel(Side::Right).tab().id, crate::ids::TabId(2));
-        // panel 29 + sel 9 + tab 7 + app 3 + тестовые 5.
-        assert_eq!(c.registry().iter().count(), 53);
+        // panel 29 + sel 9 + tab 7 + app 3 + job 5 + prompt 2 + тестовые 5.
+        assert_eq!(c.registry().iter().count(), 60);
     }
 }
