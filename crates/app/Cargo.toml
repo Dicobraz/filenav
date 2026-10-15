@@ -1,0 +1,16 @@
+[package]
+name = "filenav-app"
+description = "FileNav: fast dual-pane file manager"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "filenav"
+path = "src/main.rs"
+
+[lints]
+workspace = true
