@@ -14,6 +14,9 @@ pub(crate) fn tr(key: &'static str, args: &[(&str, &str)]) -> String {
         "core-last-tab" => "Cannot close the last tab",
         "core-no-tab" => "No tab {$n}",
         "core-config-warnings" => "Settings file has problems ({$count}): {$first}",
+        "core-crashed" => "FileNav closed unexpectedly last time. Details: {$file}",
+        "core-action-show-logs" => "Show logs",
+        "core-action-dismiss" => "Dismiss",
         _ => {
             debug_assert!(false, "no fallback for {key}");
             key

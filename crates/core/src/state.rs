@@ -3,6 +3,7 @@
 
 use std::any::{Any, TypeId};
 use std::fmt;
+use std::path::Path;
 use std::sync::Arc;
 
 use compact_str::CompactString;
@@ -200,6 +201,34 @@ impl AppState {
             config_banner: false,
             session: SessionMarks::default(),
         }
+    }
+
+    /// Баннер «прошлый запуск упал» (S1 §2.9, S0 v2 №15): показать каталог с
+    /// crash-файлом или скрыть.
+    pub(crate) fn set_crash_banner(&mut self, file: &Path) {
+        let dir = file.parent().unwrap_or(file).to_path_buf();
+        let mut actions = SmallVec::new();
+        actions.push((
+            tr("core-action-show-logs", &[]).into(),
+            Command::new("panel.go").arg("path", Location::local(dir)),
+        ));
+        actions.push((
+            tr("core-action-dismiss", &[]).into(),
+            Command::new("app.dismiss_banner"),
+        ));
+        self.banner = Some(Banner {
+            level: Level::Error,
+            text: tr("core-crashed", &[("file", &file.display().to_string())]),
+            actions,
+        });
+        self.config_banner = false;
+        self.touch();
+    }
+
+    pub(crate) fn dismiss_banner(&mut self) {
+        self.banner = None;
+        self.config_banner = false;
+        self.touch();
     }
 
     pub(crate) fn reset_tab_ids(&mut self, next: u32) {
