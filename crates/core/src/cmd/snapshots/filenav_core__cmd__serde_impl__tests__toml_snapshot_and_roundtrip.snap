@@ -1,0 +1,15 @@
+---
+source: crates/core/src/cmd/serde_impl.rs
+expression: text
+---
+bind = [
+    "panel.up",
+    { cmd = "panel.go", path = 'C:\x y' },
+    { cmd = "panel.sort", key = "name", desc = true },
+    { cmd = "panel.cursor.down", n = 5 },
+    { cmd = "ops.copy", src = [
+    'C:\a',
+    'C:\b y',
+], dest = 'D:\' },
+    { cmd = "panel.switch", side = "passive" },
+]

@@ -10,10 +10,13 @@ repository.workspace = true
 
 [dependencies]
 compact_str.workspace = true
+rustc-hash.workspace = true
 serde.workspace = true
+smallvec.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+insta.workspace = true
 proptest.workspace = true
 toml.workspace = true
 

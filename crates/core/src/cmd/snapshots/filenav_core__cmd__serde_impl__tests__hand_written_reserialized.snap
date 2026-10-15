@@ -1,0 +1,13 @@
+---
+source: crates/core/src/cmd/serde_impl.rs
+expression: "toml::to_string_pretty(&k).unwrap()"
+---
+bind = [
+    "panel.up",
+    { cmd = "panel.go", path = 'C:\x y' },
+    { cmd = "ops.copy", dest = 'D:\', src = [
+    'C:\a',
+    'C:\b y',
+] },
+    { cmd = "tab.goto", n = 3 },
+]
