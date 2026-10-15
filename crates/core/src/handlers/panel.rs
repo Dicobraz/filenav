@@ -133,6 +133,9 @@ impl Handler for PanelHandler {
         if let Some(what) = cmd.id.as_str().strip_prefix("panel.cursor.") {
             return cursor(cx, what, cmd);
         }
+        if changes_session(cmd) {
+            cx.state.mark_session_dirty();
+        }
         match cmd.id.as_str() {
             "panel.viewport" => viewport(cx, cmd),
             "panel.enter" => enter(cx, cmd),
@@ -245,6 +248,20 @@ fn cursor(cx: &mut Cx<'_>, what: &str, cmd: &Command) -> Result<(), CmdError> {
         _ => unreachable!("registered command without handling: {}", cmd.id),
     }
     Ok(())
+}
+
+/// Команды, меняющие сохраняемое в сессии (навигация и сортировка отмечают сами).
+fn changes_session(cmd: &Command) -> bool {
+    matches!(
+        cmd.id.as_str(),
+        "panel.switch"
+            | "panel.swap"
+            | "panel.focus"
+            | "panel.toggle"
+            | "panel.view_mode"
+            | "panel.mode"
+            | "panel.bookmark.set"
+    )
 }
 
 fn move_by(t: &mut Tab, delta: i64) {

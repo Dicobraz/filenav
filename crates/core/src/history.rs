@@ -59,6 +59,11 @@ impl NavHistory {
         Some(to)
     }
 
+    /// Шаги «назад», старые первыми.
+    pub fn back_entries(&self) -> &[HistEntry] {
+        &self.back
+    }
+
     pub fn can_back(&self) -> bool {
         !self.back.is_empty()
     }

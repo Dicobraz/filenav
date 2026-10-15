@@ -354,9 +354,8 @@ mod tests {
             self.cv.notify_all();
         }
 
-        fn wake_after(&self, _d: Duration) {
-            self.wake();
-        }
+        /// Отложенное пробуждение (как `request_repaint_after`): тесты качают pump сами.
+        fn wake_after(&self, _d: Duration) {}
     }
 
     impl TestWaker {

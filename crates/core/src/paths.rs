@@ -4,6 +4,7 @@
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Маркер portable-режима рядом с exe.
 pub const PORTABLE_MARKER: &str = "filenav.portable";
@@ -142,15 +143,19 @@ impl Paths {
     }
 }
 
+static TMP_SEQ: AtomicU64 = AtomicU64::new(0);
+
 /// Атомарная запись: временный файл рядом, fsync, rename поверх.
 pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
     fs::create_dir_all(dir)?;
     let name = path.file_name().map(|n| n.to_string_lossy().into_owned());
+    // Уникальное имя: параллельные записи одного файла не делят временный файл.
     let tmp = dir.join(format!(
-        ".{}.{}.tmp",
+        ".{}.{}-{}.tmp",
         name.as_deref().unwrap_or("file"),
-        std::process::id()
+        std::process::id(),
+        TMP_SEQ.fetch_add(1, Ordering::Relaxed)
     ));
     {
         let mut f = fs::File::create(&tmp)?;

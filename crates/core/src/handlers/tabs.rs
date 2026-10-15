@@ -42,6 +42,7 @@ impl Handler for TabHandler {
 
     fn handle(&mut self, cmd: &Command, cx: &mut Cx<'_>) -> Result<(), CmdError> {
         let side = side_arg(cx, &cmd.args, SideRef::Active);
+        cx.state.mark_session_dirty();
         let len = cx.state.panel(side).tabs.len();
         let active = cx.state.panel(side).active;
         match cmd.id.as_str() {
