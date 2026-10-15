@@ -30,6 +30,72 @@ impl filenav_core::Waker for EguiWaker {
 const PUMP_BUDGET: Duration = Duration::from_millis(4);
 /// Пока идут задачи — перерисовка не чаще 30 раз/с (S1 §0).
 const JOBS_REPAINT: Duration = Duration::from_millis(33);
+/// Окно стартует скрытым и показывается, когда табы загружены, — без мигания
+/// пустыми панелями; но не позже этого срока.
+const SHOW_AT_LATEST: Duration = Duration::from_millis(300);
+
+/// Клавиши до keymap S3 (S0 v3 №2: весь ввод — через `raw_input_hook`).
+/// Поглощённое событие удаляется из ввода egui: Tab не двигает фокус egui.
+fn hard_key(key: egui::Key, m: egui::Modifiers) -> Option<Command> {
+    use egui::Key as K;
+    let motion = |k| match k {
+        K::ArrowUp => Some("up"),
+        K::ArrowDown => Some("down"),
+        K::PageUp => Some("page_up"),
+        K::PageDown => Some("page_down"),
+        K::Home => Some("home"),
+        K::End => Some("end"),
+        _ => None,
+    };
+    if m.shift && !m.ctrl && !m.alt {
+        // Shift+стрелки: пометка с движением (Far).
+        return motion(key).map(|mo| Command::new("sel.move").arg("motion", mo));
+    }
+    if m.any() {
+        return None;
+    }
+    if let Some(mo) = motion(key) {
+        return Some(match mo {
+            "up" => Command::new("panel.cursor.up"),
+            "down" => Command::new("panel.cursor.down"),
+            "page_up" => Command::new("panel.cursor.page_up"),
+            "page_down" => Command::new("panel.cursor.page_down"),
+            "home" => Command::new("panel.cursor.home"),
+            _ => Command::new("panel.cursor.end"),
+        });
+    }
+    Some(match key {
+        K::Enter => Command::new("panel.enter"),
+        K::Backspace => Command::new("panel.up"),
+        K::Tab => Command::new("panel.switch"),
+        // Insert — как в Far; Space — для клавиатур без Insert.
+        K::Insert | K::Space => Command::new("sel.toggle").arg("advance", true),
+        _ => return None,
+    })
+}
+
+/// Забирает из ввода egui клавиши панели и превращает их в команды. Отпускание
+/// поглощённой клавиши тоже удаляется; пробел не уходит в egui текстом.
+fn take_keys(events: &mut Vec<egui::Event>, out: &mut Vec<Command>) {
+    events.retain(|e| match e {
+        egui::Event::Key {
+            key,
+            pressed,
+            modifiers,
+            ..
+        } => match hard_key(*key, *modifiers) {
+            Some(c) => {
+                if *pressed {
+                    out.push(c);
+                }
+                false
+            }
+            None => true,
+        },
+        egui::Event::Text(t) => t != " ",
+        _ => true,
+    });
+}
 
 /// IME: в полях ввода (cmdline, терминал, оверлеи с вводом, редактор) включён,
 /// в панелях, вьювере и запросах — выключен (S0 v3 №13, v4 №2, v5 №2).
@@ -47,6 +113,7 @@ pub fn run(boot: Boot, startup: Startup) -> anyhow::Result<()> {
     let geom = boot.session.as_ref().and_then(|s| s.window);
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("FileNav")
+        .with_visible(false)
         .with_min_inner_size([480.0, 320.0])
         .with_inner_size(geom.map_or([1200.0, 760.0], |g| [g.w, g.h]));
     if let Some(g) = geom {
@@ -84,12 +151,15 @@ pub fn run(boot: Boot, startup: Startup) -> anyhow::Result<()> {
                 startup.core = t.elapsed();
                 core
             };
+            cc.egui_ctx.request_repaint_after(SHOW_AT_LATEST);
             Ok(Box::new(App {
                 core: Some(core),
                 ui: DebugUi::new(),
                 out: Vec::new(),
                 startup,
                 first_frame_done: false,
+                created: Instant::now(),
+                shown: false,
             }))
         }),
     )
@@ -102,6 +172,8 @@ struct App {
     out: Vec<Command>,
     startup: Startup,
     first_frame_done: bool,
+    created: Instant,
+    shown: bool,
 }
 
 impl App {
@@ -133,6 +205,22 @@ impl eframe::App for App {
         let Some(core) = self.core.as_mut() else {
             return;
         };
+        // Команды клавиатуры из raw_input_hook — до pump, видны в этом же кадре.
+        for c in self.out.drain(..) {
+            core.dispatch(c);
+        }
+        if !self.shown {
+            let loading = core.state().panels.iter().any(|p| {
+                matches!(
+                    p.tab().listing.status,
+                    filenav_core::ListingStatus::Loading { .. }
+                )
+            });
+            if !loading || self.created.elapsed() >= SHOW_AT_LATEST {
+                self.shown = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+            }
+        }
         // Крестик окна — через app.quit: handlers могут наложить вето (S0 v2 №13).
         if ctx.input(|i| i.viewport().close_requested()) && !core.state().quit {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
@@ -188,10 +276,96 @@ impl eframe::App for App {
         }
     }
 
+    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
+        let Some(core) = self.core.as_ref() else {
+            return;
+        };
+        let s = core.state();
+        if s.focus != Focus::Panel || s.prompts.active().is_some() {
+            return;
+        }
+        take_keys(&mut raw.events, &mut self.out);
+    }
+
+    /// Фон окна до первой отрисовки — как у панели: без белой вспышки.
+    fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
+        visuals.panel_fill.to_normalized_gamma_f32()
+    }
+
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         if let Some(core) = self.core.take() {
             let session: Session = core.shutdown(Duration::from_millis(200));
             tracing::info!(window = ?session.window, "session saved on exit");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn key(key: egui::Key, modifiers: egui::Modifiers, pressed: bool) -> egui::Event {
+        egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed,
+            repeat: false,
+            modifiers,
+        }
+    }
+
+    fn run(events: Vec<egui::Event>) -> (Vec<egui::Event>, Vec<String>) {
+        let mut events = events;
+        let mut out = Vec::new();
+        take_keys(&mut events, &mut out);
+        (events, out.iter().map(ToString::to_string).collect())
+    }
+
+    #[test]
+    fn tab_switches_panel_and_never_reaches_egui() {
+        let none = egui::Modifiers::NONE;
+        let (left, cmds) = run(vec![
+            key(egui::Key::Tab, none, true),
+            key(egui::Key::Tab, none, false),
+        ]);
+        assert!(left.is_empty(), "egui не должен видеть Tab: {left:?}");
+        assert_eq!(cmds, ["panel.switch"]);
+    }
+
+    #[test]
+    fn selection_keys() {
+        let none = egui::Modifiers::NONE;
+        let shift = egui::Modifiers::SHIFT;
+        let (left, cmds) = run(vec![
+            key(egui::Key::ArrowDown, shift, true),
+            key(egui::Key::End, shift, true),
+            key(egui::Key::Insert, none, true),
+            key(egui::Key::Space, none, true),
+            egui::Event::Text(" ".into()),
+        ]);
+        assert!(left.is_empty(), "{left:?}");
+        assert_eq!(
+            cmds,
+            [
+                "sel.move motion=down",
+                "sel.move motion=end",
+                "sel.toggle advance=true",
+                "sel.toggle advance=true",
+            ]
+        );
+    }
+
+    #[test]
+    fn foreign_keys_and_text_pass_through() {
+        let ctrl = egui::Modifiers::CTRL;
+        let events = vec![
+            key(egui::Key::Q, ctrl, true),
+            key(egui::Key::ArrowDown, ctrl, true),
+            key(egui::Key::F5, egui::Modifiers::NONE, true),
+            egui::Event::Text("a".into()),
+        ];
+        let (left, cmds) = run(events.clone());
+        assert_eq!(left, events);
+        assert!(cmds.is_empty(), "{cmds:?}");
     }
 }

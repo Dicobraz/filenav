@@ -1,16 +1,16 @@
 //! FileNav — UI-фронтенд на egui.
 //!
 //! Пока здесь только `DebugUi` (S1-13): отладочный вид состояния до настоящего
-//! интерфейса S2. Клавиши захардкожены до keymap S3. Подписей нет — только
-//! данные (пути, имена, размеры) и символы; тексты баннера, кнопок и тостов
-//! приходят из core.
+//! интерфейса S2. Клавиатуру обрабатывает app (`raw_input_hook`, до keymap S3);
+//! здесь — мышь. Подписей нет — только данные (пути, имена, размеры) и символы;
+//! тексты баннера, кнопок и тостов приходят из core.
 
 use std::collections::VecDeque;
 use std::fmt::Write as _;
 use std::time::{Duration, Instant};
 
-use egui::{Color32, Event, Key, RichText, Sense, TextStyle};
-use filenav_core::{AppState, Command, Focus, ListingStatus, Row, Side, Tab, UiEvent, Value};
+use egui::{Color32, RichText, Sense, TextStyle};
+use filenav_core::{AppState, Command, ListingStatus, Row, Side, Tab, UiEvent, Value};
 
 /// Сколько показывается тост.
 const TOAST_TTL: Duration = Duration::from_secs(4);
@@ -49,10 +49,6 @@ impl DebugUi {
         if let Some((_, until)) = self.toasts.front() {
             ctx.request_repaint_after(until.saturating_duration_since(now));
         }
-        if s.focus == Focus::Panel && s.prompts.active().is_none() {
-            keys(&ctx, out);
-        }
-
         egui::CentralPanel::default().show(root, |ui| {
             if let Some(b) = &s.banner {
                 ui.horizontal_wrapped(|ui| {
@@ -115,8 +111,13 @@ impl DebugUi {
         let t = p.tab();
         ui.horizontal_wrapped(|ui| {
             for (i, tab) in p.tabs.iter().enumerate() {
+                let mut title = RichText::new(tab.title().as_ref());
+                if i == p.active {
+                    title = title.strong().background_color(ui.visuals().faint_bg_color);
+                }
+                // Sense::CLICK без FOCUSABLE: в панелях нет фокусируемых виджетов (S0 v3 №13).
                 if ui
-                    .selectable_label(i == p.active, tab.title().as_ref())
+                    .add(egui::Label::new(title).sense(Sense::CLICK))
                     .clicked()
                 {
                     out.push(
@@ -170,41 +171,86 @@ impl DebugUi {
                 );
             }
         }
-        let top = t.cursor.top;
-        for r in top..(top + page).min(t.rows()) {
-            let Some(row) = t.row(r) else { break };
-            let text = match row {
-                Row::Parent => "  ..".to_owned(),
-                Row::Entry { idx, entry } => {
-                    let mark = if t.selection.contains(idx) { '*' } else { ' ' };
-                    let slash = if entry.kind.is_dir_like() { "/" } else { "" };
-                    let bytes = if entry.kind.is_dir_like() {
-                        String::new()
-                    } else {
-                        entry.size.to_string()
-                    };
-                    format!("{mark} {}{slash}  {bytes}", entry.name)
+        rows(ui, t, active, side_arg, page, row_h, out);
+    }
+}
+
+/// Видимые строки панели: рисуются вручную, без фокуса и подсветки при наведении.
+fn rows(
+    ui: &mut egui::Ui,
+    t: &Tab,
+    active: bool,
+    side_arg: &str,
+    page: u32,
+    row_h: f32,
+    out: &mut Vec<Command>,
+) {
+    let top = t.cursor.top;
+    let font = TextStyle::Monospace.resolve(ui.style());
+    let visuals = ui.visuals().clone();
+    let ctrl = ui.input(|i| i.modifiers.command);
+    for r in top..(top + page).min(t.rows()) {
+        let Some(row) = t.row(r) else { break };
+        let selected = matches!(row, Row::Entry { idx, .. } if t.selection.contains(idx));
+        let text = match row {
+            Row::Parent => "  ..".to_owned(),
+            Row::Entry { entry, .. } => {
+                let mark = if selected { '*' } else { ' ' };
+                let slash = if entry.kind.is_dir_like() { "/" } else { "" };
+                let bytes = if entry.kind.is_dir_like() {
+                    String::new()
+                } else {
+                    entry.size.to_string()
+                };
+                format!("{mark} {}{slash}  {bytes}", entry.name)
+            }
+        };
+        let (rect, resp) = ui.allocate_exact_size(
+            egui::vec2(ui.available_width(), row_h),
+            // Клик без фокуса и без подсветки при наведении.
+            Sense::CLICK,
+        );
+        let is_cursor = r == t.cursor.row;
+        let mut color = visuals.text_color();
+        if is_cursor && active {
+            ui.painter()
+                .rect_filled(rect, 2.0, visuals.selection.bg_fill);
+            color = visuals.selection.stroke.color;
+        } else if is_cursor {
+            // Курсор неактивной панели виден, но бледно.
+            ui.painter().rect_stroke(
+                rect,
+                2.0,
+                visuals.widgets.noninteractive.bg_stroke,
+                egui::StrokeKind::Inside,
+            );
+        }
+        if selected {
+            color = Color32::from_rgb(230, 190, 60);
+        }
+        ui.painter().text(
+            rect.left_center() + egui::vec2(4.0, 0.0),
+            egui::Align2::LEFT_CENTER,
+            text,
+            font.clone(),
+            color,
+        );
+        if resp.clicked() {
+            if !active {
+                out.push(Command::new("panel.focus").arg("side", side_arg));
+            }
+            out.push(match row {
+                Row::Parent => Command::new("panel.cursor.home"),
+                Row::Entry { entry, .. } => {
+                    Command::new("panel.cursor.to").arg("name", entry.name.as_str())
                 }
-            };
-            let mut rt = RichText::new(text).monospace();
-            if matches!(row, Row::Entry { idx, .. } if t.selection.contains(idx)) {
-                rt = rt.color(Color32::from_rgb(230, 190, 60));
+            });
+            if ctrl && matches!(row, Row::Entry { .. }) {
+                out.push(Command::new("sel.toggle"));
             }
-            let resp = ui.selectable_label(active && r == t.cursor.row, rt);
-            if resp.clicked() {
-                if !active {
-                    out.push(Command::new("panel.focus").arg("side", side_arg));
-                }
-                out.push(match row {
-                    Row::Parent => Command::new("panel.cursor.home"),
-                    Row::Entry { entry, .. } => {
-                        Command::new("panel.cursor.to").arg("name", entry.name.as_str())
-                    }
-                });
-            }
-            if resp.double_clicked() {
-                out.push(Command::new("panel.enter"));
-            }
+        }
+        if resp.double_clicked() {
+            out.push(Command::new("panel.enter"));
         }
     }
 }
@@ -228,37 +274,6 @@ fn status(t: &Tab) -> String {
             }
             line
         }
-    }
-}
-
-/// Клавиши до keymap S3: стрелки, страницы, Home/End, Enter, Backspace, Tab, Insert.
-fn keys(ctx: &egui::Context, out: &mut Vec<Command>) {
-    let pressed: Vec<Key> = ctx.input(|i| {
-        i.events
-            .iter()
-            .filter_map(|e| match e {
-                Event::Key {
-                    key, pressed: true, ..
-                } => Some(*key),
-                _ => None,
-            })
-            .collect()
-    });
-    for k in pressed {
-        let cmd = match k {
-            Key::ArrowUp => Command::new("panel.cursor.up"),
-            Key::ArrowDown => Command::new("panel.cursor.down"),
-            Key::PageUp => Command::new("panel.cursor.page_up"),
-            Key::PageDown => Command::new("panel.cursor.page_down"),
-            Key::Home => Command::new("panel.cursor.home"),
-            Key::End => Command::new("panel.cursor.end"),
-            Key::Enter => Command::new("panel.enter"),
-            Key::Backspace => Command::new("panel.up"),
-            Key::Tab => Command::new("panel.switch"),
-            Key::Insert => Command::new("sel.toggle").arg("advance", true),
-            _ => continue,
-        };
-        out.push(cmd);
     }
 }
 
