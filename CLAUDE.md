@@ -20,4 +20,4 @@
 - Целевые бюджеты: первый кадр <150 мс, кадр ≤2 мс при 100k строк, 0% CPU в простое, RAM <50 МБ, бинарь <15 МБ.
 
 ## Стенд
-Ты работаешь на ВМ **Debian 13** — прочитай docs/HANDOFF-stand-debian.md до первой задачи. Windows-код проверяется лестницей: L0 `cargo xwin clippy --target x86_64-pc-windows-msvc` на стенде → L1 CI windows-latest → L2 ручная приёмка владельцем на Windows (метка `win-manual` + чек-лист в PR). Перф-бюджеты — только на Windows владельца; цифры стенда справочные.
+Ты работаешь нативно на **Windows 11** владельца — прочитай docs/HANDOFF-stand-windows.md до первой задачи. Проверка лестницей: L0 на стенде (fmt, clippy, nextest, release-сборка; для не-Windows кода — `cargo clippy --target x86_64-unknown-linux-gnu`) → L1 CI (windows/ubuntu/macos) → L2 ручная приёмка владельцем GUI (метка `win-manual` + чек-лист в PR). Перф-бюджеты меряются на этой машине в release. Мерж PR — владелец.
