@@ -23,8 +23,9 @@ impl AppHandler {
     }
 }
 
-static COMMANDS: [CommandMeta; 3] = [
+static COMMANDS: [CommandMeta; 4] = [
     meta("app.quit", "Quit", &[], false),
+    meta("app.dismiss_banner", "Dismiss banner", &[], false),
     meta("app.reload_config", "Reload configuration", &[], false),
     meta("app.save_session", "Save session", &[], false),
 ];
@@ -52,6 +53,9 @@ impl Handler for AppHandler {
                 });
         } else if cmd.id.as_str() == "app.save_session" {
             cx.state.session.force = true;
+        } else if cmd.id.as_str() == "app.dismiss_banner" {
+            cx.state.dismiss_banner();
+            return Ok(());
         }
         // app.quit завершает Core (Core::finish_quit).
         cx.keep_rev();

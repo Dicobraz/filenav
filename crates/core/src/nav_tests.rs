@@ -745,3 +745,34 @@ fn config_applies_to_tabs_and_reloads() {
     h.cmd("tab.new");
     assert_eq!(h.tab().view_mode, crate::tab::ViewMode::Wide);
 }
+
+#[test]
+fn crash_banner_actions() {
+    let fake = Arc::new(FakeListing::new(8));
+    fake.set_dir(dir("a"), files(&["f1"]));
+    fake.set_dir(dir("logs"), files(&["crash-1.txt"]));
+    let w = Arc::new(TestWaker::default());
+    let mut boot = Boot::new(dir("a"), dir("a"));
+    let crash = dir("logs").path.join("crash-1.txt");
+    boot.crashed_last_time = Some(crash.clone());
+    let services = Services {
+        listing: fake.clone(),
+        open_resolvers: Vec::new(),
+    };
+    let mut h = H {
+        core: Core::new(boot, services, w.clone()),
+        fake,
+        w,
+    };
+    h.settle();
+    let banner = h.core.state().banner.clone().expect("crash banner");
+    assert_eq!(banner.level, Level::Error);
+    assert!(banner.text.contains(&crash.display().to_string()));
+    let labels: Vec<&str> = banner.actions.iter().map(|(l, _)| l.as_str()).collect();
+    assert_eq!(labels, ["Show logs", "Dismiss"]);
+    h.run(banner.actions[0].1.clone());
+    assert_eq!(h.tab().loc, dir("logs"));
+    assert_eq!(h.names(), ["crash-1.txt"]);
+    h.run(banner.actions[1].1.clone());
+    assert!(h.core.state().banner.is_none());
+}

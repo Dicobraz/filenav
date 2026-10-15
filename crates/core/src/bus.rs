@@ -3,6 +3,7 @@
 
 use std::collections::VecDeque;
 use std::fmt;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -56,7 +57,7 @@ pub enum QuitDecision {
     Veto(PromptSpec),
 }
 
-/// Начальные данные Core. Признак падения (S1 §2.5) добавит S1-12.
+/// Начальные данные Core.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct Boot {
@@ -66,6 +67,8 @@ pub struct Boot {
     pub warnings: Vec<ConfigWarning>,
     /// Сессия прошлого запуска; применяется при `general.restore_session`.
     pub session: Option<Session>,
+    /// Crash-файл прошлого запуска (маркер падения, S1 §2.9): баннер с кнопками.
+    pub crashed_last_time: Option<PathBuf>,
     /// Табы, если сессии нет.
     pub left: Location,
     pub right: Location,
@@ -81,6 +84,7 @@ impl Boot {
             config: Config::default(),
             warnings: Vec::new(),
             session: None,
+            crashed_last_time: None,
             left,
             right,
         }
@@ -173,6 +177,9 @@ impl Core {
         let window = boot.session.as_ref().and_then(|s| s.window);
         if let Some(s) = boot.session.filter(|_| restore) {
             s.apply(&mut state);
+        }
+        if let Some(file) = &boot.crashed_last_time {
+            state.set_crash_banner(file);
         }
         let mut core = Core {
             state,
@@ -961,7 +968,7 @@ mod tests {
         let (c, _, _) = core();
         assert_eq!(c.state().active, Side::Left);
         assert_eq!(c.state().panel(Side::Right).tab().id, crate::ids::TabId(2));
-        // panel 29 + sel 9 + tab 7 + app 3 + job 5 + prompt 2 + тестовые 5.
-        assert_eq!(c.registry().iter().count(), 60);
+        // panel 29 + sel 9 + tab 7 + app 4 + job 5 + prompt 2 + тестовые 5.
+        assert_eq!(c.registry().iter().count(), 61);
     }
 }
