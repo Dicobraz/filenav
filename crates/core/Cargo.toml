@@ -10,10 +10,13 @@ repository.workspace = true
 
 [dependencies]
 compact_str.workspace = true
+crossbeam-channel.workspace = true
+rayon.workspace = true
 rustc-hash.workspace = true
 serde.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
 insta.workspace = true

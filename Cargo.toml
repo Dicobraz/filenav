@@ -38,7 +38,8 @@ toml = "1.1"
 dirs = "7.0"
 thiserror = "2.0"
 anyhow = "1.0"
-tracing = "0.1.44"
+# Без `attributes` (#[instrument]): тянет syn 2 рядом с syn 3. Спаны — через `*_span!`.
+tracing = { version = "0.1.44", default-features = false, features = ["std"] }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
 tracing-appender = "0.2.5"
 
