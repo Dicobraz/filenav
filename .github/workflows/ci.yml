@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    # edited — чтобы правка заголовка PR перезапускала его проверку.
+    types: [opened, synchronize, reopened, edited]
+
+# Новый прогон отменяет старый для той же ветки. Правка заголовка (edited) идёт
+# в отдельной группе и не отменяет сборку.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event.action == 'edited' && 'title' || 'build' }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  pr-title:
+    name: PR title (Conventional Commits)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          re='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9._/-]+\))?!?: [^ ].*$'
+          if [[ "$TITLE" =~ $re ]]; then
+            echo "OK: $TITLE"
+          else
+            echo "::error::Заголовок PR не в формате Conventional Commits: 'type(scope)?: описание', например 'feat(core): base types'. Получено: '$TITLE'"
+            exit 1
+          fi
+
+  fmt:
+    if: github.event.action != 'edited'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - run: rustup toolchain install
+      - run: cargo fmt --all --check
+
+  deny:
+    if: github.event.action != 'edited'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: EmbarkStudios/cargo-deny-action@v2.1.1
+
+  test:
+    if: github.event.action != 'edited'
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      BIN: target/release/filenav${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      # Ставит тулчейн из rust-toolchain.toml (rustup ≥1.28 не делает этого в `rustup show`).
+      - run: rustup toolchain install && rustup show
+      - uses: Swatinem/rust-cache@v2.9.2
+      - uses: taiki-e/install-action@v2.87.28
+        with:
+          tool: cargo-nextest
+      - name: Linux deps
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev libgl1-mesa-dev libx11-dev
+      - name: Python
+        run: echo "PY=$(command -v python3 || command -v python)" >> "$GITHUB_ENV"
+
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo nextest run --workspace --locked --profile ci
+      - run: cargo test --doc --workspace --locked
+
+      - name: No diagnostic features in release (profile, dhat-heap, count-alloc)
+        run: $PY ci/release_features.py
+      - run: cargo build --release -p filenav-app --locked
+      - name: Binary size ≤ 15 MB
+        run: $PY ci/size.py "$BIN" 15
+      - name: Smoke
+        run: '"$BIN" --smoke'
+
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: filenav-${{ runner.os }}
+          path: ${{ env.BIN }}
+          retention-days: 7
+          if-no-files-found: error

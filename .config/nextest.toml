@@ -1,0 +1,4 @@
+[profile.ci]
+retries = 1
+fail-fast = false
+slow-timeout = "30s"
