@@ -56,6 +56,8 @@ jobs:
   test:
     if: github.event.action != 'edited'
     name: test (${{ matrix.os }})
+    # macOS в пассиве: джоб собирает и тестирует, но не блокирует мерж (docs/macos-notes.md).
+    continue-on-error: ${{ matrix.os == 'macos-latest' }}
     strategy:
       fail-fast: false
       matrix:
