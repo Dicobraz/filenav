@@ -11,5 +11,6 @@
 | 0007 | [S0-contracts-v4](../specs/S0-contracts-v4.md) |
 | 0008 | [S0-contracts-v5](../specs/S0-contracts-v5.md) |
 | 0009 | [Строковая форма Location (uri)](0009-location-uri.md) |
+| 0010 | [Поле поколения `generation`](0010-gen-field-name.md) |
 
 Новые ADR — со следующего свободного номера: `NNNN-кратко.md`.
