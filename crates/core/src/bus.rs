@@ -10,6 +10,7 @@ use crossbeam_channel::{Receiver, Sender};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::cmd::{CmdError, Command, CommandMeta, CommandRegistry};
+use crate::config::{Config, ConfigWarning};
 use crate::handlers::{
     AppHandler, JobHandler, PanelHandler, PromptHandler, SelHandler, TabHandler, job_id,
 };
@@ -17,8 +18,9 @@ use crate::ids::TabId;
 use crate::loc::Location;
 use crate::msg::{Cx, MsgInbox, WakeFlag, Waker};
 use crate::nav;
+use crate::paths::Paths;
 use crate::prompt::PromptSpec;
-use crate::runtime::{Runtime, RuntimeConfig};
+use crate::runtime::Runtime;
 use crate::services::{Services, TabEvent};
 use crate::state::{AppState, Focus, Level, Panel, UiEvent};
 use crate::tab::Tab;
@@ -53,20 +55,25 @@ pub enum QuitDecision {
     Veto(PromptSpec),
 }
 
-/// Начальные данные Core. Пути, конфиг, предупреждения конфига, сессию и признак
-/// падения (S1 §2.5) добавят S1-10…S1-12.
+/// Начальные данные Core. Сессию и признак падения (S1 §2.5) добавят S1-11, S1-12.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct Boot {
-    pub runtime: RuntimeConfig,
+    pub paths: Paths,
+    pub config: Config,
+    /// Предупреждения `Config::load`; показываются баннером.
+    pub warnings: Vec<ConfigWarning>,
     pub left: Location,
     pub right: Location,
 }
 
 impl Boot {
+    /// Конфиг по умолчанию, каталоги — `Paths::detect()`.
     pub fn new(left: Location, right: Location) -> Self {
         Boot {
-            runtime: RuntimeConfig::default(),
+            paths: Paths::detect(),
+            config: Config::default(),
+            warnings: Vec::new(),
             left,
             right,
         }
@@ -133,12 +140,14 @@ impl Core {
     /// core (`panel`, `sel`, `tab`, `app`) и начинает загрузку обоих табов.
     /// Вызывать в UI-потоке.
     pub fn new(boot: Boot, services: Services, waker: Arc<dyn Waker>) -> Self {
-        let (rt, inbox) = Runtime::new(&boot.runtime, waker);
+        let (rt, inbox) = Runtime::new(&boot.config.runtime, waker);
         let (cmd_tx, cmd_rx) = crossbeam_channel::unbounded();
-        let state = AppState::new(
-            Panel::new(Tab::new(TabId(1), boot.left.clone())),
-            Panel::new(Tab::new(TabId(2), boot.right.clone())),
+        let config = Arc::new(boot.config);
+        let mut state = AppState::new(
+            Panel::new(Tab::with_config(TabId(1), boot.left.clone(), &config)),
+            Panel::new(Tab::with_config(TabId(2), boot.right.clone(), &config)),
         );
+        state.set_config(config, &boot.warnings);
         let mut core = Core {
             state,
             rt,
@@ -154,7 +163,7 @@ impl Core {
         core.register(Box::new(PanelHandler));
         core.register(Box::new(SelHandler));
         core.register(Box::new(TabHandler));
-        core.register(Box::new(AppHandler));
+        core.register(Box::new(AppHandler::new(boot.paths)));
         core.register(Box::new(JobHandler));
         core.register(Box::new(PromptHandler));
         for (id, loc) in [(TabId(1), boot.left), (TabId(2), boot.right)] {

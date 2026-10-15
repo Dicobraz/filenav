@@ -3,18 +3,21 @@
 
 use std::any::{Any, TypeId};
 use std::fmt;
+use std::sync::Arc;
 
 use compact_str::CompactString;
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
 
 use crate::cmd::{Args, Command, CommandId};
+use crate::config::{Config, ConfigWarning};
 use crate::history::VisitedDirs;
 use crate::ids::{PromptId, Side, TabId};
 use crate::jobs::JobRegistry;
 use crate::loc::Location;
 use crate::prompt::Prompts;
 use crate::tab::Tab;
+use crate::text::tr;
 
 /// Куда идёт ввод (S0 v3 №1, v5 №1).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Default)]
@@ -138,6 +141,7 @@ pub struct AppState {
     pub panels: [Panel; 2],
     pub active: Side,
     pub focus: Focus,
+    pub config: Arc<Config>,
     pub jobs: JobRegistry,
     pub prompts: Prompts,
     /// Глобальный MRU каталогов (Alt+F12).
@@ -153,6 +157,8 @@ pub struct AppState {
     next_tab: u32,
     /// Запрос, открытый по вето на выход (`app.quit`).
     pub(crate) quit_prompt: Option<PromptId>,
+    /// Текущий баннер — о проблемах конфига (снимается при чистой перезагрузке).
+    config_banner: bool,
 }
 
 impl AppState {
@@ -169,6 +175,7 @@ impl AppState {
             panels: [left, right],
             active: Side::Left,
             focus: Focus::Panel,
+            config: Arc::default(),
             jobs: JobRegistry::default(),
             prompts: Prompts::default(),
             visited: VisitedDirs::default(),
@@ -180,7 +187,33 @@ impl AppState {
             ui_events: Vec::new(),
             next_tab,
             quit_prompt: None,
+            config_banner: false,
         }
+    }
+
+    /// Применить конфиг: ёмкость истории каталогов и баннер о проблемах. Табы
+    /// получают настройки панелей при создании (`Tab::with_config`).
+    pub(crate) fn set_config(&mut self, c: Arc<Config>, warnings: &[ConfigWarning]) {
+        self.visited.set_cap(c.panels.visited_cap.into());
+        self.config = c;
+        if let Some(first) = warnings.first() {
+            self.banner = Some(Banner {
+                level: Level::Warn,
+                text: tr(
+                    "core-config-warnings",
+                    &[
+                        ("count", &warnings.len().to_string()),
+                        ("first", &first.to_string()),
+                    ],
+                ),
+                actions: SmallVec::new(),
+            });
+            self.config_banner = true;
+        } else if self.config_banner {
+            self.banner = None;
+            self.config_banner = false;
+        }
+        self.touch();
     }
 
     /// Новый уникальный id таба.

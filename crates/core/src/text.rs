@@ -13,6 +13,7 @@ pub(crate) fn tr(key: &'static str, args: &[(&str, &str)]) -> String {
         "core-no-bookmark" => "Bookmark {$n} is empty",
         "core-last-tab" => "Cannot close the last tab",
         "core-no-tab" => "No tab {$n}",
+        "core-config-warnings" => "Settings file has problems ({$count}): {$first}",
         _ => {
             debug_assert!(false, "no fallback for {key}");
             key

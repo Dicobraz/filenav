@@ -98,6 +98,12 @@ impl VisitedDirs {
         }
     }
 
+    /// Новая ёмкость (из конфига); лишние старые записи отбрасываются.
+    pub fn set_cap(&mut self, cap: usize) {
+        self.cap = cap.max(1);
+        self.items.truncate(self.cap);
+    }
+
     pub fn touch(&mut self, l: &Location) {
         if let Some(i) = self.items.iter().position(|x| x == l) {
             self.items.remove(i);

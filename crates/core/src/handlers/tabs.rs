@@ -112,9 +112,14 @@ fn activate(cx: &mut Cx<'_>, side: Side, to: usize) {
 /// Новый таб после активного в том же каталоге; `dup` копирует вид и историю.
 fn open(cx: &mut Cx<'_>, side: Side, dup: bool) {
     let id = cx.state.alloc_tab_id();
+    let config = cx.state.config.clone();
     let p = cx.state.panel_mut(side);
     let cur = p.tab();
-    let mut t = Tab::new(id, cur.loc.clone());
+    let mut t = if dup {
+        Tab::new(id, cur.loc.clone())
+    } else {
+        Tab::with_config(id, cur.loc.clone(), &config)
+    };
     if dup {
         t.sort = cur.sort;
         t.filter.clone_from(&cur.filter);
