@@ -39,7 +39,7 @@ if ($env:Path -notlike "*$cargoBin*") { $env:Path = "$cargoBin;$env:Path" }
 Push-Location $repo
 try {
     rustup toolchain install   # без аргументов — версия из rust-toolchain.toml
-    rustup target add x86_64-unknown-linux-gnu aarch64-apple-darwin
+    rustup target add x86_64-unknown-linux-gnu
 } finally { Pop-Location }
 
 # 3. cargo-nextest и cargo-deny — готовые бинари с GitHub Releases (нужен gh auth).
