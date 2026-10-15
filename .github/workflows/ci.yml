@@ -88,7 +88,7 @@ jobs:
         run: $PY ci/release_features.py
       - run: cargo build --release -p filenav-app --locked
       - name: Binary size ≤ 15 MB
-        run: $PY ci/size.py "$BIN" 15
+        run: $PY ci/size.py "$BIN" 0.05
       - name: Smoke
         run: '"$BIN" --smoke'
 
