@@ -5,12 +5,17 @@
 #![forbid(unsafe_code)]
 
 pub mod cancel;
+pub mod cmd;
 pub mod entry;
 pub mod ids;
 pub mod loc;
 pub mod mask;
 
 pub use cancel::{CancelToken, Cancelled};
+pub use cmd::{
+    ArgSpec, Args, CmdError, Command, CommandId, CommandMeta, CommandRegistry, Origin, SideRef,
+    Value, ValueKind,
+};
 pub use entry::{Attrs, Entry, EntryKind};
 pub use ids::{Gen, JobId, PromptId, Side, TabId};
 pub use loc::{LocError, Location};
