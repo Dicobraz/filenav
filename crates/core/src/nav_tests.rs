@@ -301,6 +301,24 @@ fn refresh_keeps_cursor_and_selection() {
 }
 
 #[test]
+fn slow_refresh_swaps_after_150ms_even_without_chunks() {
+    let mut h = H::new(8, |_| {});
+    h.fake.set_silent(true);
+    h.core.dispatch(Command::new("panel.refresh"));
+    h.core.pump(Duration::from_millis(50));
+    assert!(h.tab().incoming.is_some(), "старый листинг ещё на экране");
+    assert_eq!(h.names().len(), 5);
+    std::thread::sleep(Duration::from_millis(160));
+    h.core.pump(Duration::from_millis(50));
+    assert!(h.tab().incoming.is_none(), "через 150 мс — новый листинг");
+    assert!(matches!(
+        h.tab().listing.status,
+        ListingStatus::Loading { .. }
+    ));
+    assert_eq!(h.names(), Vec::<String>::new());
+}
+
+#[test]
 fn refresh_is_deduplicated_per_tab_within_pump() {
     let mut h = H::new(8, |_| {});
     let n0 = h.fake.loads().len();

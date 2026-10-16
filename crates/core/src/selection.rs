@@ -79,10 +79,24 @@ impl Selection {
 
     /// Инвертировать видимые (`order`); при `files_only` каталоги не трогаются.
     pub fn invert(&mut self, l: &Listing, files_only: bool) {
+        // Битсет растёт один раз, дальше — xor без проверок длины (C.4: 100k < 1 мс).
+        let words = l.entries.len().div_ceil(64);
+        if self.bits.len() < words {
+            self.bits.resize(words, 0);
+        }
         for &idx in l.order.iter() {
             let e = &l.entries[idx as usize];
-            if !(files_only && e.kind.is_dir_like()) {
-                self.toggle(idx, e);
+            if files_only && e.kind.is_dir_like() {
+                continue;
+            }
+            let (w, b) = Self::pos(idx);
+            self.bits[w] ^= b;
+            if self.bits[w] & b == 0 {
+                self.count -= 1;
+                self.bytes -= e.size;
+            } else {
+                self.count += 1;
+                self.bytes += e.size;
             }
         }
     }
@@ -97,10 +111,13 @@ impl Selection {
 
     /// Имена выделенных (для переноса через перечитывание каталога).
     pub fn names(&self, l: &Listing) -> Vec<CompactString> {
-        self.iter()
-            .filter_map(|i| l.entries.get(i as usize))
-            .map(|e| e.name.clone())
-            .collect()
+        let mut v = Vec::with_capacity(self.count as usize);
+        v.extend(
+            self.iter()
+                .filter_map(|i| l.entries.get(i as usize))
+                .map(|e| e.name.clone()),
+        );
+        v
     }
 
     /// Выделение по именам в новом листинге; отсутствующие имена пропускаются.

@@ -431,6 +431,17 @@ fn retire_keeps_recent_finished() {
 }
 
 #[test]
+fn finished_jobs_are_retired_automatically() {
+    let mut h = H::new(false);
+    let n = crate::jobs::JobRegistry::KEEP_FINISHED + 3;
+    let ids: Vec<JobId> = (0..n).map(|_| h.start("drop")).collect();
+    // Ранние задачи уже убраны — ждём, пока не останется активных.
+    h.until("all finished", |c| !c.state().jobs.any_active());
+    let left: Vec<JobId> = h.core.state().jobs.iter().map(|j| j.id).collect();
+    assert_eq!(left, ids[3..], "остались последние KEEP_FINISHED");
+}
+
+#[test]
 fn prompts_open_reply_cancel() {
     let mut ps = crate::prompt::Prompts::default();
     let (a, ra) = ps.open(spec("A"), None);

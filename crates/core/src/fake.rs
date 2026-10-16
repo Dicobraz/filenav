@@ -2,6 +2,7 @@
 //! `fake`). Каталоги задаются заранее, записи приходят чанками, как от S4.
 
 use std::cmp::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use rustc_hash::FxHashMap;
@@ -39,6 +40,7 @@ pub struct FakeListing {
     inner: Mutex<Inner>,
     chunk: usize,
     tree: Option<FakeTree>,
+    silent: AtomicBool,
 }
 
 /// Бесконечное детерминированное дерево: каталог без явного содержимого
@@ -72,6 +74,7 @@ impl FakeListing {
             inner: Mutex::default(),
             chunk: chunk.max(1),
             tree: None,
+            silent: AtomicBool::new(false),
         }
     }
 
@@ -109,6 +112,11 @@ impl FakeListing {
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
         self.inner.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// «Медленный диск»: загрузки записываются, но ничего не присылают.
+    pub fn set_silent(&self, on: bool) {
+        self.silent.store(on, AtomicOrdering::Relaxed);
     }
 
     /// Задать (или заменить) содержимое каталога.
@@ -219,6 +227,9 @@ impl ListingService for FakeListing {
                 .cloned()
                 .or_else(|| self.tree.map(|t| Arc::new(Self::generate(t, &req.loc))))
         };
+        if self.silent.load(AtomicOrdering::Relaxed) {
+            return;
+        }
         let chunk = self.chunk;
         rt.spawn(
             Lane::Interactive,

@@ -6,8 +6,8 @@
 //! Флаги: `--smoke` — без окна: Core, 1000 команд, shutdown, выход 0 (CI);
 //! `--bench-startup` — окно, JSON с длительностями этапов старта после первого
 //! кадра и выход (S0 v5 №10); только в debug: `--crash-test` — паника для
-//! проверки crash-файла и баннера, `--error-test` — ошибка в лог (и в журнал
-//! Windows).
+//! проверки crash-файла и баннера, `--thread-panic-test` — паника не в
+//! UI-потоке (не сбой), `--error-test` — ошибка в лог (и в журнал Windows).
 
 // Release — оконное приложение без консоли; debug — с консолью для логов.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -106,6 +106,15 @@ fn run() -> anyhow::Result<()> {
     // Только debug: проверка записи ошибки в журнал Windows.
     if cfg!(debug_assertions) && flag("--error-test") {
         tracing::error!(test = "error-test", "error test");
+        return Ok(());
+    }
+    // Только debug: паника не в UI-потоке — ошибка в логе, не сбой (S1 §1).
+    if cfg!(debug_assertions) && flag("--thread-panic-test") {
+        let joined = std::thread::Builder::new()
+            .name("panic-test".into())
+            .spawn(|| panic!("thread panic test"))?
+            .join();
+        anyhow::ensure!(joined.is_err(), "thread did not panic");
         return Ok(());
     }
     // Только debug: проверка crash-файла и баннера (S1-12).

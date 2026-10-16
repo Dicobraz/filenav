@@ -135,8 +135,6 @@ impl fmt::Debug for Extensions {
 }
 
 /// Состояние приложения.
-///
-/// Поле `config` добавит S1-10.
 #[derive(Debug)]
 pub struct AppState {
     pub panels: [Panel; 2],

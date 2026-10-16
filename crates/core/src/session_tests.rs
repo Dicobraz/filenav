@@ -362,3 +362,21 @@ fn restore_disabled_ignores_session() {
     assert_eq!(h.core.state().active, Side::Left);
     assert_eq!(h.core.state().active_tab().loc, dir("a"));
 }
+
+#[test]
+fn session_migrations_run_in_order() {
+    fn v0_to_v1(t: &mut toml::Table) -> Result<(), String> {
+        // Пример: в v0 активная сторона называлась `side`.
+        let side = t.remove("side").ok_or("no side")?;
+        t.insert("active".into(), side);
+        Ok(())
+    }
+    let migrations: &[crate::config::Migration] = &[(0, v0_to_v1)];
+    let s = crate::session::parse("version = 0\nside = \"Right\"\n", migrations, 1).unwrap();
+    assert_eq!(s.version, 1);
+    assert_eq!(s.active, crate::ids::Side::Right);
+    // Без шага — как есть: неизвестное поле игнорируется, active по умолчанию.
+    let s = crate::session::parse("version = 0\nside = \"Right\"\n", &[], 1).unwrap();
+    assert_eq!(s.active, crate::ids::Side::Left);
+    assert!(crate::session::parse("version = [", &[], 1).is_err());
+}

@@ -214,6 +214,29 @@ pub(crate) fn refresh(cx: &mut Cx<'_>, id: TabId) {
     };
     cx.keep_rev();
     services.listing.load(req, rt);
+    // Если за 150 мс не придёт ничего, swap сделает `swap_overdue` (S1 §2.6).
+    rt.waker().wake_after(REFRESH_SWAP_AFTER);
+}
+
+/// Перечитывание идёт дольше 150 мс — показать новый листинг как есть (в том
+/// числе ещё пустой: S2 покажет загрузку), не дожидаясь `Done` или чанка.
+/// Вызывается в конце каждого pump.
+pub(crate) fn swap_overdue(cx: &mut Cx<'_>) {
+    let overdue: Vec<TabId> = cx
+        .state
+        .panels
+        .iter()
+        .flat_map(|p| p.tabs.iter())
+        .filter(|t| {
+            t.incoming
+                .as_ref()
+                .is_some_and(|i| i.started.elapsed() >= REFRESH_SWAP_AFTER)
+        })
+        .map(|t| t.id)
+        .collect();
+    for id in overdue {
+        swap_incoming(cx, id);
+    }
 }
 
 /// Пересчитать порядок после смены сортировки, фильтра или hidden.

@@ -6,7 +6,7 @@ use std::io;
 
 use serde::{Deserialize, Serialize};
 
-use crate::config::Config;
+use crate::config::{Config, Migration};
 use crate::history::HistEntry;
 use crate::ids::{Side, TabId};
 use crate::loc::Location;
@@ -18,11 +18,44 @@ use crate::tab::{ListingStatus, PanelMode, SortSpec, Tab, ViewMode};
 
 pub const SESSION_VERSION: u32 = 1;
 
+/// Миграции сырой сессии `.0` → `.0 + 1`, как у конфига (S1 §2.8). v1 — первая
+/// версия: шагов пока нет.
+static MIGRATIONS: &[Migration] = &[];
+
 /// Сколько шагов «назад» хранить на таб.
 const BACK_KEEP: usize = 20;
 
 /// Сколько уровней вверх подниматься, если сохранённого каталога больше нет.
 pub(crate) const RESTORE_UP_STEPS: u8 = 32;
+
+/// Разбор с миграциями: сырой TOML → шаги с версии файла до `current` → `Session`.
+/// Шага нет или он упал — читаем как есть (поля по умолчанию); новее `current` —
+/// тоже как есть, с предупреждением.
+pub(crate) fn parse(text: &str, migrations: &[Migration], current: u32) -> Result<Session, String> {
+    let mut table: toml::Table = toml::from_str(text).map_err(|e| e.message().to_owned())?;
+    let from = table
+        .get("version")
+        .and_then(toml::Value::as_integer)
+        .and_then(|v| u32::try_from(v).ok())
+        .unwrap_or(current);
+    if from > current {
+        tracing::warn!(version = from, "session from a newer version, read as is");
+    }
+    for v in from..current {
+        let Some((_, step)) = migrations.iter().find(|(f, _)| *f == v) else {
+            tracing::warn!(from = v, "no session migration, read as is");
+            break;
+        };
+        if let Err(e) = step(&mut table) {
+            tracing::warn!(from = v, error = %e, "session migration failed, read as is");
+            break;
+        }
+        table.insert("version".into(), toml::Value::Integer(i64::from(v + 1)));
+    }
+    toml::Value::Table(table)
+        .try_into()
+        .map_err(|e: toml::de::Error| e.message().to_owned())
+}
 
 /// Окно приложения (геометрию храним сами: `persistence` eframe выключен).
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
@@ -231,19 +264,11 @@ impl Session {
                 return None;
             }
         };
-        match toml::from_str::<Session>(&text) {
-            Ok(s) => {
-                if s.version > SESSION_VERSION {
-                    tracing::warn!(
-                        version = s.version,
-                        "session from a newer version, read as is"
-                    );
-                }
-                Some(s)
-            }
+        match parse(&text, MIGRATIONS, SESSION_VERSION) {
+            Ok(s) => Some(s),
             Err(e) => {
                 let corrupt = file.with_file_name("session.toml.corrupt");
-                tracing::warn!(error = %e.message(), "corrupt session, kept as {}", corrupt.display());
+                tracing::warn!(error = %e, "corrupt session, kept as {}", corrupt.display());
                 let _ = fs::copy(&file, &corrupt);
                 None
             }
