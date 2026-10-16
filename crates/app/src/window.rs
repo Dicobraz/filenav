@@ -4,6 +4,8 @@
 //! для сессии; `ui` — фронтенд читает `&AppState`, его команды выполняются после
 //! кадра. Перерисовка — только по событию: в простое 0% CPU.
 
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -108,9 +110,108 @@ fn ime_allowed(f: Focus) -> bool {
     }
 }
 
+/// Бэкенды wgpu по очереди (ADR-0012): следующий пробуется, только если
+/// предыдущий не дал адаптера. Каждый поднятый бэкенд стоит старту десятки мс.
+#[cfg(windows)]
+const BACKENDS: &[wgpu::Backends] = &[wgpu::Backends::VULKAN, wgpu::Backends::DX12];
+#[cfg(target_os = "macos")]
+const BACKENDS: &[wgpu::Backends] = &[wgpu::Backends::METAL];
+#[cfg(all(unix, not(target_os = "macos")))]
+const BACKENDS: &[wgpu::Backends] = &[wgpu::Backends::VULKAN, wgpu::Backends::GL];
+
+/// wgpu по ADR-0012: экономный по памяти режим, адаптер — [`adapter_rank`].
+/// Present — `AutoVsync` (по умолчанию egui-wgpu).
+fn wgpu_options(backends: wgpu::Backends) -> eframe::egui_wgpu::WgpuConfiguration {
+    use eframe::egui_wgpu::{WgpuConfiguration, WgpuSetup, WgpuSetupCreateNew};
+    let mut setup = WgpuSetupCreateNew::without_display_handle();
+    setup.instance_descriptor.backends = backends;
+    setup.native_adapter_selector = Some(Arc::new(pick_adapter));
+    setup.device_descriptor = Arc::new(|_| wgpu::DeviceDescriptor {
+        label: Some("filenav"),
+        required_limits: wgpu::Limits {
+            // Текстура на весь экран — до 8K.
+            max_texture_dimension_2d: 8192,
+            ..wgpu::Limits::downlevel_defaults()
+        },
+        // Блоки памяти по умолчанию (Performance) — +200 МБ RAM на встроенной
+        // графике, где видеопамять — это RAM процесса.
+        memory_hints: wgpu::MemoryHints::MemoryUsage,
+        ..Default::default()
+    });
+    WgpuConfiguration {
+        wgpu_setup: WgpuSetup::CreateNew(setup),
+        ..Default::default()
+    }
+}
+
+/// Порядок адаптеров (меньше — лучше): Vulkan/Metal, затем DX12, затем GL;
+/// среди равных — встроенная графика: дискретной файловому менеджеру не нужно.
+fn adapter_rank(backend: wgpu::Backend, device: wgpu::DeviceType) -> (u8, u8) {
+    use wgpu::{Backend as B, DeviceType as D};
+    let b = match backend {
+        B::Vulkan | B::Metal => 0,
+        B::Dx12 => 1,
+        B::Gl => 2,
+        _ => 3,
+    };
+    let d = match device {
+        D::IntegratedGpu => 0,
+        D::DiscreteGpu => 1,
+        D::VirtualGpu => 2,
+        D::Other => 3,
+        D::Cpu => 4,
+    };
+    (b, d)
+}
+
+fn pick_adapter(
+    adapters: &[wgpu::Adapter],
+    surface: Option<&wgpu::Surface<'_>>,
+) -> Result<wgpu::Adapter, String> {
+    let best = adapters
+        .iter()
+        .filter(|a| surface.is_none_or(|s| a.is_surface_supported(s)))
+        .min_by_key(|a| {
+            let i = a.get_info();
+            adapter_rank(i.backend, i.device_type)
+        })
+        .cloned()
+        .ok_or_else(|| "no graphics adapter can draw to the window".to_owned())?;
+    let i = best.get_info();
+    tracing::info!(backend = ?i.backend, device = %i.name, kind = ?i.device_type, driver = %i.driver_info, "graphics adapter");
+    Ok(best)
+}
+
 /// Окно до выхода. `boot.session` — уже загруженная сессия (геометрия из неё).
 pub fn run(boot: Boot, startup: Startup) -> anyhow::Result<()> {
-    let geom = boot.session.as_ref().and_then(|s| s.window);
+    // `WGPU_BACKEND` (переменная wgpu) заменяет очередь — для диагностики.
+    let order = wgpu::Backends::from_env().map_or_else(|| BACKENDS.to_vec(), |b| vec![b]);
+    let pending = Rc::new(RefCell::new(Some((boot, startup))));
+    let mut last = None;
+    for backends in order {
+        match run_with(backends, &pending) {
+            Ok(()) => return Ok(()),
+            // App не создан — значит, не поднялся рендер: пробуем следующий бэкенд.
+            Err(e) if pending.borrow().is_some() => {
+                tracing::warn!(?backends, error = %e, "graphics backend unavailable");
+                last = Some(e);
+            }
+            Err(e) => return Err(anyhow::anyhow!("window: {e}")),
+        }
+    }
+    Err(anyhow::anyhow!(
+        "window: no graphics backend: {}",
+        last.map_or_else(String::new, |e| e.to_string())
+    ))
+}
+
+type Pending = Rc<RefCell<Option<(Boot, Startup)>>>;
+
+fn run_with(backends: wgpu::Backends, pending: &Pending) -> eframe::Result {
+    let geom = pending
+        .borrow()
+        .as_ref()
+        .and_then(|(b, _)| b.session.as_ref().and_then(|s| s.window));
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("FileNav")
         .with_visible(false)
@@ -122,22 +223,23 @@ pub fn run(boot: Boot, startup: Startup) -> anyhow::Result<()> {
     if let Some(g) = geom {
         viewport = viewport.with_position([g.x, g.y]);
     }
-    let mut options = eframe::NativeOptions {
+    let options = eframe::NativeOptions {
         viewport,
-        renderer: eframe::Renderer::Glow,
+        renderer: eframe::Renderer::Wgpu,
+        wgpu_options: wgpu_options(backends),
         // Хук сообщений Windows (KeyNotes, numpad, Ctrl+Ins/Shift+Del) поставит
         // keymap S3 (S0 v3 №10); winit — ровно версия eframe.
         event_loop_builder: Some(Box::new(|_builder| {})),
         ..Default::default()
     };
-    options.glow_options.vsync = true;
-    let services = crate::demo_services();
     let window_started = Instant::now();
+    let pending = Rc::clone(pending);
     eframe::run_native(
         "FileNav",
         options,
         Box::new(move |cc| {
-            let mut startup = startup;
+            let (boot, mut startup) = pending.borrow_mut().take().expect("boot is taken once");
+            let services = crate::demo_services();
             startup.window = window_started.elapsed();
             let ctx = cc.egui_ctx.clone();
             {
@@ -172,7 +274,6 @@ pub fn run(boot: Boot, startup: Startup) -> anyhow::Result<()> {
             }))
         }),
     )
-    .map_err(|e| anyhow::anyhow!("window: {e}"))
 }
 
 struct App {
@@ -304,7 +405,7 @@ impl eframe::App for App {
         visuals.panel_fill.to_normalized_gamma_f32()
     }
 
-    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+    fn on_exit(&mut self) {
         if let Some(core) = self.core.take() {
             let session: Session = core.shutdown(Duration::from_millis(200));
             tracing::info!(window = ?session.window, "session saved on exit");
@@ -331,6 +432,29 @@ mod tests {
         let mut out = Vec::new();
         take_keys(&mut events, &mut out);
         (events, out.iter().map(ToString::to_string).collect())
+    }
+
+    #[test]
+    fn adapter_order() {
+        use wgpu::{Backend as B, DeviceType as D};
+        let mut v = [
+            (B::Gl, D::IntegratedGpu),
+            (B::Dx12, D::IntegratedGpu),
+            (B::Vulkan, D::DiscreteGpu),
+            (B::Vulkan, D::IntegratedGpu),
+            (B::Dx12, D::Cpu),
+        ];
+        v.sort_by_key(|&(b, d)| adapter_rank(b, d));
+        assert_eq!(
+            v,
+            [
+                (B::Vulkan, D::IntegratedGpu),
+                (B::Vulkan, D::DiscreteGpu),
+                (B::Dx12, D::IntegratedGpu),
+                (B::Dx12, D::Cpu),
+                (B::Gl, D::IntegratedGpu),
+            ]
+        );
     }
 
     #[test]
