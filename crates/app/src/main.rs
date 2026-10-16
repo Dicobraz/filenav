@@ -12,15 +12,19 @@
 //! проверки crash-файла и баннера, `--thread-panic-test` — паника не в
 //! UI-потоке (не сбой), `--error-test` — ошибка в лог (и в журнал Windows),
 //! `--ipc-test-server` — первый экземпляр без окна печатает принятый запрос.
+//! `--selftest <dir>` — сценарий самопроверки окна, отчёт и снимки в `dir`
+//! (для платформ без ручной проверки; `scripts/mac/selftest.sh`).
 
 // Release — оконное приложение без консоли; debug — с консолью для логов.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod boot;
 mod ipc;
+mod selftest;
 mod sys;
 mod window;
 
+use std::ops::ControlFlow;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -129,34 +133,16 @@ fn run() -> anyhow::Result<()> {
     );
 
     // Один экземпляр (S1-15, решение владельца №3): второй запуск отдаёт пути
-    // первому и выходит. Smoke и замер старта — всегда отдельно.
+    // первому и выходит. Smoke, замер старта и самопроверка — всегда отдельно.
     let request = ipc::Request::from_args(&args);
-    let separate = flag("--new-instance") || flag("--smoke") || flag("--bench-startup");
-    let inbox = if separate {
-        None
-    } else {
-        match ipc::start(&paths, &request) {
-            Ok(ipc::Start::Primary(inbox)) => Some(inbox),
-            Ok(ipc::Start::Forwarded(took)) => {
-                tracing::info!(?took, argv = ?request.argv, "handed over to the running instance");
-                return Ok(());
-            }
-            Ok(ipc::Start::Standalone) => None,
-            Err(e) => {
-                tracing::warn!(error = %e, "single-instance unavailable, starting standalone");
-                None
-            }
-        }
-    };
-    // Только debug: первый экземпляр без окна — печатает один запрос (тест S1-15).
-    if cfg!(debug_assertions) && flag("--ipc-test-server") {
-        let inbox = inbox.context("--ipc-test-server: another instance is running")?;
-        println!("ready");
-        std::io::Write::flush(&mut std::io::stdout())?;
-        if let Some(r) = inbox.recv() {
-            println!("{}", serde_json::to_string(&r)?);
-        }
+    let selftest = selftest_dir(&args)?;
+    let separate =
+        flag("--new-instance") || flag("--smoke") || flag("--bench-startup") || selftest.is_some();
+    let ControlFlow::Continue(inbox) = single_instance(&paths, &request, separate) else {
         return Ok(());
+    };
+    if cfg!(debug_assertions) && flag("--ipc-test-server") {
+        return ipc_test_server(inbox);
     }
 
     let crashed = boot::take_crash_marker(&paths);
@@ -194,7 +180,54 @@ fn run() -> anyhow::Result<()> {
         startup,
         ipc: inbox,
         open: request.commands(),
+        selftest,
     })
+}
+
+/// `--selftest <dir>` (по умолчанию `selftest`); каталог создаётся.
+fn selftest_dir(args: &[String]) -> anyhow::Result<Option<PathBuf>> {
+    let Some(i) = args.iter().position(|a| a == "--selftest") else {
+        return Ok(None);
+    };
+    let dir = PathBuf::from(args.get(i + 1).map_or("selftest", String::as_str));
+    std::fs::create_dir_all(&dir).with_context(|| format!("selftest dir {}", dir.display()))?;
+    Ok(Some(dir))
+}
+
+/// Приём запросов вторых запусков. `Break` — запрос отдан работающему
+/// экземпляру, этот процесс выходит; `Continue(None)` — работаем отдельно.
+fn single_instance(
+    paths: &Paths,
+    request: &ipc::Request,
+    separate: bool,
+) -> ControlFlow<(), Option<ipc::Inbox>> {
+    if separate {
+        return ControlFlow::Continue(None);
+    }
+    match ipc::start(paths, request) {
+        Ok(ipc::Start::Primary(inbox)) => ControlFlow::Continue(Some(inbox)),
+        Ok(ipc::Start::Forwarded(took)) => {
+            tracing::info!(?took, argv = ?request.argv, "handed over to the running instance");
+            ControlFlow::Break(())
+        }
+        Ok(ipc::Start::Standalone) => ControlFlow::Continue(None),
+        Err(e) => {
+            tracing::warn!(error = %e, "single-instance unavailable, starting standalone");
+            ControlFlow::Continue(None)
+        }
+    }
+}
+
+/// Только debug: первый экземпляр без окна печатает `ready` и один принятый
+/// запрос (тест S1-15).
+fn ipc_test_server(inbox: Option<ipc::Inbox>) -> anyhow::Result<()> {
+    let inbox = inbox.context("--ipc-test-server: another instance is running")?;
+    println!("ready");
+    std::io::Write::flush(&mut std::io::stdout())?;
+    if let Some(r) = inbox.recv() {
+        println!("{}", serde_json::to_string(&r)?);
+    }
+    Ok(())
 }
 
 /// Корень демо-дерева `FakeListing` (настоящая ФС — S4).

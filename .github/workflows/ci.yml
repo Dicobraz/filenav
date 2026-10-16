@@ -103,5 +103,36 @@ jobs:
         with:
           name: filenav-${{ runner.os }}
           path: ${{ env.BIN }}
+
+      # Набор самопроверки для Mac (окно на Mac руками не проверяется):
+      # universal-бинарь + scripts/mac/selftest.sh. Права x теряются в артефакте —
+      # скрипт запускается через `zsh`, бинарь он копирует и делает исполняемым.
+      - name: macOS selftest kit
+        if: runner.os == 'macOS'
+        run: |
+          rustup target add x86_64-apple-darwin
+          cargo build --release -p filenav-app --locked --target x86_64-apple-darwin
+          mkdir -p kit
+          lipo -create -output kit/filenav "$BIN" target/x86_64-apple-darwin/release/filenav
+          lipo -info kit/filenav
+          cp scripts/mac/selftest.sh scripts/mac/README.txt kit/
+      - uses: actions/upload-artifact@v7.0.2
+        if: runner.os == 'macOS'
+        with:
+          name: filenav-macos-selftest
+          path: kit/
+      # Пробный прогон набора на раннере (ВМ, паравиртуальный GPU): набор рабочий
+      # до того, как его запустит владелец. Результат — отдельным артефактом.
+      - name: macOS selftest kit dry run
+        if: runner.os == 'macOS'
+        run: |
+          zsh -n kit/selftest.sh
+          mkdir -p ~/Desktop
+          zsh kit/selftest.sh kit/filenav
+      - uses: actions/upload-artifact@v7.0.2
+        if: runner.os == 'macOS'
+        with:
+          name: filenav-macos-selftest-ci-results
+          path: ~/Desktop/filenav-selftest-*.tgz
           retention-days: 7
           if-no-files-found: error

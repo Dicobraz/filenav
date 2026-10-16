@@ -29,6 +29,9 @@ tracing-subscriber.workspace = true
 # Бэкенды wgpu по ОС (ADR-0012).
 [target.'cfg(target_os = "macos")'.dependencies]
 wgpu = { workspace = true, features = ["metal"] }
+# Живой ресайз без дёрганья (presentsWithTransaction): у eframe с
+# `wgpu_no_default_features` эта фича egui-wgpu выключена.
+egui-wgpu = { workspace = true, features = ["macos-window-resize-jitter-fix"] }
 
 [target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
 wgpu = { workspace = true, features = ["vulkan", "gles"] }
