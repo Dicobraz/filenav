@@ -361,7 +361,8 @@ mod tests {
     use filenav_core::{Attrs, Entry, EntryKind, Gen, Listing, Location, TabId};
 
     fn tab(names: &[&str]) -> Tab {
-        let mut t = Tab::new(TabId(1), Location::local("C:\\x"));
+        // Путь с родителем на любой ОС: строка 0 — `..`.
+        let mut t = Tab::new(TabId(1), Location::local(std::env::temp_dir().join("x")));
         let entries: Vec<Entry> = names
             .iter()
             .map(|n| Entry {
