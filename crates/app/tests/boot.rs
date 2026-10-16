@@ -115,6 +115,34 @@ fn crash_test_writes_crash_file_and_next_start_shows_banner() {
     assert!(!stdout(&o).contains("banner:"), "banner only once");
 }
 
+#[cfg(debug_assertions)]
+#[test]
+fn panic_outside_ui_thread_is_not_a_crash() {
+    let app = App::new();
+    let o = app.run(&["--thread-panic-test"], &[]);
+    assert!(o.status.success(), "{o:?}");
+    assert!(files(&app.logs(), "crash-").is_empty(), "no crash file");
+    assert!(
+        !app.data.join("state").join("crashed").exists(),
+        "no marker"
+    );
+    assert!(
+        app.log_text().contains("thread panic test"),
+        "logged as an error"
+    );
+    let o = app.run(&["--smoke"], &[]);
+    assert!(!stdout(&o).contains("banner:"), "no crash banner");
+}
+
+#[test]
+fn bad_env_filter_does_not_block_start() {
+    let app = App::new();
+    let o = app.run(&["--smoke"], &[("FILENAV_LOG", "filenav=loud")]);
+    assert!(o.status.success(), "{o:?}");
+    let log = app.log_text();
+    assert!(log.contains("FILENAV_LOG ignored"), "{log}");
+}
+
 #[test]
 fn env_filter_beats_config_level() {
     let app = App::new();

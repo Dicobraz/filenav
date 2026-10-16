@@ -85,6 +85,11 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo nextest run --workspace --locked --profile ci
       - run: cargo test --doc --workspace --locked
+      # Бенчи собираются (S1-14); числа — на стенде (docs/perf/baseline.md). Профиль bench
+      # = release с fat LTO, поэтому только на одном раннере.
+      - name: Benches compile
+        if: runner.os == 'Linux'
+        run: cargo bench --workspace --no-run --locked
 
       - name: No diagnostic features in release (profile, dhat-heap, count-alloc)
         run: $PY ci/release_features.py

@@ -271,6 +271,10 @@ impl JobRegistry {
     }
 
     /// Убрать завершённые, кроме `keep_finished` последних.
+    /// Сколько завершённых задач хранится (для job-бара и истории S5); старые
+    /// убираются при завершении следующей.
+    pub const KEEP_FINISHED: usize = 64;
+
     pub fn retire(&mut self, keep_finished: usize) {
         let finished: Vec<JobId> = self
             .jobs
@@ -302,10 +306,14 @@ impl JobRegistry {
         if j.state == JobState::Paused && matches!(st, JobState::Running | JobState::Queued) {
             return;
         }
-        if !st.is_active() {
+        let finished = !st.is_active();
+        if finished {
             j.finished = Some(Instant::now());
         }
         j.state = st;
+        if finished {
+            self.retire(Self::KEEP_FINISHED);
+        }
     }
 
     /// Ответ на вопрос задачи пришёл: `Waiting(prompt)` → `Running`.

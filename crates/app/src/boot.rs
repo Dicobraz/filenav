@@ -37,14 +37,19 @@ const EVENT_LOG_PER_MINUTE: u32 = 20;
 
 /// Логи: `log_dir/filenav.YYYY-MM-DD.log` (ротация раз в сутки, не больше
 /// `keep_files` файлов, неблокирующая запись) и stderr в debug-сборках.
-/// Фильтр — `FILENAV_LOG`, иначе `cfg.level`. Guard держать до выхода: он
-/// дописывает буфер.
+/// Фильтр — `FILENAV_LOG`, иначе `cfg.level`; неверный фильтр не мешает старту
+/// (S1 §1: ошибка конфигурации не блокирует) — предупреждение в лог. Guard
+/// держать до выхода: он дописывает буфер.
 pub fn init_tracing(paths: &Paths, cfg: &LogCfg) -> anyhow::Result<WorkerGuard> {
+    let config_filter =
+        || EnvFilter::try_new(cfg.level.as_str()).or_else(|_| EnvFilter::try_new("info"));
+    let mut bad_env = None;
     let filter = match std::env::var(LOG_ENV) {
-        Ok(v) if !v.trim().is_empty() => {
-            EnvFilter::try_new(&v).with_context(|| format!("{LOG_ENV}={v}"))?
-        }
-        _ => EnvFilter::try_new(cfg.level.as_str()).or_else(|_| EnvFilter::try_new("info"))?,
+        Ok(v) if !v.trim().is_empty() => EnvFilter::try_new(&v).or_else(|e| {
+            bad_env = Some((v, e.to_string()));
+            config_filter()
+        })?,
+        _ => config_filter()?,
     };
     let appender = RollingFileAppender::builder()
         .rotation(Rotation::DAILY)
@@ -70,16 +75,28 @@ pub fn init_tracing(paths: &Paths, cfg: &LogCfg) -> anyhow::Result<WorkerGuard> 
         .with(EventLogLayer::default())
         .try_init()
         .context("tracing already initialized")?;
+    if let Some((value, error)) = bad_env {
+        tracing::warn!(%value, %error, "{LOG_ENV} ignored, using [log] level");
+    }
     Ok(guard)
 }
 
-/// Паника в любом потоке: `log_dir/crash-<unix-ms>.txt` (сообщение, место,
-/// бэктрейс, версия, ОС) и маркер `state_dir/crashed`; следующий старт покажет
-/// баннер. Отчёты никуда не отправляются (офлайн). Затем — прежний hook.
+/// Паника в UI-потоке (тот, что ставит hook): `log_dir/crash-<unix-ms>.txt`
+/// (сообщение, место, бэктрейс, версия, ОС), маркер `state_dir/crashed` —
+/// следующий старт покажет баннер — и событие 1000 в журнале Windows. Паника в
+/// другом потоке (задачу перехватит Runtime, S1 §1) — только ошибка в логе.
+/// Отчёты никуда не отправляются (офлайн). Затем — прежний hook.
 pub fn install_panic_hook(paths: &Paths) {
     let paths = paths.clone();
+    let ui_thread = std::thread::current().id();
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
+        if std::thread::current().id() != ui_thread {
+            let thread = std::thread::current();
+            tracing::error!(thread = thread.name().unwrap_or("?"), "panic: {info}");
+            previous(info);
+            return;
+        }
         let details = match write_crash(&paths, info) {
             Ok(file) => {
                 tracing::error!(target: CRASH_TARGET, crash = %file.display(), "panic: {info}");

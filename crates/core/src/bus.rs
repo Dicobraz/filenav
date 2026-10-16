@@ -162,7 +162,8 @@ const SESSION_DEBOUNCE: Duration = Duration::from_secs(2);
 
 impl Core {
     /// Создаёт Runtime, состояние с одним табом на панель, регистрирует handlers
-    /// core (`panel`, `sel`, `tab`, `app`) и начинает загрузку обоих табов.
+    /// core (`panel`, `sel`, `tab`, `app`, `job`, `prompt`) и начинает загрузку
+    /// обоих табов.
     /// Вызывать в UI-потоке.
     pub fn new(boot: Boot, services: Services, waker: Arc<dyn Waker>) -> Self {
         let (rt, inbox) = Runtime::new(&boot.config.runtime, waker);
@@ -336,6 +337,12 @@ impl Core {
                 break;
             }
         }
+        nav::swap_overdue(&mut Cx::new(
+            &mut self.state,
+            &self.rt,
+            &self.services,
+            &mut self.queue,
+        ));
         self.session_tick();
         Pump {
             more: !self.queue.is_empty() || !self.inbox.is_empty() || !self.cmd_rx.is_empty(),
