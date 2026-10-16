@@ -30,8 +30,8 @@ impl filenav_core::Waker for EguiWaker {
 const PUMP_BUDGET: Duration = Duration::from_millis(4);
 /// Пока идут задачи — перерисовка не чаще 30 раз/с (S1 §0).
 const JOBS_REPAINT: Duration = Duration::from_millis(33);
-/// Окно стартует скрытым и показывается, когда табы загружены, — без мигания
-/// пустыми панелями; но не позже этого срока.
+/// Окно стартует скрытым (DWM cloak) и показывается первым кадром с загруженными
+/// табами — без мигания пустыми панелями; но не позже этого срока.
 const SHOW_AT_LATEST: Duration = Duration::from_millis(300);
 
 /// Клавиши до keymap S3 (S0 v3 №2: весь ввод — через `raw_input_hook`).
@@ -116,10 +116,11 @@ pub fn run(boot: Boot, startup: Startup) -> anyhow::Result<()> {
         .with_visible(false)
         .with_min_inner_size([480.0, 320.0])
         .with_inner_size(geom.map_or([1200.0, 760.0], |g| [g.w, g.h]));
+    // «Развёрнуто» — не здесь: winit показал бы окно при создании, до первого
+    // кадра. Разворачиваем уже скрытое окно (см. создание `App`).
+    let maximized = geom.is_some_and(|g| g.maximized);
     if let Some(g) = geom {
-        viewport = viewport
-            .with_position([g.x, g.y])
-            .with_maximized(g.maximized);
+        viewport = viewport.with_position([g.x, g.y]);
     }
     let mut options = eframe::NativeOptions {
         viewport,
@@ -151,6 +152,13 @@ pub fn run(boot: Boot, startup: Startup) -> anyhow::Result<()> {
                 startup.core = t.elapsed();
                 core
             };
+            // Окно показывается скрытым от экрана: первые кадры рисуются уже в
+            // итоговом размере, на экран выходит только готовый (S1-13).
+            crate::sys::cloak(cc, true);
+            cc.egui_ctx
+                .send_viewport_cmd(egui::ViewportCommand::Maximized(maximized));
+            cc.egui_ctx
+                .send_viewport_cmd(egui::ViewportCommand::Visible(true));
             cc.egui_ctx.request_repaint_after(SHOW_AT_LATEST);
             Ok(Box::new(App {
                 core: Some(core),
@@ -159,6 +167,7 @@ pub fn run(boot: Boot, startup: Startup) -> anyhow::Result<()> {
                 startup,
                 first_frame_done: false,
                 created: Instant::now(),
+                reveal: false,
                 shown: false,
             }))
         }),
@@ -173,6 +182,8 @@ struct App {
     startup: Startup,
     first_frame_done: bool,
     created: Instant,
+    /// Кадр для показа нарисован: следующий `logic` снимает cloak.
+    reveal: bool,
     shown: bool,
 }
 
@@ -201,7 +212,7 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         let Some(core) = self.core.as_mut() else {
             return;
         };
@@ -209,17 +220,9 @@ impl eframe::App for App {
         for c in self.out.drain(..) {
             core.dispatch(c);
         }
-        if !self.shown {
-            let loading = core.state().panels.iter().any(|p| {
-                matches!(
-                    p.tab().listing.status,
-                    filenav_core::ListingStatus::Loading { .. }
-                )
-            });
-            if !loading || self.created.elapsed() >= SHOW_AT_LATEST {
-                self.shown = true;
-                ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
-            }
+        if self.reveal && !self.shown {
+            self.shown = true;
+            crate::sys::cloak(frame, false);
         }
         // Крестик окна — через app.quit: handlers могут наложить вето (S0 v2 №13).
         if ctx.input(|i| i.viewport().close_requested()) && !core.state().quit {
@@ -261,8 +264,17 @@ impl eframe::App for App {
         if !ime_allowed(core.state().focus) {
             ctx.output_mut(|o| o.ime = None);
         }
-        if !self.first_frame_done {
+        let loading = core.state().panels.iter().any(|p| {
+            matches!(
+                p.tab().listing.status,
+                filenav_core::ListingStatus::Loading { .. }
+            )
+        });
+        // Первый кадр — тот, что увидит пользователь: с загруженными табами.
+        if !self.first_frame_done && (!loading || self.created.elapsed() >= SHOW_AT_LATEST) {
             self.first_frame_done = true;
+            self.reveal = true;
+            ctx.request_repaint();
             self.startup.first_frame = self.startup.process.elapsed();
             tracing::info!(
                 target: "startup.first_frame",

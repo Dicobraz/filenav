@@ -1,8 +1,24 @@
 //! Платформенный слой приложения (S0 v5 №5: `unsafe` разрешён только здесь).
 
 #[cfg(windows)]
-#[allow(unsafe_code, reason = "WinAPI: журнал событий Windows")]
+#[allow(unsafe_code, reason = "WinAPI: журнал событий, DWM")]
 mod windows;
+
+use raw_window_handle::HasWindowHandle;
+
+/// Скрыть окно средствами DWM (cloak) или вернуть его. Скрытое так окно для
+/// системы видимо: разворачивается и рисуется, но на экран не выводится — старт
+/// без мигания. На других ОС — ничего.
+pub fn cloak(window: &impl HasWindowHandle, on: bool) {
+    #[cfg(windows)]
+    if let Ok(h) = window.window_handle()
+        && let raw_window_handle::RawWindowHandle::Win32(h) = h.as_raw()
+    {
+        windows::cloak(h.hwnd.get(), on);
+    }
+    #[cfg(not(windows))]
+    let _ = (window, on);
+}
 
 /// Коды событий FileNav в журнале Windows.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

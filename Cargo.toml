@@ -39,6 +39,7 @@ dirs = "7.0"
 thiserror = "2.0"
 anyhow = "1.0"
 # Уже в графе через dirs и tracing-subscriber; features — в крейтах.
+raw-window-handle = "0.6.2"
 windows-sys = "0.61"
 # Без `attributes` (#[instrument]): тянет syn 2 рядом с syn 3. Спаны — через `*_span!`.
 tracing = { version = "0.1.44", default-features = false, features = ["std"] }

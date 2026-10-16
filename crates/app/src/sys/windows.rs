@@ -1,11 +1,14 @@
-//! Журнал событий Windows: `RegisterEventSourceW` + `ReportEventW`.
+//! Журнал событий Windows (`RegisterEventSourceW` + `ReportEventW`) и DWM.
 
 use std::ptr;
 use std::sync::OnceLock;
 
+use windows_sys::Win32::Foundation::HWND;
+use windows_sys::Win32::Graphics::Dwm::{DWMWA_CLOAK, DwmSetWindowAttribute};
 use windows_sys::Win32::System::EventLog::{
     EVENTLOG_ERROR_TYPE, RegisterEventSourceW, ReportEventW,
 };
+use windows_sys::core::BOOL;
 
 /// Источник в журнале «Приложение». Регистрацию в реестре
 /// (`HKLM\SYSTEM\CurrentControlSet\Services\EventLog\Application\FileNav`) делает
@@ -53,6 +56,20 @@ pub(super) fn report_error(id: u32, text: &str) {
             0,
             strings.as_ptr(),
             ptr::null(),
+        );
+    }
+}
+
+pub(super) fn cloak(hwnd: isize, on: bool) {
+    let value = BOOL::from(on);
+    // SAFETY: `hwnd` — окно этого процесса от winit, живое на время вызова;
+    // значение — BOOL, размер передан точно. Ошибка (старая ОС) не важна.
+    unsafe {
+        DwmSetWindowAttribute(
+            hwnd as HWND,
+            DWMWA_CLOAK as u32,
+            (&raw const value).cast(),
+            size_of::<BOOL>() as u32,
         );
     }
 }
