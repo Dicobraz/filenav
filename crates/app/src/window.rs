@@ -257,6 +257,9 @@ fn run_with(backends: wgpu::Backends, pending: &Pending) -> eframe::Result {
             // Окно показывается скрытым от экрана: первые кадры рисуются уже в
             // итоговом размере, на экран выходит только готовый (S1-13).
             crate::sys::cloak(cc, true);
+            let bg = cc.egui_ctx.style_of(cc.egui_ctx.theme()).visuals.panel_fill;
+            crate::sys::set_background(cc, [bg.r(), bg.g(), bg.b()]);
+            crate::sys::no_transitions(cc);
             cc.egui_ctx
                 .send_viewport_cmd(egui::ViewportCommand::Maximized(maximized));
             cc.egui_ctx
@@ -348,7 +351,24 @@ impl eframe::App for App {
             return;
         };
         let _frame_span = tracing::trace_span!("frame").entered();
-        tracing::trace!(target: "frame", rev = core.state().rev, causes = ?ui.ctx().repaint_causes(), "frame");
+        if tracing::enabled!(target: "frame", tracing::Level::TRACE) {
+            let s = core.state();
+            // Что видно в кадре: состояние и число строк активного таба каждой панели.
+            let tabs: Vec<_> = s
+                .panels
+                .iter()
+                .map(|p| {
+                    let t = p.tab();
+                    let st = match t.listing.status {
+                        filenav_core::ListingStatus::Loading { .. } => "loading",
+                        filenav_core::ListingStatus::Complete => "complete",
+                        _ => "other",
+                    };
+                    format!("{st}:{}:{}", t.rows(), t.listing.order.len())
+                })
+                .collect();
+            tracing::trace!(target: "frame", rev = s.rev, ?tabs, causes = ?ui.ctx().repaint_causes(), "frame");
+        }
         let ev = core.take_ui_events();
         self.ui.show(ui, core.state(), &ev, &mut self.out);
         let rev = core.state().rev;
