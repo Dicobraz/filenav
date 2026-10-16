@@ -261,9 +261,10 @@ fn second_start_hands_paths_to_the_first() {
     assert!(o.status.success(), "{o:?}");
     let req: serde_json::Value = serde_json::from_str(&lines.next().unwrap().unwrap()).unwrap();
     assert_eq!(req["argv"], serde_json::json!(["sub"]));
+    // macOS: `/var` — ссылка на `/private/var`, `current_dir` даёт канонический путь.
     assert_eq!(
-        PathBuf::from(req["cwd"].as_str().unwrap()),
-        work.path().to_path_buf()
+        fs::canonicalize(req["cwd"].as_str().unwrap()).unwrap(),
+        fs::canonicalize(work.path()).unwrap()
     );
     assert!(first.wait().unwrap().success());
     assert!(took < Duration::from_secs(2), "second start took {took:?}");
