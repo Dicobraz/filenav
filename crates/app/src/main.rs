@@ -1,18 +1,23 @@
 //! FileNav — бинарь `filenav`.
 //!
-//! Старт (S1 §2.9, S1-13): каталоги → конфиг → логи → обработчик паник → сессия →
-//! Core → окно eframe. Листинг — `FakeListing` с генерируемым деревом до S4.
+//! Старт (S1 §2.9, S1-13): каталоги → конфиг → логи → обработчик паник → один
+//! экземпляр (S1-15) → сессия → Core → окно eframe. Листинг — `FakeListing` с
+//! генерируемым деревом до S4.
 //!
-//! Флаги: `--smoke` — без окна: Core, 1000 команд, shutdown, выход 0 (CI);
+//! Аргументы без `--` — пути: каждый открывается новым табом; если FileNav уже
+//! запущен, пути уходят ему, а этот процесс выходит. `--new-instance` —
+//! отдельный экземпляр. `--smoke` — без окна: Core, 1000 команд, shutdown, выход 0 (CI);
 //! `--bench-startup` — окно, JSON с длительностями этапов старта после первого
 //! кадра и выход (S0 v5 №10); только в debug: `--crash-test` — паника для
 //! проверки crash-файла и баннера, `--thread-panic-test` — паника не в
-//! UI-потоке (не сбой), `--error-test` — ошибка в лог (и в журнал Windows).
+//! UI-потоке (не сбой), `--error-test` — ошибка в лог (и в журнал Windows),
+//! `--ipc-test-server` — первый экземпляр без окна печатает принятый запрос.
 
 // Release — оконное приложение без консоли; debug — с консолью для логов.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod boot;
+mod ipc;
 mod sys;
 mod window;
 
@@ -123,6 +128,37 @@ fn run() -> anyhow::Result<()> {
         "crash test"
     );
 
+    // Один экземпляр (S1-15, решение владельца №3): второй запуск отдаёт пути
+    // первому и выходит. Smoke и замер старта — всегда отдельно.
+    let request = ipc::Request::from_args(&args);
+    let separate = flag("--new-instance") || flag("--smoke") || flag("--bench-startup");
+    let inbox = if separate {
+        None
+    } else {
+        match ipc::start(&paths, &request) {
+            Ok(ipc::Start::Primary(inbox)) => Some(inbox),
+            Ok(ipc::Start::Forwarded(took)) => {
+                tracing::info!(?took, argv = ?request.argv, "handed over to the running instance");
+                return Ok(());
+            }
+            Ok(ipc::Start::Standalone) => None,
+            Err(e) => {
+                tracing::warn!(error = %e, "single-instance unavailable, starting standalone");
+                None
+            }
+        }
+    };
+    // Только debug: первый экземпляр без окна — печатает один запрос (тест S1-15).
+    if cfg!(debug_assertions) && flag("--ipc-test-server") {
+        let inbox = inbox.context("--ipc-test-server: another instance is running")?;
+        println!("ready");
+        std::io::Write::flush(&mut std::io::stdout())?;
+        if let Some(r) = inbox.recv() {
+            println!("{}", serde_json::to_string(&r)?);
+        }
+        return Ok(());
+    }
+
     let crashed = boot::take_crash_marker(&paths);
     if flag("--smoke") {
         println!("filenav {}", version());
@@ -153,7 +189,12 @@ fn run() -> anyhow::Result<()> {
         first_frame: Duration::ZERO,
         bench: flag("--bench-startup"),
     };
-    window::run(boot, startup)
+    window::run(window::Launch {
+        boot,
+        startup,
+        ipc: inbox,
+        open: request.commands(),
+    })
 }
 
 /// Корень демо-дерева `FakeListing` (настоящая ФС — S4).

@@ -1015,6 +1015,8 @@ dependencies = [
  "filenav-core",
  "filenav-ui",
  "raw-window-handle",
+ "serde",
+ "serde_json",
  "tempfile",
  "tracing",
  "tracing-appender",

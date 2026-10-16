@@ -226,3 +226,57 @@ fn crash_and_errors_go_to_windows_event_log() {
         "{events}"
     );
 }
+
+#[cfg(debug_assertions)]
+#[test]
+fn second_start_hands_paths_to_the_first() {
+    use std::io::{BufRead, BufReader, Lines};
+    use std::process::{Child, ChildStdout, Stdio};
+    use std::time::{Duration, Instant};
+
+    let app = App::new();
+    // Первый экземпляр без окна: печатает `ready`, затем один принятый запрос.
+    let server = || -> (Child, Lines<BufReader<ChildStdout>>) {
+        let mut child = Command::new(&app.exe)
+            .arg("--ipc-test-server")
+            .env_remove("FILENAV_LOG")
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut lines = BufReader::new(child.stdout.take().unwrap()).lines();
+        assert_eq!(lines.next().unwrap().unwrap(), "ready");
+        (child, lines)
+    };
+
+    let (mut first, mut lines) = server();
+    let work = tempfile::tempdir().unwrap();
+    let t = Instant::now();
+    let o = Command::new(&app.exe)
+        .arg("sub")
+        .current_dir(work.path())
+        .env_remove("FILENAV_LOG")
+        .output()
+        .unwrap();
+    let took = t.elapsed();
+    assert!(o.status.success(), "{o:?}");
+    let req: serde_json::Value = serde_json::from_str(&lines.next().unwrap().unwrap()).unwrap();
+    assert_eq!(req["argv"], serde_json::json!(["sub"]));
+    assert_eq!(
+        PathBuf::from(req["cwd"].as_str().unwrap()),
+        work.path().to_path_buf()
+    );
+    assert!(first.wait().unwrap().success());
+    assert!(took < Duration::from_secs(2), "second start took {took:?}");
+    assert!(
+        app.log_text()
+            .contains("handed over to the running instance")
+    );
+
+    // Завершённый и убитый экземпляры не оставляют lock: следующий снова первый.
+    let (mut again, _) = server();
+    again.kill().unwrap();
+    again.wait().unwrap();
+    let (mut after_kill, _) = server();
+    after_kill.kill().unwrap();
+    after_kill.wait().unwrap();
+}
