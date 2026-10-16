@@ -1,7 +1,7 @@
 # FileNav — архитектура (ведёт S0 «Джарвис»)
 
 ## Решения (ADR-0)
-- Rust stable (edition 2024), egui/eframe, рендер **wgpu** (Windows — Vulkan, запасной DX12; Linux — Vulkan/GLES; macOS — Metal; ADR-0012, было glow); код UI не зависит от бэкенда.
+- Rust stable (edition 2024), egui/eframe, рендер **wgpu** (Windows — DX12, запасной Vulkan; Linux — Vulkan/GLES; macOS — Metal; ADR-0012, было glow); код UI не зависит от бэкенда.
 - Платформы: **Windows — приоритет**, macOS — вторая. Linux — tier 2 (сборка в CI, без гарантий).
 - Лицензия: **MIT OR Apache-2.0** (стандарт Rust-экосистемы).
 - Ноль модальных окон. Все «диалоги» — inline-оверлеи в панели/cmdline. UI-поток не делает I/O.

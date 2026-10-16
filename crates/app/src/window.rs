@@ -112,8 +112,10 @@ fn ime_allowed(f: Focus) -> bool {
 
 /// Бэкенды wgpu по очереди (ADR-0012): следующий пробуется, только если
 /// предыдущий не дал адаптера. Каждый поднятый бэкенд стоит старту десятки мс.
+/// Windows — DX12: Vulkan при развороте окна 30–85 мс показывает чёрный кадр
+/// (пересоздание swapchain).
 #[cfg(windows)]
-const BACKENDS: &[wgpu::Backends] = &[wgpu::Backends::VULKAN, wgpu::Backends::DX12];
+const BACKENDS: &[wgpu::Backends] = &[wgpu::Backends::DX12, wgpu::Backends::VULKAN];
 #[cfg(target_os = "macos")]
 const BACKENDS: &[wgpu::Backends] = &[wgpu::Backends::METAL];
 #[cfg(all(unix, not(target_os = "macos")))]
@@ -144,24 +146,17 @@ fn wgpu_options(backends: wgpu::Backends) -> eframe::egui_wgpu::WgpuConfiguratio
     }
 }
 
-/// Порядок адаптеров (меньше — лучше): Vulkan/Metal, затем DX12, затем GL;
-/// среди равных — встроенная графика: дискретной файловому менеджеру не нужно.
-fn adapter_rank(backend: wgpu::Backend, device: wgpu::DeviceType) -> (u8, u8) {
-    use wgpu::{Backend as B, DeviceType as D};
-    let b = match backend {
-        B::Vulkan | B::Metal => 0,
-        B::Dx12 => 1,
-        B::Gl => 2,
-        _ => 3,
-    };
-    let d = match device {
+/// Порядок адаптеров одного бэкенда (меньше — лучше): встроенная графика —
+/// дискретная файловому менеджеру не нужна; программный рендер — последним.
+fn adapter_rank(device: wgpu::DeviceType) -> u8 {
+    use wgpu::DeviceType as D;
+    match device {
         D::IntegratedGpu => 0,
         D::DiscreteGpu => 1,
         D::VirtualGpu => 2,
         D::Other => 3,
         D::Cpu => 4,
-    };
-    (b, d)
+    }
 }
 
 fn pick_adapter(
@@ -173,7 +168,7 @@ fn pick_adapter(
         .filter(|a| surface.is_none_or(|s| a.is_surface_supported(s)))
         .min_by_key(|a| {
             let i = a.get_info();
-            adapter_rank(i.backend, i.device_type)
+            adapter_rank(i.device_type)
         })
         .cloned()
         .ok_or_else(|| "no graphics adapter can draw to the window".to_owned())?;
@@ -456,23 +451,23 @@ mod tests {
 
     #[test]
     fn adapter_order() {
-        use wgpu::{Backend as B, DeviceType as D};
+        use wgpu::DeviceType as D;
         let mut v = [
-            (B::Gl, D::IntegratedGpu),
-            (B::Dx12, D::IntegratedGpu),
-            (B::Vulkan, D::DiscreteGpu),
-            (B::Vulkan, D::IntegratedGpu),
-            (B::Dx12, D::Cpu),
+            D::Cpu,
+            D::DiscreteGpu,
+            D::Other,
+            D::IntegratedGpu,
+            D::VirtualGpu,
         ];
-        v.sort_by_key(|&(b, d)| adapter_rank(b, d));
+        v.sort_by_key(|&d| adapter_rank(d));
         assert_eq!(
             v,
             [
-                (B::Vulkan, D::IntegratedGpu),
-                (B::Vulkan, D::DiscreteGpu),
-                (B::Dx12, D::IntegratedGpu),
-                (B::Dx12, D::Cpu),
-                (B::Gl, D::IntegratedGpu),
+                D::IntegratedGpu,
+                D::DiscreteGpu,
+                D::VirtualGpu,
+                D::Other,
+                D::Cpu
             ]
         );
     }
