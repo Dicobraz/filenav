@@ -343,6 +343,11 @@ impl Core {
         }
     }
 
+    /// Последняя геометрия окна (из сессии или `set_window`).
+    pub fn window(&self) -> Option<WindowGeom> {
+        self.window
+    }
+
     /// Геометрия окна для сессии.
     pub fn set_window(&mut self, g: WindowGeom) {
         if self.window != Some(g) {

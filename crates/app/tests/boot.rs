@@ -80,7 +80,10 @@ fn smoke_creates_portable_layout_and_default_config() {
     assert!(o.status.success(), "{o:?}");
     assert!(stdout(&o).contains("smoke ok"));
     assert!(app.data.join("config.toml").is_file());
-    assert!(app.data.join("state").join("session.toml").is_file());
+    assert!(
+        !app.data.join("state").join("session.toml").exists(),
+        "smoke does not touch the user's session"
+    );
     assert_eq!(files(&app.logs(), "filenav.").len(), 1);
     assert!(!stdout(&o).contains("banner:"));
 }

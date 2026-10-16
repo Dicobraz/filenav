@@ -15,16 +15,31 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
-filenav-core.workspace = true
+eframe.workspace = true
+# FakeListing: настоящий листинг ФС — S4.
+filenav-core = { workspace = true, features = ["fake"] }
+filenav-ui.workspace = true
+raw-window-handle.workspace = true
 tracing.workspace = true
 tracing-appender.workspace = true
 tracing-subscriber.workspace = true
 
+# Бэкенды wgpu по ОС (ADR-0012).
+[target.'cfg(target_os = "macos")'.dependencies]
+wgpu = { workspace = true, features = ["metal"] }
+
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+wgpu = { workspace = true, features = ["vulkan", "gles"] }
+
 [target.'cfg(windows)'.dependencies]
+wgpu = { workspace = true, features = ["vulkan", "dx12"] }
 windows-sys = { workspace = true, features = [
     "Win32_Foundation",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
     "Win32_Security",
     "Win32_System_EventLog",
+    "Win32_UI_WindowsAndMessaging",
 ] }
 
 [dev-dependencies]

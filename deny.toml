@@ -25,16 +25,25 @@ allow = [
 confidence-threshold = 0.9
 # Список — политика проекта, а не перечень текущих зависимостей.
 unused-allowed-license = "allow"
+# Шрифты egui по умолчанию (фича `default_fonts`, S1 §3) — только этот крейт.
+# S2 заменит их на системные Segoe и вшитый JetBrains Mono.
+exceptions = [
+    { crate = "epaint_default_fonts", allow = ["OFL-1.1", "Ubuntu-font-1.0"] },
+]
 
 [bans]
-multiple-versions = "deny"
+# Дубли версий внутри egui/winit/glutin неизбежны (windows-sys 0.52/0.61, syn 2/3,
+# miniz_oxide и десятки на Linux/macOS), поэтому общий запрет — предупреждение
+# (видно в логе CI). Жёстко — только для крейтов из S0 v3 №10: версия winit
+# ровно та, что тянет eframe, без дубля.
+multiple-versions = "warn"
 wildcards = "deny"
 allow-wildcard-paths = true
-# Дубли разрешаются только явным skip с причиной. winit не скипать никогда (S0 v3 №10):
-# версия winit должна быть ровно той, что тянет eframe.
-# windows-sys 0.59/0.61 (S0 v3) — добавить вместе с alacritty_terminal в S6,
-# сейчас дубля нет, а неиспользуемый skip даёт предупреждение.
-skip = []
+deny = [
+    { crate = "winit", deny-multiple-versions = true },
+    { crate = "egui", deny-multiple-versions = true },
+    { crate = "eframe", deny-multiple-versions = true },
+]
 
 [sources]
 unknown-registry = "deny"

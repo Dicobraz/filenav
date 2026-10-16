@@ -26,7 +26,8 @@ filenav-testdata = { path = "crates/testdata" }
 
 # Внешние зависимости (S1 §3).
 egui = { version = "0.36.2", default-features = false, features = ["default_fonts"] }
-eframe = { version = "0.36.2", default-features = false, features = ["glow", "default_fonts", "x11", "wayland"] }
+# Рендер — wgpu (ADR-0012); бэкенды wgpu выбирает app по ОС.
+eframe = { version = "0.36.2", default-features = false, features = ["wgpu_no_default_features", "default_fonts", "x11", "wayland"] }
 crossbeam-channel = "0.5.17"
 rayon = "1.12"
 arc-swap = "1.9"
@@ -39,6 +40,8 @@ dirs = "7.0"
 thiserror = "2.0"
 anyhow = "1.0"
 # Уже в графе через dirs и tracing-subscriber; features — в крейтах.
+raw-window-handle = "0.6.2"
+wgpu = { version = "30.0.1", default-features = false, features = ["std", "wgsl"] }
 windows-sys = "0.61"
 # Без `attributes` (#[instrument]): тянет syn 2 рядом с syn 3. Спаны — через `*_span!`.
 tracing = { version = "0.1.44", default-features = false, features = ["std"] }

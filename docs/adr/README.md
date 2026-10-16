@@ -12,5 +12,7 @@
 | 0008 | [S0-contracts-v5](../specs/S0-contracts-v5.md) |
 | 0009 | [Строковая форма Location (uri)](0009-location-uri.md) |
 | 0010 | [Поле поколения `generation`](0010-gen-field-name.md) |
+| 0011 | [UI-фронтенд получает корневой `egui::Ui`](0011-ui-show-root-ui.md) |
+| 0012 | [Рендер wgpu (DX12 на Windows) вместо glow](0012-renderer-wgpu.md) |
 
 Новые ADR — со следующего свободного номера: `NNNN-кратко.md`.
