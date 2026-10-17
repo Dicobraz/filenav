@@ -12,11 +12,18 @@ repository.workspace = true
 bitflags.workspace = true
 compact_str.workspace = true
 egui.workspace = true
+rustc-hash.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true
+urfin-core.workspace = true
 
 [dev-dependencies]
+criterion.workspace = true
 proptest.workspace = true
+
+[[bench]]
+name = "when"
+harness = false
 
 [lints]
 workspace = true

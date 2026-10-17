@@ -3429,10 +3429,13 @@ version = "0.1.0"
 dependencies = [
  "bitflags 2.13.2",
  "compact_str",
+ "criterion",
  "egui",
  "proptest",
+ "rustc-hash 2.1.3",
  "smallvec",
  "thiserror 2.0.21",
+ "urfin-core",
 ]
 
 [[package]]
