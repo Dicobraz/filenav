@@ -15,11 +15,17 @@ type Bundle = FluentBundle<Arc<FluentResource>>;
 /// Язык по умолчанию и последнее звено цепочки.
 pub const FALLBACK: &str = "en";
 
-/// Вшитые ресурсы: (язык, файл, текст).
-const EMBEDDED: &[(&str, &str, &str)] = &[
+/// Вшитые ресурсы: (язык, файл, текст). Каждый файл `locales/` должен быть здесь (lint).
+pub const EMBEDDED: &[(&str, &str, &str)] = &[
+    ("en", "cmd.ftl", include_str!("../locales/en/cmd.ftl")),
+    ("en", "core.ftl", include_str!("../locales/en/core.ftl")),
     ("en", "fmt.ftl", include_str!("../locales/en/fmt.ftl")),
+    ("en", "keybar.ftl", include_str!("../locales/en/keybar.ftl")),
     ("en", "ui.ftl", include_str!("../locales/en/ui.ftl")),
+    ("ru", "cmd.ftl", include_str!("../locales/ru/cmd.ftl")),
+    ("ru", "core.ftl", include_str!("../locales/ru/core.ftl")),
     ("ru", "fmt.ftl", include_str!("../locales/ru/fmt.ftl")),
+    ("ru", "keybar.ftl", include_str!("../locales/ru/keybar.ftl")),
     ("ru", "ui.ftl", include_str!("../locales/ru/ui.ftl")),
 ];
 
@@ -126,6 +132,13 @@ impl Catalog {
         let key = lang.to_string();
         let entry = self.langs.entry(key).or_insert_with(|| (lang, Vec::new()));
         entry.1.push(Source { resource, user });
+    }
+
+    /// Есть ли сообщение в ресурсах самого языка, без фолбэка на en (линты; собирает
+    /// бандл на каждый вызов).
+    pub fn has_own(&self, lang: &LanguageIdentifier, key: &str) -> bool {
+        self.bundle(lang, NumFmt::of(lang), &mut Vec::new())
+            .has_message(key)
     }
 
     /// Языки, для которых есть ресурсы, по тегу.

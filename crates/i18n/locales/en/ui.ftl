@@ -9,3 +9,6 @@ ui-delete-trash = Move { $count } { $count ->
    *[other] items
 } ({ $bytes }) to the Recycle Bin?
 ui-conflict-head = Conflict { $index } of { $total } · { $job }
+ui-loading = Loading…
+ui-listing-failed = Cannot read the folder: { $error }
+ui-lang-unavailable = Language { $lang } is not available, using English

@@ -1,32 +1,12 @@
-//! Тексты core для UI. Вызовы идут по Fluent-ключам `core-*` (S2 §7); пока
-//! `filenav-i18n` не подключён (S2-01/S2-02), возвращается английский фолбэк.
-//! При подключении меняется только тело [`tr`].
+//! Тексты core для UI: Fluent-ключи `core-*` (S2 §7) из `filenav-i18n`, язык — активный.
 
-/// Текст по ключу с подстановкой `{$name}`.
+/// Текст по ключу с подстановкой строковых аргументов `{ $name }`.
 pub(crate) fn tr(key: &'static str, args: &[(&str, &str)]) -> String {
-    let template = match key {
-        "core-unknown-command" => "Unknown command: {$id}",
-        "core-command-failed" => "{$id}: {$error}",
-        "core-task-panicked" => "Task {$task} failed unexpectedly",
-        "core-not-found" => "Not found: {$name}",
-        "core-no-match" => "Nothing matches {$mask}",
-        "core-no-bookmark" => "Bookmark {$n} is empty",
-        "core-last-tab" => "Cannot close the last tab",
-        "core-no-tab" => "No tab {$n}",
-        "core-config-warnings" => "Settings file has problems ({$count}): {$first}",
-        "core-crashed" => "FileNav closed unexpectedly last time. Details: {$file}",
-        "core-action-show-logs" => "Show logs",
-        "core-action-dismiss" => "Dismiss",
-        _ => {
-            debug_assert!(false, "no fallback for {key}");
-            key
-        }
-    };
-    let mut s = template.to_owned();
+    let mut fluent = filenav_i18n::FluentArgs::new();
     for (name, value) in args {
-        s = s.replace(&format!("{{${name}}}"), value);
+        fluent.set(*name, *value);
     }
-    s
+    filenav_i18n::current().fmt(key, &fluent)
 }
 
 #[cfg(test)]
@@ -35,6 +15,7 @@ mod tests {
 
     #[test]
     fn substitutes_args() {
+        // Язык по умолчанию до `init` — en.
         assert_eq!(
             tr("core-unknown-command", &[("id", "x.y")]),
             "Unknown command: x.y"

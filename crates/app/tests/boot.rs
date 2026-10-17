@@ -92,6 +92,8 @@ fn smoke_creates_portable_layout_and_default_config() {
 #[test]
 fn crash_test_writes_crash_file_and_next_start_shows_banner() {
     let app = App::new();
+    // Текст баннера сверяется по-английски; `auto` взял бы язык ОС стенда.
+    app.write_config("[general]\nlanguage = \"en\"\n");
     let o = app.run(&["--crash-test"], &[]);
     assert!(!o.status.success());
     let crashes = files(&app.logs(), "crash-");

@@ -111,6 +111,11 @@ fn run() -> anyhow::Result<()> {
     let t_tracing = t.elapsed();
     tracing::info!(target: "startup.paths", elapsed = ?t_paths, portable = paths.portable);
     tracing::info!(target: "startup.config", elapsed = ?t_config, warnings = warnings.len());
+    {
+        let _s = tracing::info_span!("startup.i18n").entered();
+        // Предупреждения (битый .ftl, неизвестный язык) i18n пишет в лог сам.
+        filenav_i18n::init(&config.general.language, Some(&paths.config_dir));
+    }
     tracing::info!(version = version(), ?args, "starting");
 
     // Только debug: проверка записи ошибки в журнал Windows.
@@ -284,7 +289,7 @@ impl Waker for NoWake {
 /// Команды `--smoke`: навигация, табы, сортировка, выделение, refresh. Enter —
 /// только на каталог (строка 2 — первый каталог: `..`, каталоги первыми);
 /// открытие файлов — S5.
-const SMOKE_SCRIPT: [&str; 20] = [
+const SMOKE_SCRIPT: [&str; 26] = [
     "panel.cursor.home",
     "panel.cursor.down n=2",
     "panel.enter",
@@ -305,6 +310,12 @@ const SMOKE_SCRIPT: [&str; 20] = [
     "sel.none",
     "panel.hidden.toggle",
     "panel.refresh",
+    "ui.qsearch text=a",
+    "ui.cancel",
+    "ui.jobs.toggle",
+    "ui.lang lang=ru",
+    "ui.split delta=1",
+    "ui.lang lang=en",
 ];
 
 /// Headless-прогон без окна: Core с `FakeListing`, 1000 команд, shutdown.
@@ -326,6 +337,10 @@ fn smoke(
     boot.warnings = warnings;
     boot.crashed_last_time = crashed;
     let mut core = Core::new(boot, demo_services(), Arc::new(NoWake));
+    filenav_ui::register(&mut core);
+    // Кадры FileNavUi без окна: каркас UI рисуется на каждом шаге прогона.
+    let mut ui = filenav_ui::FileNavUi::new(core.registry());
+    let ctx = eframe::egui::Context::default();
     let pump = |core: &mut Core| {
         for _ in 0..3 {
             core.pump(Duration::from_millis(5));
@@ -344,7 +359,21 @@ fn smoke(
             n += 1;
         }
         pump(&mut core);
-        errors.extend(core.take_ui_events().into_iter().filter_map(|e| match e {
+        let events = core.take_ui_events();
+        let mut out = Vec::new();
+        let input = eframe::egui::RawInput {
+            screen_rect: Some(eframe::egui::Rect::from_min_size(
+                eframe::egui::Pos2::ZERO,
+                eframe::egui::vec2(1200.0, 760.0),
+            )),
+            ..Default::default()
+        };
+        let mut frame = ctx.run_ui(input, |root| ui.show(root, core.state(), &events, &mut out));
+        frame.textures_delta.clear();
+        for c in out {
+            core.dispatch(c);
+        }
+        errors.extend(events.into_iter().filter_map(|e| match e {
             UiEvent::Toast {
                 level: Level::Error | Level::Warn,
                 text,
