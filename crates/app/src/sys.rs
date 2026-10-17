@@ -4,6 +4,10 @@
 #[allow(unsafe_code, reason = "WinAPI: журнал событий, DWM")]
 mod windows;
 
+#[cfg(windows)]
+#[allow(unsafe_code, reason = "WinAPI: mutex, named pipe, SID (S1-15)")]
+pub(crate) mod ipc_win;
+
 use raw_window_handle::HasWindowHandle;
 
 /// Скрыть окно средствами DWM (cloak) или вернуть его. Скрытое так окно для

@@ -178,10 +178,20 @@ fn pick_adapter(
 }
 
 /// Окно до выхода. `boot.session` — уже загруженная сессия (геометрия из неё).
-pub fn run(boot: Boot, startup: Startup) -> anyhow::Result<()> {
+/// Всё, что окну нужно от `main`.
+pub struct Launch {
+    pub boot: Boot,
+    pub startup: Startup,
+    /// Запросы вторых запусков (S1-15); `None` — отдельный экземпляр.
+    pub ipc: Option<crate::ipc::Inbox>,
+    /// Пути из своей командной строки: новые табы после восстановления сессии.
+    pub open: Vec<Command>,
+}
+
+pub fn run(launch: Launch) -> anyhow::Result<()> {
     // `WGPU_BACKEND` (переменная wgpu) заменяет очередь — для диагностики.
     let order = wgpu::Backends::from_env().map_or_else(|| BACKENDS.to_vec(), |b| vec![b]);
-    let pending = Rc::new(RefCell::new(Some((boot, startup))));
+    let pending = Rc::new(RefCell::new(Some(launch)));
     let mut last = None;
     for backends in order {
         match run_with(backends, &pending) {
@@ -200,13 +210,13 @@ pub fn run(boot: Boot, startup: Startup) -> anyhow::Result<()> {
     ))
 }
 
-type Pending = Rc<RefCell<Option<(Boot, Startup)>>>;
+type Pending = Rc<RefCell<Option<Launch>>>;
 
 fn run_with(backends: wgpu::Backends, pending: &Pending) -> eframe::Result {
     let geom = pending
         .borrow()
         .as_ref()
-        .and_then(|(b, _)| b.session.as_ref().and_then(|s| s.window));
+        .and_then(|l| l.boot.session.as_ref().and_then(|s| s.window));
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("FileNav")
         .with_visible(false)
@@ -233,7 +243,12 @@ fn run_with(backends: wgpu::Backends, pending: &Pending) -> eframe::Result {
         "FileNav",
         options,
         Box::new(move |cc| {
-            let (boot, mut startup) = pending.borrow_mut().take().expect("boot is taken once");
+            let Launch {
+                boot,
+                mut startup,
+                ipc,
+                open,
+            } = pending.borrow_mut().take().expect("launch is taken once");
             let services = crate::demo_services();
             startup.window = window_started.elapsed();
             let ctx = cc.egui_ctx.clone();
@@ -242,13 +257,20 @@ fn run_with(backends: wgpu::Backends, pending: &Pending) -> eframe::Result {
                 // Шрифты Segoe / JetBrains Mono — S2; пока шрифты egui по умолчанию.
                 ctx.options_mut(|o| o.zoom_with_keyboard = false);
             }
-            let core = {
+            let mut core = {
                 let _s = tracing::info_span!("startup.core").entered();
                 let t = Instant::now();
                 let core = Core::new(boot, services, Arc::new(EguiWaker(ctx)));
                 startup.core = t.elapsed();
                 core
             };
+            for c in open {
+                core.dispatch(c);
+            }
+            if let Some(inbox) = &ipc {
+                let ctx = cc.egui_ctx.clone();
+                inbox.set_waker(move || ctx.request_repaint());
+            }
             // Окно показывается скрытым от экрана: первые кадры рисуются уже в
             // итоговом размере, на экран выходит только готовый (S1-13).
             crate::sys::cloak(cc, true);
@@ -269,6 +291,8 @@ fn run_with(backends: wgpu::Backends, pending: &Pending) -> eframe::Result {
                 created: Instant::now(),
                 reveal: false,
                 shown: false,
+                ipc,
+                activate: 0,
             }))
         }),
     )
@@ -284,6 +308,9 @@ struct App {
     /// Кадр для показа нарисован: следующий `logic` снимает cloak.
     reveal: bool,
     shown: bool,
+    ipc: Option<crate::ipc::Inbox>,
+    /// Сколько кадров ещё выводить окно вперёд после запроса второго запуска.
+    activate: u8,
 }
 
 impl App {
@@ -318,6 +345,25 @@ impl eframe::App for App {
         // Команды клавиатуры из raw_input_hook — до pump, видны в этом же кадре.
         for c in self.out.drain(..) {
             core.dispatch(c);
+        }
+        // Второй запуск (S1-15): пути — новыми табами, окно — вперёд.
+        if let Some(inbox) = &self.ipc {
+            for req in inbox.try_iter() {
+                for c in req.commands() {
+                    core.dispatch(c);
+                }
+                self.activate = 2;
+            }
+        }
+        if self.activate > 0 && self.shown {
+            // winit не фокусирует свёрнутое окно: сначала развернуть, фокус —
+            // и в этом кадре, и в следующем, когда окно уже не свёрнуто.
+            if self.activate == 2 {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+            }
+            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            self.activate -= 1;
+            ctx.request_repaint();
         }
         if self.reveal && !self.shown {
             self.shown = true;
