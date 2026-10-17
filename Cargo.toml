@@ -37,7 +37,8 @@ smallvec = { version = "1.16", features = ["serde", "union", "const_generics"] }
 rustc-hash = "2.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
-toml = "1.1"
+# preserve_order: порядок строк keymap важен (S3 §2.4) — для всех крейтов одинаково.
+toml = { version = "1.1", features = ["preserve_order"] }
 dirs = "7.0"
 thiserror = "2.0"
 # Модификаторы клавиш keymap (S3 §5); 2.x уже в графе через wgpu/winit.

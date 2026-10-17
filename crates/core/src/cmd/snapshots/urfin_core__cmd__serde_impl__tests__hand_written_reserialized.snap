@@ -5,9 +5,9 @@ expression: "toml::to_string_pretty(&k).unwrap()"
 bind = [
     "panel.up",
     { cmd = "panel.go", path = 'C:\x y' },
-    { cmd = "ops.copy", dest = 'D:\', src = [
+    { cmd = "ops.copy", src = [
     'C:\a',
     'C:\b y',
-] },
+], dest = 'D:\' },
     { cmd = "tab.goto", n = 3 },
 ]
