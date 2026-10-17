@@ -8,5 +8,19 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 
+[dependencies]
+fluent-bundle.workspace = true
+unic-langid.workspace = true
+sys-locale.workspace = true
+jiff.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+insta.workspace = true
+tempfile.workspace = true
+tracing-subscriber.workspace = true
+
 [lints]
 workspace = true

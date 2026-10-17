@@ -46,6 +46,11 @@ windows-sys = "0.61"
 tracing = { version = "0.1.44", default-features = false, features = ["std"] }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
 tracing-appender = "0.2.5"
+# i18n (S2 §8; решение владельца 2026-10-17 — sys-locale, jiff).
+fluent-bundle = "0.16"
+unic-langid = "0.9.6"
+sys-locale = "0.3.2"
+jiff = "0.2.38"
 
 # Только dev.
 proptest = "1.12"
