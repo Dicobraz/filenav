@@ -65,11 +65,13 @@ impl ListStream for StdList {
 
 fn entry_of(de: &DirEntry, opts: &ListOpts) -> io::Result<Entry> {
     let md = de.metadata()?;
-    let name = de.file_name();
-    // Не-UTF-8 имена: обратимое экранирование — S4-02; пока замена U+FFFD.
-    let name = CompactString::from(name.to_string_lossy());
+    let (name, escaped) = crate::name::from_os(&de.file_name());
     let kind = kind_of(&md, || fs::metadata(de.path()), opts.resolve_links);
-    Ok(entry(name, &md, kind))
+    let mut e = entry(name, &md, kind);
+    if escaped {
+        e.attrs = Attrs(e.attrs.0 | Attrs::ESCAPED_NAME);
+    }
+    Ok(e)
 }
 
 /// Тип записи по `symlink_metadata`; `follow` — метаданные цели ссылки.
@@ -170,7 +172,7 @@ fn attrs_of(name: &str, md: &fs::Metadata, _kind: EntryKind) -> Attrs {
     if fa & OFFLINE != 0 {
         a |= Attrs::OFFLINE;
     }
-    if is_dotfile(name) {
+    if crate::name::is_dotfile(name) {
         a |= Attrs::DOTFILE;
     }
     Attrs(a)
@@ -180,7 +182,7 @@ fn attrs_of(name: &str, md: &fs::Metadata, _kind: EntryKind) -> Attrs {
 fn attrs_of(name: &str, md: &fs::Metadata, kind: EntryKind) -> Attrs {
     use std::os::unix::fs::PermissionsExt;
     let mut a = 0;
-    if is_dotfile(name) {
+    if crate::name::is_dotfile(name) {
         a |= Attrs::DOTFILE;
     }
     if kind == EntryKind::File && md.permissions().mode() & 0o111 != 0 {
@@ -200,10 +202,6 @@ fn attrs_of(name: &str, md: &fs::Metadata, kind: EntryKind) -> Attrs {
     Attrs(a)
 }
 
-fn is_dotfile(name: &str) -> bool {
-    name.starts_with('.') && name != "." && name != ".."
-}
-
 pub(crate) fn stat(p: &Path, follow: bool) -> Result<Metadata, VfsError> {
     let md = if follow {
         fs::metadata(p)
@@ -211,11 +209,11 @@ pub(crate) fn stat(p: &Path, follow: bool) -> Result<Metadata, VfsError> {
         fs::symlink_metadata(p)
     }
     .map_err(|e| VfsError::from_io(p, e))?;
-    let name = p
+    let (name, _) = p
         .file_name()
-        .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+        .map_or_else(|| (CompactString::default(), false), crate::name::from_os);
     let kind = kind_of(&md, || fs::metadata(p), true);
-    let e = entry(name.into(), &md, kind);
+    let e = entry(name, &md, kind);
     let link_target = (!follow && md.file_type().is_symlink())
         .then(|| fs::read_link(p).ok())
         .flatten();
@@ -271,12 +269,17 @@ fn empty_meta() -> Metadata {
     }
 }
 
-/// Одна запись каталога по имени (патчи watcher'а).
-pub(crate) fn stat_entry(dir: &Path, name: &str) -> Result<Entry, VfsError> {
-    let p = dir.join(name);
+/// Одна запись каталога по имени (патчи watcher'а); `escaped` — имя
+/// экранировано (`Attrs::ESCAPED_NAME`).
+pub(crate) fn stat_entry(dir: &Path, name: &str, escaped: bool) -> Result<Entry, VfsError> {
+    let p = dir.join(crate::name::to_os(name, escaped));
     let md = fs::symlink_metadata(&p).map_err(|e| VfsError::from_io(&p, e))?;
     let kind = kind_of(&md, || fs::metadata(&p), true);
-    Ok(entry(name.into(), &md, kind))
+    let mut e = entry(name.into(), &md, kind);
+    if escaped {
+        e.attrs = Attrs(e.attrs.0 | Attrs::ESCAPED_NAME);
+    }
+    Ok(e)
 }
 
 pub(crate) struct StdRead {

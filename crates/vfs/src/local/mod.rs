@@ -41,8 +41,8 @@ impl Vfs for LocalFs {
         std_fs::stat(&p.path, follow)
     }
 
-    fn stat_entry(&self, dir: &VfsPath, name: &str, _attrs_hint: Attrs) -> Result<Entry, VfsError> {
-        std_fs::stat_entry(&dir.path, name)
+    fn stat_entry(&self, dir: &VfsPath, name: &str, attrs_hint: Attrs) -> Result<Entry, VfsError> {
+        std_fs::stat_entry(&dir.path, name, attrs_hint.has(Attrs::ESCAPED_NAME))
     }
 
     fn open_read(&self, p: &VfsPath) -> Result<Box<dyn VfsRead>, VfsError> {

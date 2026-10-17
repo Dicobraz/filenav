@@ -13,9 +13,11 @@ compact_str.workspace = true
 crossbeam-channel.workspace = true
 filenav-core.workspace = true
 rustc-hash.workspace = true
+smallvec.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+proptest.workspace = true
 tempfile.workspace = true
 
 [lints]
