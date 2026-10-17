@@ -20,6 +20,7 @@ macOS в пассиве (S0-decisions): на него не тратим врем
 - **Рендер** (ADR-0012): на macOS wgpu с бэкендом Metal (вместо GL 4.1 при glow). `MemoryHints::MemoryUsage` и выбор встроенной графики общие; на macOS не замерялись. DWM cloak (старт без мигания, S1-13) — только Windows: на macOS окно показывается сразу, развёрнутое — с возможной перерисовкой.
 - **Один экземпляр** (S1-15): `flock` + unix socket проверены только тестом CI (`second_start_forwards_to_first_fast`, `stale_socket_is_cleaned`). На macOS открытие файлов из Finder/Dock приходит Apple Event'ом (`application:openURLs:`), а не вторым процессом — при реактивации нужен обработчик в winit/AppKit; активация окна (`Focus`) на macOS не проверялась.
 - **Системный probe** (S2-03, `filenav_ui::sys::other`): на macOS — заглушка. Тему ведёт winit (`ThemeChanged`), акцент — `#0078D4`, шрифты — встроенные egui. По S2 §1.5 при реактивации: `NSColor.controlAccentColor` (sRGB) с перечитыванием при `Focused(true)`, системный шрифт через `CTFontCreateUIFontForLanguage` → `kCTFontURLAttribute`; оттенки акцента уже считает `AccentPalette::from_base` (OKLCH).
+- **Рамка окна** (S2-06): на macOS (и Linux) системная рамка, свой заголовок не ставится (`install_window_chrome` → `None`), табы — строкой 40 px под заголовком ОС. По S2 §1.4 при реактивации: `with_fullsize_content_view(true)`, `with_titlebar_shown(false)`, отступ 78 px под «светофор».
 
 ## Прогноз по известным особенностям (до первого запуска на Mac, 2026-10-16)
 

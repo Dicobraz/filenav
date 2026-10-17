@@ -7,6 +7,7 @@
 //! (`clippy.toml`: `disallowed-methods`).
 
 pub mod accent;
+pub mod chrome;
 pub mod config;
 pub mod fmt_cell;
 pub mod fonts;
@@ -18,6 +19,7 @@ mod panel;
 pub mod state;
 pub mod sys;
 pub mod text;
+mod titlebar;
 pub mod tokens;
 
 use std::collections::VecDeque;
@@ -74,6 +76,8 @@ pub struct FileNavUi {
     fmt: (u64, fmt_cell::FmtCfg),
     /// Применённые настройки вида: тема, масштаб, `look` ОС.
     applied: Option<(ThemeMode, u16, sys::Look)>,
+    /// Своя рамка окна (Windows); `None` — системная.
+    chrome: Option<chrome::ChromeHandle>,
 }
 
 impl FileNavUi {
@@ -122,6 +126,7 @@ impl FileNavUi {
             fonts,
             font_files: probe.fonts.clone(),
             fallback_rx: None,
+            chrome: None,
             frames: 0,
             fmt: (
                 filenav_i18n::epoch(),
@@ -185,6 +190,16 @@ impl FileNavUi {
         &self.tokens
     }
 
+    /// Своя рамка окна ([`sys::install_window_chrome`]): кнопки caption в заголовке,
+    /// при Mica — прозрачный `bg.base`.
+    pub fn set_chrome(&mut self, chrome: Option<chrome::ChromeHandle>) {
+        let mica = chrome.as_ref().is_some_and(|c| c.mica);
+        self.chrome = chrome;
+        self.tokens.set_mica(mica);
+        // Стиль пересоберётся со следующим кадром.
+        self.applied = None;
+    }
+
     /// Следить за темой и акцентом ОС ([`sys::watch`]); без этого — только probe.
     pub fn watch_system(&mut self, ctx: &egui::Context) {
         let (tx, rx) = mpsc::channel();
@@ -218,8 +233,23 @@ impl FileNavUi {
             );
         }
 
+        if let Some(c) = &self.chrome {
+            c.sync_dark(ctx.theme() == egui::Theme::Dark);
+        }
         let t = &self.tokens;
         let gap = t.m(Metric::GapPanels);
+        let title = titlebar::TitleBar {
+            i18n: &i18n,
+            tokens: t,
+            fonts: &self.fonts,
+            chrome: self.chrome.as_ref(),
+            split: st.split,
+        };
+        egui::Panel::top("titlebar")
+            .resizable(false)
+            .exact_size(t.m(Metric::HTitlebar))
+            .frame(egui::Frame::new().fill(t.c(Role::BgBase)))
+            .show(root, |ui| title.show(ui, s, out));
         if self.cfg.keybar {
             egui::Panel::bottom("keybar")
                 .resizable(false)
@@ -229,7 +259,12 @@ impl FileNavUi {
         }
         let central = egui::Frame::new()
             .fill(self.tokens.c(Role::BgBase))
-            .inner_margin(egui::Margin::same(gap as i8));
+            .inner_margin(egui::Margin {
+                left: gap as i8,
+                right: gap as i8,
+                top: 0,
+                bottom: gap as i8,
+            });
         egui::CentralPanel::default()
             .frame(central)
             .show(root, |ui| {
@@ -271,6 +306,8 @@ impl FileNavUi {
             };
             // Предупреждения конфига уже показаны при создании.
             self.tokens = Tokens::build(&probe, &self.cfg).0;
+            self.tokens
+                .set_mica(self.chrome.as_ref().is_some_and(|c| c.mica));
             tokens::style::apply(ctx, &self.tokens, &self.fonts);
         }
         self.applied = Some(want);
@@ -323,7 +360,6 @@ impl FileNavUi {
         let strong = fs.id(Font::Strong, tk.m(Metric::TypeBody));
         let card = panel::card_frame(tk).show(ui, |ui| {
             ui.set_min_size(ui.available_size());
-            tab_strip(ui, i18n, tk, &strong, p, side, out);
             // Новый каталог ещё ничего не прислал — прежний кадр, а не пустая панель:
             // иначе каждый переход мигает (S2: индикатор — после 150 мс).
             let held = panel::hold_left(t).and_then(|left| {
@@ -489,46 +525,6 @@ impl FileNavUi {
                 }
             });
     }
-}
-
-/// Табы панели строкой над путём (в заголовок окна переедут в S2-13).
-fn tab_strip(
-    ui: &mut egui::Ui,
-    i18n: &I18n,
-    tk: &Tokens,
-    strong: &egui::FontId,
-    p: &filenav_core::Panel,
-    side: Side,
-    out: &mut Vec<Command>,
-) {
-    ui.horizontal_wrapped(|ui| {
-        for (i, tab) in p.tabs.iter().enumerate() {
-            let current = i == p.active;
-            let color = tk.c(if current {
-                Role::TextPrimary
-            } else {
-                Role::TextSecondary
-            });
-            let resp = text::label_styled(
-                ui,
-                i18n,
-                &Tx::user(tab.title().as_ref()),
-                Some(color),
-                current.then(|| strong.clone()),
-            );
-            // Клик без фокуса: в панелях нет фокусируемых виджетов (S0 v3 №13).
-            if ui
-                .interact(resp.rect, resp.id.with("tab"), Sense::CLICK)
-                .clicked()
-            {
-                out.push(
-                    Command::new("tab.goto")
-                        .arg("n", i64::try_from(i + 1).unwrap_or(1))
-                        .arg("side", panel::side_arg(side)),
-                );
-            }
-        }
-    });
 }
 
 /// Баннер core и активный вопрос над карточками. Тексты и подписи уже переведены core.

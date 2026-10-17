@@ -16,6 +16,9 @@ mod windows;
 use windows as os;
 
 #[cfg(windows)]
+mod chrome_win;
+
+#[cfg(windows)]
 #[path = "time_win.rs"]
 mod time;
 
@@ -124,6 +127,39 @@ fn font_warning(fonts: &FontFiles) -> Option<ConfigWarning> {
         key: "ui.fonts".to_owned(),
         msg: filenav_i18n::current().get("ui-warn-no-system-font"),
     })
+}
+
+/// Своя рамка окна (S2-06): Windows — subclass и DWM, `mica` — подложка Mica за
+/// прозрачными частями. Другие ОС и ошибка — `None`: системная рамка.
+pub fn install_window_chrome(
+    window: &impl raw_window_handle::HasWindowHandle,
+    ctx: &egui::Context,
+    mica: bool,
+) -> Option<crate::chrome::ChromeHandle> {
+    #[cfg(windows)]
+    {
+        let raw = window.window_handle().ok()?.as_raw();
+        let raw_window_handle::RawWindowHandle::Win32(h) = raw else {
+            return None;
+        };
+        chrome_win::install(h.hwnd.get(), ctx, mica)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (window, ctx, mica);
+        None
+    }
+}
+
+/// Mica сейчас: Win11 22H2+, не высокая контрастность и `[ui] backdrop` — `auto` при
+/// включённой прозрачности или `mica` (принудительно). Нужна до окна (прозрачный swapchain).
+pub fn mica_wanted(backdrop_cfg: &str) -> bool {
+    let cfg = backdrop_cfg.trim().to_ascii_lowercase();
+    if cfg == "solid" {
+        return false;
+    }
+    let look = os::look();
+    os::backdrop().mica && !look.high_contrast && (look.transparency || cfg == "mica")
 }
 
 /// Следит за темой и акцентом ОС: новый [`Look`] уходит в `sink`, кадр будится.

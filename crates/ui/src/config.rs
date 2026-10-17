@@ -47,7 +47,7 @@ pub struct UiCfg {
     pub theme: String,
     /// `system | "#RRGGBB"`.
     pub accent: String,
-    /// `auto | solid` (S2-06).
+    /// `auto` (Mica, если прозрачность ОС включена) | `mica` | `solid` (S2-06).
     pub backdrop: String,
     /// `system | путь`: Segoe UI Variable → Segoe UI.
     pub font_ui: String,

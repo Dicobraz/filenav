@@ -143,10 +143,19 @@ const BACKENDS: &[wgpu::Backends] = &[wgpu::Backends::VULKAN, wgpu::Backends::GL
 
 /// wgpu по ADR-0012: экономный по памяти режим, адаптер — [`adapter_rank`].
 /// Present — `AutoVsync` (по умолчанию egui-wgpu).
-fn wgpu_options(backends: wgpu::Backends) -> eframe::egui_wgpu::WgpuConfiguration {
+/// `mica` — DX12 через `DirectComposition` (`DxgiFromVisual`): swapchain с альфой, сквозь
+/// прозрачные пиксели виден Mica (S2 §1.4). Без Mica — обычный swapchain окна.
+fn wgpu_options(backends: wgpu::Backends, mica: bool) -> eframe::egui_wgpu::WgpuConfiguration {
     use eframe::egui_wgpu::{WgpuConfiguration, WgpuSetup, WgpuSetupCreateNew};
     let mut setup = WgpuSetupCreateNew::without_display_handle();
     setup.instance_descriptor.backends = backends;
+    if mica {
+        setup
+            .instance_descriptor
+            .backend_options
+            .dx12
+            .presentation_system = wgpu::Dx12SwapchainKind::DxgiFromVisual;
+    }
     setup.native_adapter_selector = Some(Arc::new(pick_adapter));
     setup.device_descriptor = Arc::new(|_| wgpu::DeviceDescriptor {
         label: Some("filenav"),
@@ -244,10 +253,12 @@ pub fn run(launch: Launch) -> anyhow::Result<()> {
             probe.warnings.extend(warnings);
             (probe, fonts)
         })?;
+    // Mica (Win11, прозрачность включена) решается до окна: от неё зависит swapchain.
+    let mica = filenav_ui::sys::mica_wanted(&ui_cfg.backdrop);
     let pending = Rc::new(RefCell::new(Some((launch, probe, ui_cfg))));
     let mut last = None;
     for backends in order {
-        match run_with(backends, &pending) {
+        match run_with(backends, &pending, mica) {
             Ok(()) => return Ok(()),
             // App не создан — значит, не поднялся рендер: пробуем следующий бэкенд.
             Err(e) if pending.borrow().is_some() => {
@@ -266,7 +277,9 @@ pub fn run(launch: Launch) -> anyhow::Result<()> {
 type Probe = std::thread::JoinHandle<(filenav_ui::sys::SysProbe, filenav_ui::fonts::LoadedFonts)>;
 type Pending = Rc<RefCell<Option<(Launch, Probe, filenav_ui::config::UiCfg)>>>;
 
-fn run_with(backends: wgpu::Backends, pending: &Pending) -> eframe::Result {
+fn run_with(backends: wgpu::Backends, pending: &Pending, mica: bool) -> eframe::Result {
+    // Прозрачный swapchain для Mica — только DX12 (запасной Vulkan — сплошной фон).
+    let mica = mica && backends == wgpu::Backends::DX12;
     let geom = pending
         .borrow()
         .as_ref()
@@ -275,6 +288,7 @@ fn run_with(backends: wgpu::Backends, pending: &Pending) -> eframe::Result {
         .with_title("FileNav")
         .with_visible(false)
         .with_min_inner_size([480.0, 320.0])
+        .with_transparent(mica)
         .with_inner_size(geom.map_or([1200.0, 760.0], |g| [g.w, g.h]));
     // «Развёрнуто» — не здесь: winit показал бы окно при создании, до первого
     // кадра. Разворачиваем уже скрытое окно (см. создание `App`).
@@ -285,7 +299,7 @@ fn run_with(backends: wgpu::Backends, pending: &Pending) -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport,
         renderer: eframe::Renderer::Wgpu,
-        wgpu_options: wgpu_options(backends),
+        wgpu_options: wgpu_options(backends, mica),
         // Хук сообщений Windows (KeyNotes, numpad, Ctrl+Ins/Shift+Del) поставит
         // keymap S3 (S0 v3 №10); winit — ровно версия eframe.
         event_loop_builder: Some(Box::new(|_builder| {})),
@@ -346,6 +360,12 @@ fn run_with(backends: wgpu::Backends, pending: &Pending) -> eframe::Result {
                 .get(filenav_ui::tokens::Role::BgBase);
             crate::sys::set_background(cc, [bg.r(), bg.g(), bg.b()]);
             crate::sys::no_transitions(cc);
+            // Своя рамка (заголовок с табами, Snap Layouts) — пока окно скрыто.
+            ui.set_chrome(filenav_ui::sys::install_window_chrome(
+                cc,
+                &cc.egui_ctx,
+                mica,
+            ));
             cc.egui_ctx
                 .send_viewport_cmd(egui::ViewportCommand::Maximized(maximized));
             cc.egui_ctx

@@ -45,8 +45,14 @@ pub const MORE: char = '\u{E712}';
 pub const SETTINGS: char = '\u{E713}';
 pub const SORT: char = '\u{E8CB}';
 
+/// Кнопки caption (Segoe Fluent Icons / MDL2).
+pub const CHROME_MINIMIZE: char = '\u{E921}';
+pub const CHROME_MAXIMIZE: char = '\u{E922}';
+pub const CHROME_RESTORE: char = '\u{E923}';
+pub const CHROME_CLOSE: char = '\u{E8BB}';
+
 /// Все используемые глифы: классы, оверлеи, UI.
-pub const ALL: [char; 29] = [
+pub const ALL: [char; 33] = [
     FOLDER,
     '\u{E7C3}',
     '\u{E8A5}',
@@ -76,6 +82,10 @@ pub const ALL: [char; 29] = [
     MORE,
     SETTINGS,
     SORT,
+    CHROME_MINIMIZE,
+    CHROME_MAXIMIZE,
+    CHROME_RESTORE,
+    CHROME_CLOSE,
 ];
 
 /// Строка всех глифов (прогрев атласа).
