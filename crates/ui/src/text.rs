@@ -63,6 +63,11 @@ pub fn label_styled(
     ui.label(rt)
 }
 
+/// Всплывающая подсказка у `resp` при наведении.
+pub fn tooltip(resp: &Response, i18n: &I18n, tx: &Tx<'_>) {
+    let _ = resp.clone().on_hover_text(tx.resolve(i18n).into_owned());
+}
+
 /// Кнопка.
 pub fn button(ui: &mut Ui, i18n: &I18n, tx: &Tx<'_>) -> Response {
     ui.button(tx.resolve(i18n).as_ref())

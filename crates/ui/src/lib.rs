@@ -11,6 +11,7 @@ pub mod cache;
 pub mod canvas;
 pub mod chrome;
 pub mod config;
+pub(crate) mod file_list;
 pub mod fmt_cell;
 pub mod fonts;
 mod frame;
@@ -76,6 +77,8 @@ pub struct FileNavUi {
     font_files: sys::FontFiles,
     fallback_rx: Option<mpsc::Receiver<Vec<fonts::FallbackFont>>>,
     frames: u64,
+    /// Ширины колонок табов (`FileList`).
+    widths: file_list::Widths,
     /// Разметка ячеек списка (S2 §6.2), общая для обеих панелей.
     rows: cache::RowCache,
     /// Эпоха стиля: тема, акцент, шрифты, масштаб, DPI — сброс `RowCache`.
@@ -140,6 +143,7 @@ impl FileNavUi {
             fallback_rx: None,
             chrome: None,
             frames: 0,
+            widths: file_list::Widths::default(),
             rows: cache::RowCache::new(),
             style_epoch: 0,
             last_ppp: 0.0,
@@ -302,8 +306,7 @@ impl FileNavUi {
         self.paint_jobs(root, &regions, &i18n, s);
         for side in [Side::Left, Side::Right] {
             if let Some(r) = regions.panel(side) {
-                let mut card = root.new_child(egui::UiBuilder::new().max_rect(r));
-                self.card(&mut card, &i18n, s, side, out);
+                self.card(root, r, &i18n, s, side, out);
             }
         }
         if let Some(sp) = regions.splitter {
@@ -378,126 +381,39 @@ impl FileNavUi {
         }
     }
 
-    #[allow(
-        clippy::too_many_lines,
-        reason = "временная карточка; заменит FileList (S2-10)"
-    )]
+    /// Карточка панели: `FileList` (S2-10) в прямоугольнике раскладки.
     fn card(
         &mut self,
-        ui: &mut egui::Ui,
+        root: &mut egui::Ui,
+        r: egui::Rect,
         i18n: &I18n,
         s: &AppState,
         side: Side,
         out: &mut Vec<Command>,
     ) {
         let p = s.panel(side);
-        let active = s.active == side;
-        let memo = &mut self.cards[side.idx()];
-        let rows_cache = &mut self.rows;
         if !p.visible {
             return;
         }
-        let t = p.tab();
-        let tk = &self.tokens;
-        let hl = &self.highlighter;
-        let fs = &self.fonts;
-        let strong = fs.id(Font::Strong, tk.m(Metric::TypeBody));
-        // Карточка из фиксированных полос токенов (не от высоты подписей egui): путь,
-        // список, подвал — число строк не зависит от того, применился ли стиль.
-        let inner = ui.max_rect().shrink(tk.m(Metric::SpaceXs));
-        let path_rect = inner.with_max_y(inner.top() + tk.m(Metric::HBreadcrumb));
-        let footer_rect = inner.with_min_y(inner.bottom() - tk.m(Metric::HPanelFooter));
-        let list_rect = egui::Rect::from_min_max(
-            egui::pos2(inner.left(), path_rect.bottom()),
-            egui::pos2(inner.right(), footer_rect.top()),
-        );
-        let pad = tk.m(Metric::PadRowX);
-        {
-            // Новый каталог ещё ничего не прислал — прежний кадр, а не пустая панель:
-            // иначе каждый переход мигает (S2: индикатор — после 150 мс).
-            let held = panel::hold_left(t).filter(|_| memo.has_frame);
-            if let Some(left) = held {
-                ui.ctx().request_repaint_after(left);
-            } else {
-                memo.refresh_texts(i18n, t);
-            }
-            let interactive = held.is_none();
-            let body = fs.id(Font::Ui, tk.m(Metric::TypeBody));
-            text::paint_clipped(
-                ui.painter(),
-                i18n,
-                path_rect.left_center() + egui::vec2(pad, 0.0),
-                path_rect.width() - 2.0 * pad,
-                &Tx::user(memo.path.as_str()),
-                if active { strong.clone() } else { body.clone() },
-                tk.c(Role::TextPrimary),
-            );
-            let row_h = tk.m(Metric::HRow);
-            let page = panel::rows_fit(list_rect.height(), row_h);
-            if memo.page != page {
-                memo.page = page;
-                out.push(
-                    Command::new("panel.viewport")
-                        .arg("side", panel::side_arg(side))
-                        .arg("rows", i64::from(page))
-                        .arg("cols", 1),
-                );
-            }
-            if interactive {
-                wheel(ui, list_rect, &mut memo.wheel_acc, t, side, page, out);
-                let icon_slot = if fs.icons {
-                    tk.m(Metric::WIcon) + 4.0
-                } else {
-                    0.0
-                };
-                let name_w = list_rect.width()
-                    - 2.0 * pad
-                    - icon_slot
-                    - 2.0 * tk.m(Metric::SpaceS)
-                    - panel::SIZE_W;
-                let digit_slot =
-                    (!fs.tabular_ok(Font::Ui)).then(|| fonts::FontSet::digit_slot(ui.ctx(), &body));
-                let cx = panel::LineCx {
-                    ctx: ui.ctx(),
-                    fmt: &self.fmt.1,
-                    hl,
-                    font: body.clone(),
-                    name_w,
-                    digit_slot,
-                };
-                panel::fill_lines(&mut memo.lines, rows_cache, &cx, t, page);
-                memo.has_frame = true;
-            }
-            let mut list = ui.new_child(egui::UiBuilder::new().max_rect(list_rect));
-            panel::Rows {
-                tokens: tk,
-                hl,
-                fonts: fs,
-                tab: t,
-                icons: fs.icons,
-                active,
-                interactive,
-                side,
-            }
-            .paint(&mut list, rows_cache, &memo.lines, out);
-            let divider = tk.c(Role::StrokeDivider);
-            for y in [path_rect.bottom(), footer_rect.top()] {
-                ui.painter().hline(
-                    inner.x_range(),
-                    y,
-                    egui::Stroke::new(tk.m(Metric::StrokeThin), divider),
-                );
-            }
-            text::paint_clipped(
-                ui.painter(),
-                i18n,
-                footer_rect.left_center() + egui::vec2(pad, 0.0),
-                footer_rect.width() - 2.0 * pad,
-                &Tx::user(memo.footer.as_str()),
-                fs.id(Font::Caption, tk.m(Metric::TypeCaption)),
-                tk.c(Role::TextSecondary),
-            );
-        }
+        let mut c = canvas::EguiCanvas {
+            painter: root.painter().clone(),
+            tokens: &self.tokens,
+            fonts: &self.fonts,
+            i18n,
+        };
+        let mut ui = root.new_child(egui::UiBuilder::new().max_rect(r));
+        let mut cx = file_list::ListCx {
+            ui: &mut ui,
+            i18n,
+            tokens: &self.tokens,
+            fonts: &self.fonts,
+            hl: &self.highlighter,
+            fmt: &self.fmt.1,
+            cache: &mut self.rows,
+            memo: &mut self.cards[side.idx()],
+            widths: &mut self.widths,
+        };
+        file_list::show(&mut c, r, p.tab(), side, s.active == side, &mut cx, out);
     }
 
     fn paint_jobs(&self, root: &egui::Ui, regions: &layout::Regions, i18n: &I18n, s: &AppState) {
@@ -597,58 +513,6 @@ impl FileNavUi {
     }
 }
 
-/// Колесо над списком — `panel.viewport{top}` (строк за щелчок — по высоте строки).
-fn wheel(
-    ui: &egui::Ui,
-    list_rect: egui::Rect,
-    acc: &mut f32,
-    t: &filenav_core::Tab,
-    side: Side,
-    page: u32,
-    out: &mut Vec<Command>,
-) {
-    let over = ui
-        .input(|i| i.pointer.hover_pos())
-        .is_some_and(|p| list_rect.contains(p));
-    if !over {
-        *acc = 0.0;
-        return;
-    }
-    // Сырые события колеса: сглаженная дельта egui приходит по кадрам долями строки,
-    // и округление каждой доли давало ноль. Деление колеса — 3 строки (как в Windows).
-    #[allow(clippy::cast_precision_loss, reason = "страница — сотни строк")]
-    let page_f = page as f32;
-    let rows: f32 = ui.input(|i| {
-        i.raw
-            .events
-            .iter()
-            .map(|e| match e {
-                egui::Event::MouseWheel { unit, delta, .. } => match unit {
-                    egui::MouseWheelUnit::Line => -delta.y * WHEEL_ROWS,
-                    egui::MouseWheelUnit::Point => -delta.y / 24.0,
-                    egui::MouseWheelUnit::Page => -delta.y * page_f,
-                },
-                _ => 0.0,
-            })
-            .sum()
-    });
-    *acc += rows;
-    let whole = acc.trunc();
-    *acc -= whole;
-    #[allow(clippy::cast_possible_truncation, reason = "строк за кадр немного")]
-    let lines = whole as i64;
-    if lines != 0 {
-        let top = (i64::from(t.cursor.top) + lines).max(0);
-        out.push(
-            Command::new("panel.viewport")
-                .arg("side", panel::side_arg(side))
-                .arg("rows", i64::from(page))
-                .arg("cols", 1)
-                .arg("top", top),
-        );
-    }
-}
-
 /// Заполненность атласа шрифтов egui.
 #[allow(
     clippy::redundant_closure_for_method_calls,
@@ -657,9 +521,6 @@ fn wheel(
 fn atlas_fill(ctx: &egui::Context) -> f32 {
     ctx.fonts(|f| f.font_atlas_fill_ratio())
 }
-
-/// Строк на деление колеса.
-const WHEEL_ROWS: f32 = 3.0;
 
 /// Баннер core и активный вопрос над карточками. Тексты и подписи уже переведены core.
 fn top_bars(
