@@ -32,9 +32,8 @@ fn text(col: ColKind, e: &Entry, c: &FmtCfg) -> String {
     out.as_str().to_owned()
 }
 
-/// Строки мокапов S2 §2.1 и §2.3 (ru). Размеры меньше 10 в мокапе даны с одной цифрой
-/// после запятой («1,2 КБ»), а текст §2.1 и приёмка S2-01 — 3 значащие цифры («1,00 КБ»);
-/// сверяются значения, где мокап и правило сходятся.
+/// Строки мокапов S2 §2.1 и §2.3 (ru); размер — не больше одного знака после запятой
+/// (решение владельца 2026-10-17).
 #[test]
 fn matches_mockups() {
     let c = cfg("ru");
@@ -49,6 +48,10 @@ fn matches_mockups() {
             ["118 Б", "Файл GITIGNORE", "HA"],
         ),
         (file("Cargo.lock", 48_213), ["47,1 КБ", "Файл LOCK", "A"]),
+        (file("Cargo.toml", 1_229), ["1,2 КБ", "Файл TOML", "A"]),
+        (file("README.md", 3_891), ["3,8 КБ", "Файл MD", "A"]),
+        (file("deny.toml", 1_331), ["1,3 КБ", "Файл TOML", "A"]),
+        (file("отчёт.docx", 2_097_152), ["2,0 МБ", "Файл DOCX", "A"]),
         (file("LICENSE-APACHE", 10_854), ["10,6 КБ", "Файл", "A"]),
         (file("LICENSE-MIT", 1023), ["1023 Б", "Файл", "A"]),
         (
@@ -105,7 +108,7 @@ fn unknown_time_and_dir_sizes() {
     let mut d = entry("d", 3 * 1024 * 1024, 0, EntryKind::Dir);
     assert_eq!(text(ColKind::Size, &d, &c), "", "не посчитан — пусто");
     d.attrs = Attrs(Attrs::SIZE_KNOWN);
-    assert_eq!(text(ColKind::Size, &d, &c), "3,00 МБ");
+    assert_eq!(text(ColKind::Size, &d, &c), "3,0 МБ");
     assert_eq!(
         text(ColKind::Type, &entry("l", 0, 0, EntryKind::LinkBroken), &c),
         "Ярлык"

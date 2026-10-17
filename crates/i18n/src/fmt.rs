@@ -120,9 +120,10 @@ fn localized<const DECIMAL: char, const GROUP: char, M>(
     Some(f.localize(&number.as_string()))
 }
 
-/// Размер для колонок и подвала: 3 цифры (`47,1 КБ`, `977 МБ`, `0,98 ГБ`); меньше 1024 — в
-/// байтах без округления (`1023 Б`). Основание 1024; единица растёт, когда округлённое
-/// значение доходит до 1000.
+/// Размер для колонок и подвала: не больше одного знака после запятой (`1,2 КБ`,
+/// `47,1 КБ`, `977 МБ`; решение владельца 2026-10-17 — точные байты в свойствах);
+/// меньше 1024 — в байтах (`1023 Б`). Основание 1024; единица растёт, когда округлённое
+/// значение доходит до 1000 (`999 КБ` → `1,0 МБ`).
 pub fn bytes(n: u64) -> String {
     bytes_with(&current(), n)
 }
@@ -195,15 +196,15 @@ fn bytes_parts(n: u64, out: &mut Digits) -> usize {
         let _ = write!(out, "{n}");
         return 0;
     }
-    // Точность f64 (53 бита) с запасом покрывает 3 значащие цифры.
+    // Точности f64 (53 бита) с запасом хватает на 3 значащие цифры.
     #[allow(clippy::cast_precision_loss)]
     let mut value = n as f64;
     for unit in 1..UNITS.len() {
         value /= 1024.0;
-        for decimals in [2, 1, 0] {
+        for decimals in [1, 0] {
             out.clear();
             let _ = write!(out, "{value:.decimals$}");
-            let limit = [1000.0, 100.0, 10.0][decimals];
+            let limit = [1000.0, 100.0][decimals];
             if out.as_str().parse::<f64>().is_ok_and(|v| v < limit) {
                 return unit;
             }
@@ -282,11 +283,12 @@ mod tests {
     fn bytes_parts_edges() {
         assert_eq!(bytes_parts(0), ("0".into(), 0));
         assert_eq!(bytes_parts(1023), ("1023".into(), 0));
-        assert_eq!(bytes_parts(1024), ("1.00".into(), 1));
-        assert_eq!(bytes_parts(10_234), ("9.99".into(), 1));
-        assert_eq!(bytes_parts(10_235), ("10.0".into(), 1));
+        assert_eq!(bytes_parts(1024), ("1.0".into(), 1));
+        assert_eq!(bytes_parts(10_234), ("10.0".into(), 1));
+        assert_eq!(bytes_parts(102_348), ("99.9".into(), 1));
+        assert_eq!(bytes_parts(102_349), ("100".into(), 1));
         assert_eq!(bytes_parts(1_023_487), ("999".into(), 1));
-        assert_eq!(bytes_parts(1_023_488), ("0.98".into(), 2));
+        assert_eq!(bytes_parts(1_023_488), ("1.0".into(), 2));
         assert_eq!(bytes_parts(u64::MAX), ("16.0".into(), 6));
     }
 }
