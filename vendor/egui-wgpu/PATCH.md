@@ -26,6 +26,7 @@ Urfin этот путь не включает (`predictable_texture_filtering = 
 компилируется целиком.
 
 ## Когда убрать
+Issue: https://github.com/emilk/egui/issues/8736.
 Как только исправление выйдет в egui-wgpu (проверять при каждом обновлении egui):
 удалить `vendor/egui-wgpu` и секцию `[patch.crates-io]`, перемерить старт
 (`urfin.exe --bench-startup`).
