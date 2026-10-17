@@ -488,6 +488,12 @@ impl UrfinUi {
         }
     }
 
+    /// Уведомление от приложения (например, откат рендера на WARP, S0 №50): текст
+    /// уже переведён. Полные тосты №51 — S2-17.
+    pub fn toast(&mut self, text: String) {
+        self.toasts.push_back((text, Instant::now() + TOAST_TTL));
+    }
+
     fn paint_toasts(&self, ctx: &egui::Context, i18n: &I18n) {
         if self.toasts.is_empty() {
             return;

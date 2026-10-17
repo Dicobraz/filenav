@@ -49,6 +49,9 @@ pub struct UiCfg {
     pub accent: String,
     /// `auto` (Mica, если прозрачность ОС включена) | `mica` | `solid` (S2-06).
     pub backdrop: String,
+    /// `auto | dx12 | warp | vulkan` (S0-decisions №50; Windows). Действует при
+    /// следующем запуске окна.
+    pub renderer: String,
     /// `system | путь`: Segoe UI Variable → Segoe UI.
     pub font_ui: String,
     pub font_ui_size: f32,
@@ -74,6 +77,7 @@ impl Default for UiCfg {
             theme: "system".into(),
             accent: "system".into(),
             backdrop: "auto".into(),
+            renderer: "auto".into(),
             font_ui: "system".into(),
             font_ui_size: 14.0,
             font_mono: "system".into(),

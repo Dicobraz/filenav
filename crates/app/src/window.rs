@@ -5,8 +5,10 @@
 //! кадра. Перерисовка — только по событию: в простое 0% CPU.
 
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use eframe::egui;
@@ -14,17 +16,36 @@ use urfin_core::{Boot, Command, Core, Focus, OverlayKind, Session, WindowGeom};
 use urfin_ui::UrfinUi;
 
 use crate::Startup;
+use crate::gpu::{self, Gpu};
 
-/// Будит UI из других потоков (S1-13).
-struct EguiWaker(egui::Context);
+/// Будит UI из других потоков (S1-13). Контекст меняется, когда окно создаётся
+/// заново после потери устройства (Core и его потоки — прежние).
+struct EguiWaker(Mutex<egui::Context>);
+
+impl EguiWaker {
+    fn new(ctx: egui::Context) -> Self {
+        EguiWaker(Mutex::new(ctx))
+    }
+
+    fn ctx(&self) -> egui::Context {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    fn set(&self, ctx: egui::Context) {
+        *self.0.lock().unwrap_or_else(PoisonError::into_inner) = ctx;
+    }
+}
 
 impl urfin_core::Waker for EguiWaker {
     fn wake(&self) {
-        self.0.request_repaint();
+        self.ctx().request_repaint();
     }
 
     fn wake_after(&self, d: Duration) {
-        self.0.request_repaint_after(d);
+        self.ctx().request_repaint_after(d);
     }
 }
 
@@ -137,95 +158,6 @@ fn ime_allowed(f: Focus) -> bool {
     }
 }
 
-/// Бэкенды wgpu по очереди (ADR-0012): следующий пробуется, только если
-/// предыдущий не дал адаптера. Каждый поднятый бэкенд стоит старту десятки мс.
-/// Windows — DX12: Vulkan при развороте окна 30–85 мс показывает чёрный кадр
-/// (пересоздание swapchain).
-#[cfg(windows)]
-const BACKENDS: &[wgpu::Backends] = &[wgpu::Backends::DX12, wgpu::Backends::VULKAN];
-#[cfg(target_os = "macos")]
-const BACKENDS: &[wgpu::Backends] = &[wgpu::Backends::METAL];
-#[cfg(all(unix, not(target_os = "macos")))]
-const BACKENDS: &[wgpu::Backends] = &[wgpu::Backends::VULKAN, wgpu::Backends::GL];
-
-/// wgpu по ADR-0012: экономный по памяти режим, адаптер — [`adapter_rank`].
-/// Present — `AutoVsync` (по умолчанию egui-wgpu).
-/// `mica` — DX12 через `DirectComposition` (`DxgiFromVisual`): swapchain с альфой, сквозь
-/// прозрачные пиксели виден Mica (S2 §1.4). Без Mica — обычный swapchain окна.
-fn wgpu_options(backends: wgpu::Backends, mica: bool) -> eframe::egui_wgpu::WgpuConfiguration {
-    use eframe::egui_wgpu::{WgpuConfiguration, WgpuSetup, WgpuSetupCreateNew};
-    let mut setup = WgpuSetupCreateNew::without_display_handle();
-    setup.instance_descriptor.backends = backends;
-    if mica {
-        setup
-            .instance_descriptor
-            .backend_options
-            .dx12
-            .presentation_system = wgpu::Dx12SwapchainKind::DxgiFromVisual;
-    }
-    setup.native_adapter_selector = Some(Arc::new(pick_adapter));
-    setup.device_descriptor = Arc::new(|_| wgpu::DeviceDescriptor {
-        label: Some("urfin"),
-        required_limits: wgpu::Limits {
-            // Текстура на весь экран — до 8K.
-            max_texture_dimension_2d: 8192,
-            ..wgpu::Limits::downlevel_defaults()
-        },
-        // Блоки памяти по умолчанию (Performance) — +200 МБ RAM на встроенной
-        // графике, где видеопамять — это RAM процесса.
-        memory_hints: wgpu::MemoryHints::MemoryUsage,
-        ..Default::default()
-    });
-    let default = WgpuConfiguration::default();
-    let on_status = default.on_surface_status.clone();
-    WgpuConfiguration {
-        wgpu_setup: WgpuSetup::CreateNew(setup),
-        // Статусы поверхности (resize, occluded, lost) — в самопроверку; действие —
-        // как у egui-wgpu.
-        on_surface_status: Arc::new(move |status| {
-            let name = format!("{status:?}");
-            crate::selftest::note_surface(name.split(['(', ' ']).next().unwrap_or(&name));
-            on_status(status)
-        }),
-        ..default
-    }
-}
-
-/// Порядок адаптеров одного бэкенда (меньше — лучше): встроенная графика —
-/// дискретная файловому менеджеру не нужна; программный рендер — последним.
-fn adapter_rank(device: wgpu::DeviceType) -> u8 {
-    use wgpu::DeviceType as D;
-    match device {
-        D::IntegratedGpu => 0,
-        D::DiscreteGpu => 1,
-        D::VirtualGpu => 2,
-        D::Other => 3,
-        D::Cpu => 4,
-    }
-}
-
-fn pick_adapter(
-    adapters: &[wgpu::Adapter],
-    surface: Option<&wgpu::Surface<'_>>,
-) -> Result<wgpu::Adapter, String> {
-    let best = adapters
-        .iter()
-        .filter(|a| surface.is_none_or(|s| a.is_surface_supported(s)))
-        .min_by_key(|a| {
-            let i = a.get_info();
-            adapter_rank(i.device_type)
-        })
-        .cloned()
-        .ok_or_else(|| "no graphics adapter can draw to the window".to_owned())?;
-    let i = best.get_info();
-    tracing::info!(backend = ?i.backend, device = %i.name, kind = ?i.device_type, driver = %i.driver_info, "graphics adapter");
-    crate::selftest::note_adapter(format!(
-        "{:?} {} ({:?}, driver {})",
-        i.backend, i.name, i.device_type, i.driver_info
-    ));
-    Ok(best)
-}
-
 /// Окно до выхода. `boot.session` — уже загруженная сессия (геометрия из неё).
 /// Всё, что окну нужно от `main`.
 pub struct Launch {
@@ -240,37 +172,71 @@ pub struct Launch {
 }
 
 pub fn run(launch: Launch) -> anyhow::Result<()> {
-    // `WGPU_BACKEND` (переменная wgpu) заменяет очередь — для диагностики.
-    let order = wgpu::Backends::from_env().map_or_else(|| BACKENDS.to_vec(), |b| vec![b]);
     let (ui_cfg, ui_cfg_warning) = launch.boot.config.section::<urfin_ui::config::UiCfg>("ui");
     if let Some(w) = ui_cfg_warning {
         tracing::warn!(key = %w.key, msg = %w.msg, "[ui] section ignored");
     }
-    // Probe ОС (тема, акцент, файлы шрифтов) и чтение шрифтов — параллельно созданию
-    // окна и `Core::new`.
-    let cfg = ui_cfg.clone();
-    let probe = std::thread::Builder::new()
-        .name("font-probe".into())
-        .spawn(move || {
-            let mut probe = urfin_ui::sys::probe_system();
-            let (fonts, warnings) = urfin_ui::fonts::load(&probe.fonts, &cfg);
-            probe.warnings.extend(warnings);
-            (probe, fonts)
-        })?;
+    // `WGPU_BACKEND` (переменная wgpu) заменяет очередь — для диагностики.
+    let (plan, plan_warning) = match wgpu::Backends::from_env() {
+        Some(b) => (vec![Gpu::Any(b)], None),
+        None => gpu::plan(&ui_cfg.renderer),
+    };
+    if let Some(msg) = &plan_warning {
+        tracing::warn!(key = "ui.renderer", %msg, "config value ignored");
+    }
     // Mica (Win11, прозрачность включена) решается до окна: от неё зависит swapchain.
     let mica = urfin_ui::sys::mica_wanted(&ui_cfg.backdrop);
-    let pending = Rc::new(RefCell::new(Some((launch, probe, ui_cfg))));
+    let pending: Pending = Rc::new(RefCell::new(Some(Start {
+        from: Origin::Launch(Box::new(launch)),
+        probe: spawn_probe(&ui_cfg)?,
+        ui_cfg: ui_cfg.clone(),
+        warnings: plan_warning.into_iter().collect(),
+    })));
+    let restart: Restart = Rc::default();
+    let mut queue: VecDeque<Gpu> = plan.iter().copied().collect();
     let mut last = None;
-    for backends in order {
-        match run_with(backends, &pending, mica) {
-            Ok(()) => return Ok(()),
-            // App не создан — значит, не поднялся рендер: пробуем следующий бэкенд.
+    while let Some(gpu) = queue.pop_front() {
+        let attempt = Attempt {
+            gpu,
+            mica: mica && gpu.mica_capable(),
+            // Не то, что выбрано настройкой, — откат: тост (S0-decisions №50).
+            fallback: gpu != plan[0],
+        };
+        match run_with(attempt, &pending, &restart) {
+            Ok(()) => {
+                let Some(resume) = restart.borrow_mut().take() else {
+                    return Ok(());
+                };
+                // Устройство потеряно: окно заново на следующей попытке, Core тот же.
+                queue = gpu::after(&plan, gpu).into();
+                if queue.is_empty() {
+                    let session = resume.core.shutdown(Duration::from_millis(200));
+                    tracing::info!(window = ?session.window, "session saved on exit");
+                    return Err(anyhow::anyhow!("window: graphics device lost on {gpu:?}"));
+                }
+                tracing::warn!(?gpu, next = ?queue[0], "restarting the window after device loss");
+                *pending.borrow_mut() = Some(Start {
+                    from: Origin::Resume(Box::new(resume)),
+                    probe: spawn_probe(&ui_cfg)?,
+                    ui_cfg: ui_cfg.clone(),
+                    warnings: Vec::new(),
+                });
+            }
+            // App не создан — значит, не поднялся рендер: следующая попытка.
             Err(e) if pending.borrow().is_some() => {
-                tracing::warn!(?backends, error = %e, "graphics backend unavailable");
+                tracing::warn!(?gpu, error = %e, "graphics backend unavailable");
                 last = Some(e);
             }
             Err(e) => return Err(anyhow::anyhow!("window: {e}")),
         }
+    }
+    // Core после потери устройства ждал окна, а рендера больше нет: сессию — на диск.
+    if let Some(Start {
+        from: Origin::Resume(r),
+        ..
+    }) = pending.borrow_mut().take()
+    {
+        r.core.shutdown(Duration::from_millis(200));
     }
     Err(anyhow::anyhow!(
         "window: no graphics backend: {}",
@@ -278,16 +244,62 @@ pub fn run(launch: Launch) -> anyhow::Result<()> {
     ))
 }
 
-type Probe = std::thread::JoinHandle<(urfin_ui::sys::SysProbe, urfin_ui::fonts::LoadedFonts)>;
-type Pending = Rc<RefCell<Option<(Launch, Probe, urfin_ui::config::UiCfg)>>>;
+/// Probe ОС (тема, акцент, файлы шрифтов) и чтение шрифтов — параллельно созданию
+/// окна и `Core::new`.
+fn spawn_probe(cfg: &urfin_ui::config::UiCfg) -> std::io::Result<Probe> {
+    let cfg = cfg.clone();
+    std::thread::Builder::new()
+        .name("font-probe".into())
+        .spawn(move || {
+            let mut probe = urfin_ui::sys::probe_system();
+            let (fonts, warnings) = urfin_ui::fonts::load(&probe.fonts, &cfg);
+            probe.warnings.extend(warnings);
+            (probe, fonts)
+        })
+}
 
-fn run_with(backends: wgpu::Backends, pending: &Pending, mica: bool) -> eframe::Result {
-    // Прозрачный swapchain для Mica — только DX12 (запасной Vulkan — сплошной фон).
-    let mica = mica && backends == wgpu::Backends::DX12;
-    let geom = pending
-        .borrow()
-        .as_ref()
-        .and_then(|(l, _, _)| l.boot.session.as_ref().and_then(|s| s.window));
+type Probe = std::thread::JoinHandle<(urfin_ui::sys::SysProbe, urfin_ui::fonts::LoadedFonts)>;
+type Pending = Rc<RefCell<Option<Start>>>;
+/// Сюда `App` кладёт своё состояние при потере устройства (см. [`run`]).
+type Restart = Rc<RefCell<Option<Resume>>>;
+
+/// Что нужно окну для запуска.
+struct Start {
+    from: Origin,
+    probe: Probe,
+    ui_cfg: urfin_ui::config::UiCfg,
+    /// Предупреждения настроек окна — тостами в первом кадре.
+    warnings: Vec<String>,
+}
+
+enum Origin {
+    /// Первый запуск окна.
+    Launch(Box<Launch>),
+    /// Окно заново после потери устройства: Core и вторые запуски — прежние.
+    Resume(Box<Resume>),
+}
+
+struct Resume {
+    core: Core,
+    waker: Arc<EguiWaker>,
+    startup: Startup,
+    ipc: Option<crate::ipc::Inbox>,
+    selftest: Option<crate::selftest::SelfTest>,
+}
+
+#[derive(Clone, Copy)]
+struct Attempt {
+    gpu: Gpu,
+    mica: bool,
+    fallback: bool,
+}
+
+fn run_with(attempt: Attempt, pending: &Pending, restart: &Restart) -> eframe::Result {
+    let Attempt { gpu, mica, .. } = attempt;
+    let geom = pending.borrow().as_ref().and_then(|s| match &s.from {
+        Origin::Launch(l) => l.boot.session.as_ref().and_then(|s| s.window),
+        Origin::Resume(r) => r.core.window(),
+    });
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("Urfin")
         .with_visible(false)
@@ -303,7 +315,7 @@ fn run_with(backends: wgpu::Backends, pending: &Pending, mica: bool) -> eframe::
     let options = eframe::NativeOptions {
         viewport,
         renderer: eframe::Renderer::Wgpu,
-        wgpu_options: wgpu_options(backends, mica),
+        wgpu_options: gpu::wgpu_options(gpu, mica),
         // Хук сообщений Windows (KeyNotes, numpad, Ctrl+Ins/Shift+Del) поставит
         // keymap S3 (S0 v3 №10); winit — ровно версия eframe.
         event_loop_builder: Some(Box::new(|_builder| {})),
@@ -314,30 +326,65 @@ fn run_with(backends: wgpu::Backends, pending: &Pending, mica: bool) -> eframe::
     };
     let window_started = Instant::now();
     let pending = Rc::clone(pending);
+    let restart = Rc::clone(restart);
     eframe::run_native(
         "Urfin",
         options,
         Box::new(move |cc| {
-            let (
-                Launch {
-                    boot,
-                    mut startup,
-                    ipc,
-                    open,
-                    selftest,
-                },
-                probe,
-                ui_cfg,
-            ) = pending.borrow_mut().take().expect("launch is taken once");
+            let start = pending.borrow_mut().take().expect("start is taken once");
+            Ok(Box::new(create_app(
+                cc,
+                start,
+                attempt,
+                window_started,
+                maximized,
+                restart,
+            )))
+        }),
+    )
+}
+
+/// `App` для созданного окна: Core (новый или прежний), шрифты, рамка, показ.
+#[allow(clippy::too_many_lines, reason = "шаги создания окна по порядку")]
+fn create_app(
+    cc: &eframe::CreationContext<'_>,
+    start: Start,
+    attempt: Attempt,
+    window_started: Instant,
+    maximized: bool,
+    restart: Restart,
+) -> App {
+    let Start {
+        from,
+        probe,
+        ui_cfg,
+        warnings,
+    } = start;
+    let Attempt {
+        gpu,
+        mica,
+        fallback,
+    } = attempt;
+    let ctx = cc.egui_ctx.clone();
+    // Масштаб — только командой `ui.zoom` (S0 v3 №13).
+    ctx.options_mut(|o| o.zoom_with_keyboard = false);
+    let resumed = matches!(from, Origin::Resume(_));
+    let (core, waker, startup, ipc, selftest) = match from {
+        Origin::Launch(launch) => {
+            let Launch {
+                boot,
+                mut startup,
+                ipc,
+                open,
+                selftest,
+            } = *launch;
             let services = crate::vfs_services(&boot.config);
             startup.window = window_started.elapsed();
-            let ctx = cc.egui_ctx.clone();
-            // Масштаб — только командой `ui.zoom` (S0 v3 №13).
-            ctx.options_mut(|o| o.zoom_with_keyboard = false);
+            let waker = Arc::new(EguiWaker::new(ctx.clone()));
             let mut core = {
                 let _s = tracing::info_span!("startup.core").entered();
                 let t = Instant::now();
-                let mut core = Core::new(boot, services, Arc::new(EguiWaker(ctx)));
+                let mut core = Core::new(boot, services, waker.clone());
                 urfin_ui::register(&mut core);
                 startup.core = t.elapsed();
                 core
@@ -345,57 +392,98 @@ fn run_with(backends: wgpu::Backends, pending: &Pending, mica: bool) -> eframe::
             for c in open {
                 core.dispatch(c);
             }
-            if let Some(inbox) = &ipc {
-                let ctx = cc.egui_ctx.clone();
-                inbox.set_waker(move || ctx.request_repaint());
-            }
-            let (probe, loaded) = probe.join().unwrap_or_else(|_| {
-                tracing::error!("system probe panicked; using defaults");
-                Default::default()
-            });
-            // Шрифты — до первого кадра: он рисуется уже ими.
-            let fonts = urfin_ui::fonts::install(&cc.egui_ctx, &loaded);
-            let theme = probe.look.theme.unwrap_or_else(|| cc.egui_ctx.theme());
-            let mut ui = UrfinUi::new(core.registry(), &probe, &ui_cfg, fonts);
-            ui.watch_system(&cc.egui_ctx);
-            // Окно показывается скрытым от экрана: первые кадры рисуются уже в
-            // итоговом размере, на экран выходит только готовый (S1-13).
-            crate::sys::cloak(cc, true);
-            let bg = ui
-                .tokens()
-                .palette(theme)
-                .get(urfin_ui::tokens::Role::BgBase);
-            // При Mica под визуалом DirectComposition видна поверхность окна: чёрные
-            // пиксели в продлённой рамке DWM прозрачны, цветная кисть закрыла бы Mica.
-            let bg = if mica { egui::Color32::BLACK } else { bg };
-            crate::sys::set_background(cc, [bg.r(), bg.g(), bg.b()]);
-            crate::sys::no_transitions(cc);
-            // Своя рамка (заголовок с табами, Snap Layouts) — пока окно скрыто.
-            ui.set_chrome(urfin_ui::sys::install_window_chrome(cc, &cc.egui_ctx, mica));
-            cc.egui_ctx
-                .send_viewport_cmd(egui::ViewportCommand::Maximized(maximized));
-            cc.egui_ctx
-                .send_viewport_cmd(egui::ViewportCommand::Visible(true));
-            cc.egui_ctx.request_repaint_after(SHOW_AT_LATEST);
-            Ok(Box::new(App {
-                core: Some(core),
-                ui,
-                out: Vec::new(),
-                startup,
-                first_frame_done: false,
-                created: Instant::now(),
-                reveal: false,
-                shown: false,
-                ipc,
-                activate: 0,
-                selftest: selftest.map(crate::selftest::SelfTest::new),
-            }))
-        }),
-    )
+            let selftest = selftest.map(crate::selftest::SelfTest::new);
+            (core, waker, startup, ipc, selftest)
+        }
+        Origin::Resume(r) => {
+            r.waker.set(ctx.clone());
+            (r.core, r.waker, r.startup, r.ipc, r.selftest)
+        }
+    };
+    if let Some(inbox) = &ipc {
+        let ctx = cc.egui_ctx.clone();
+        inbox.set_waker(move || ctx.request_repaint());
+    }
+    let lost = Arc::new(AtomicBool::new(false));
+    if let Some(rs) = cc.wgpu_render_state.as_ref() {
+        let i = rs.adapter.get_info();
+        tracing::info!(
+            target: "startup.renderer",
+            ?gpu,
+            backend = ?i.backend,
+            device = %i.name,
+            kind = ?i.device_type,
+            fallback,
+            resumed,
+            "renderer"
+        );
+        gpu::watch_device(&rs.device, &cc.egui_ctx, Arc::clone(&lost));
+    }
+    let (probe, loaded) = probe.join().unwrap_or_else(|_| {
+        tracing::error!("system probe panicked; using defaults");
+        Default::default()
+    });
+    // Шрифты — до первого кадра: он рисуется уже ими.
+    let fonts = urfin_ui::fonts::install(&cc.egui_ctx, &loaded);
+    let theme = probe.look.theme.unwrap_or_else(|| cc.egui_ctx.theme());
+    let mut ui = UrfinUi::new(core.registry(), &probe, &ui_cfg, fonts);
+    for w in warnings {
+        ui.toast(format!("ui.renderer: {w}"));
+    }
+    if fallback {
+        ui.toast(urfin_i18n::current().get("ui-renderer-fallback"));
+    }
+    ui.watch_system(&cc.egui_ctx);
+    // Окно показывается скрытым от экрана: первые кадры рисуются уже в
+    // итоговом размере, на экран выходит только готовый (S1-13).
+    crate::sys::cloak(cc, true);
+    let bg = ui
+        .tokens()
+        .palette(theme)
+        .get(urfin_ui::tokens::Role::BgBase);
+    // При Mica под визуалом DirectComposition видна поверхность окна: чёрные
+    // пиксели в продлённой рамке DWM прозрачны, цветная кисть закрыла бы Mica.
+    let bg = if mica { egui::Color32::BLACK } else { bg };
+    crate::sys::set_background(cc, [bg.r(), bg.g(), bg.b()]);
+    crate::sys::no_transitions(cc);
+    // Своя рамка (заголовок с табами, Snap Layouts) — пока окно скрыто.
+    ui.set_chrome(urfin_ui::sys::install_window_chrome(cc, &cc.egui_ctx, mica));
+    cc.egui_ctx
+        .send_viewport_cmd(egui::ViewportCommand::Maximized(maximized));
+    cc.egui_ctx
+        .send_viewport_cmd(egui::ViewportCommand::Visible(true));
+    cc.egui_ctx.request_repaint_after(SHOW_AT_LATEST);
+    App {
+        core: Some(core),
+        waker,
+        ui,
+        out: Vec::new(),
+        startup,
+        first_frame_done: false,
+        created: Instant::now(),
+        reveal: false,
+        shown: false,
+        ipc,
+        activate: 0,
+        selftest,
+        lost,
+        restart,
+        #[cfg(debug_assertions)]
+        lose_after: (!resumed).then(force_device_lost).flatten(),
+    }
+}
+
+/// `URFIN_FORCE_DEVICE_LOST=<секунды>` (только debug): эмуляция потери устройства
+/// через столько секунд после создания окна — проверка перезапуска на WARP.
+#[cfg(debug_assertions)]
+fn force_device_lost() -> Option<Duration> {
+    let s = std::env::var("URFIN_FORCE_DEVICE_LOST").ok()?;
+    s.trim().parse::<f64>().ok().map(Duration::from_secs_f64)
 }
 
 struct App {
     core: Option<Core>,
+    waker: Arc<EguiWaker>,
     ui: UrfinUi,
     out: Vec<Command>,
     startup: Startup,
@@ -408,9 +496,30 @@ struct App {
     /// Сколько кадров ещё выводить окно вперёд после запроса второго запуска.
     activate: u8,
     selftest: Option<crate::selftest::SelfTest>,
+    /// Устройство потеряно (`gpu::watch_device`): окно — заново, на следующей попытке.
+    lost: Arc<AtomicBool>,
+    restart: Restart,
+    #[cfg(debug_assertions)]
+    lose_after: Option<Duration>,
 }
 
 impl App {
+    /// Отдать Core и вторые запуски в [`run`] и закрыть окно: оно откроется заново
+    /// на следующей попытке рендера. `on_exit` без Core сессию не трогает.
+    fn hand_over(&mut self, ctx: &egui::Context) {
+        let Some(core) = self.core.take() else {
+            return;
+        };
+        *self.restart.borrow_mut() = Some(Resume {
+            core,
+            waker: Arc::clone(&self.waker),
+            startup: self.startup,
+            ipc: self.ipc.take(),
+            selftest: self.selftest.take(),
+        });
+        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+    }
+
     fn geometry(ctx: &egui::Context, last: Option<WindowGeom>) -> Option<WindowGeom> {
         ctx.input(|i| {
             let v = i.viewport();
@@ -436,6 +545,20 @@ impl App {
 
 impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        #[cfg(debug_assertions)]
+        if self.lose_after.is_some_and(|d| self.created.elapsed() >= d) {
+            self.lose_after = None;
+            tracing::warn!("URFIN_FORCE_DEVICE_LOST: emulating device loss");
+            self.lost.store(true, Ordering::Release);
+        }
+        #[cfg(debug_assertions)]
+        if let Some(d) = self.lose_after {
+            ctx.request_repaint_after(d.saturating_sub(self.created.elapsed()));
+        }
+        if self.lost.load(Ordering::Acquire) {
+            self.hand_over(ctx);
+            return;
+        }
         let Some(core) = self.core.as_mut() else {
             return;
         };
@@ -617,29 +740,6 @@ mod tests {
         let (rest, cmds) = run(vec![ev]);
         assert_eq!(rest.len(), 0);
         assert_eq!(cmds, ["ui.panels.toggle_all"]);
-    }
-
-    #[test]
-    fn adapter_order() {
-        use wgpu::DeviceType as D;
-        let mut v = [
-            D::Cpu,
-            D::DiscreteGpu,
-            D::Other,
-            D::IntegratedGpu,
-            D::VirtualGpu,
-        ];
-        v.sort_by_key(|&d| adapter_rank(d));
-        assert_eq!(
-            v,
-            [
-                D::IntegratedGpu,
-                D::DiscreteGpu,
-                D::VirtualGpu,
-                D::Other,
-                D::Cpu
-            ]
-        );
     }
 
     #[test]

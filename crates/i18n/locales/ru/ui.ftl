@@ -31,6 +31,8 @@ ui-folder-empty = Папка пуста
 ui-retry = Повторить
 ui-loading-count = Загрузка… { $count }
 
+ui-renderer-fallback = Графический драйвер сбоит — включён программный рендер
+
 ## О программе / сплэш (R-01). Экранов ещё нет: TODO S2-14 (меню F9).
 ui-about-name = Úrfionn
 ui-about-aka = он же Урфин Джюс

@@ -59,3 +59,7 @@ Urfin на этом стенде:
 - Машины без D3D12 на видеокарте работают через WARP (программный DX12) или Vulkan.
 - S6 «план Б» терминала: `egui_wgpu::CallbackTrait` вместо `egui_glow::CallbackFn`; S9: RenderDoc работает с Vulkan/DX12.
 - Код UI от бэкенда не зависит (как и задумано в `00-ARCHITECTURE`).
+
+## Уточнение 2026-10-17 (S0-decisions №50, R-02)
+
+На Windows запасной рендер — WARP (программный DX12), а не Vulkan: `[ui] renderer = auto | dx12 | warp | vulkan`, Vulkan — только явным выбором. Откат на WARP — при отказе DX12 и при потере устройства (окно пересоздаётся, Core тот же), с тостом. Выбор умолчания по замерам — R-02b.

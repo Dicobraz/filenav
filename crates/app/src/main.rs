@@ -19,6 +19,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod boot;
+mod gpu;
 mod ipc;
 mod selftest;
 mod sys;
