@@ -113,8 +113,10 @@ pub struct Binding {
     pub chord: Chord,
     pub when: Arc<When>,
     pub cmds: Arc<[Command]>,
-    /// `_repeat` из привязки (иначе — `CommandMeta::repeatable`).
+    /// `_repeat` из привязки (`None` — не задан).
     pub repeat: Option<bool>,
+    /// Автоповтор при удержании: `_repeat`, иначе `CommandMeta::repeatable` всех команд.
+    pub repeatable: bool,
     pub layer: Layer,
     pub src: Src,
 }
@@ -200,6 +202,8 @@ pub struct Keymap {
     bindings: Vec<Binding>,
     warnings: Vec<KeymapWarning>,
     compiled: Compiled,
+    /// Зарегистрированные команды и принимают ли они `text` (вставка, печать).
+    commands: rustc_hash::FxHashMap<&'static str, bool>,
 }
 
 impl Keymap {
@@ -322,6 +326,16 @@ impl Keymap {
             }),
             _ => None,
         })
+    }
+
+    /// Команда зарегистрирована (конвейер не шлёт команд сессий, которых ещё нет).
+    pub fn has_command(&self, id: &str) -> bool {
+        self.commands.contains_key(id)
+    }
+
+    /// Команда принимает аргумент `text` (`cmdline.paste` и т. п.).
+    pub fn takes_text(&self, id: &str) -> bool {
+        self.commands.get(id).copied().unwrap_or(false)
     }
 
     /// Все привязки после слоёв и снятий (`keymap.show`, `keymap.dump`).
@@ -582,6 +596,10 @@ impl<'a> Builder<'a> {
                 let Some((cmds, repeat)) = self.commands(file, &at, v) else {
                     continue;
                 };
+                let repeatable = repeat.unwrap_or_else(|| {
+                    cmds.iter()
+                        .all(|c| self.reg.get(c.id.as_str()).is_some_and(|m| m.repeatable))
+                });
                 for s in &chord.0 {
                     if let Some(kind) = forbidden(*s, self.os) {
                         self.warn(file, &at, kind);
@@ -592,6 +610,7 @@ impl<'a> Builder<'a> {
                     when: Arc::clone(&when),
                     cmds,
                     repeat,
+                    repeatable,
                     layer,
                     src: Src {
                         file: file.into(),
@@ -708,6 +727,11 @@ impl<'a> Builder<'a> {
         (
             Arc::new(Keymap {
                 os: self.os,
+                commands: self
+                    .reg
+                    .iter()
+                    .map(|m| (m.id, m.args.iter().any(|a| a.name == "text")))
+                    .collect(),
                 compiled: Compiled::build(&self.bindings),
                 bindings: self.bindings,
                 warnings: self.warnings,

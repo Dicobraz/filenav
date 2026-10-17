@@ -3374,6 +3374,7 @@ dependencies = [
  "tracing-subscriber",
  "urfin-core",
  "urfin-i18n",
+ "urfin-keymap",
  "urfin-ui",
  "urfin-vfs",
  "wgpu",

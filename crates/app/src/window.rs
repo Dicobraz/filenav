@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 
 use eframe::egui;
 use urfin_core::{Boot, Command, Core, Focus, OverlayKind, Session, WindowGeom};
+use urfin_keymap::{FlagRegistry, KeyInput, Keymap, KeymapCfg, Os};
 use urfin_ui::UrfinUi;
 
 use crate::Startup;
@@ -57,109 +58,27 @@ const JOBS_REPAINT: Duration = Duration::from_millis(33);
 /// табами — без мигания пустыми панелями; но не позже этого срока.
 const SHOW_AT_LATEST: Duration = Duration::from_millis(300);
 
-/// Клавиши до keymap S3 (S0 v3 №2: весь ввод — через `raw_input_hook`).
-/// Поглощённое событие удаляется из ввода egui: Tab не двигает фокус egui.
-fn hard_key(key: egui::Key, m: egui::Modifiers) -> Option<Command> {
-    use egui::Key as K;
-    let motion = |k| match k {
-        K::ArrowUp => Some("up"),
-        K::ArrowDown => Some("down"),
-        K::PageUp => Some("page_up"),
-        K::PageDown => Some("page_down"),
-        K::Home => Some("home"),
-        K::End => Some("end"),
-        _ => None,
-    };
-    // Ctrl+O — панели за терминалом (S0-decisions №27; привязка S3 §3).
-    if m.ctrl && !m.shift && !m.alt && key == K::O {
-        return Some(Command::new("ui.panels.toggle_all"));
+/// Раскладка из `[keymap]` и `config_dir/keymaps/` (S3-05; перезагрузка — S3-10).
+/// Предупреждения — в лог и строками для тостов.
+fn load_keys(
+    cfg: &urfin_core::Config,
+    paths: &urfin_core::Paths,
+    reg: &urfin_core::CommandRegistry,
+) -> (KeyInput, Vec<String>) {
+    let (km_cfg, cfg_warning) = cfg.section::<KeymapCfg>("keymap");
+    let mut out = Vec::new();
+    if let Some(w) = cfg_warning {
+        tracing::warn!(key = %w.key, msg = %w.msg, "[keymap] section ignored");
+        out.push(format!("keymap: {}", w.msg));
     }
-    // Ctrl+1..4 — вид панели, как в Far (S3 §3).
-    if m.ctrl && !m.shift && !m.alt {
-        let mode = match key {
-            K::Num1 => "brief",
-            K::Num2 => "medium",
-            K::Num3 => "full",
-            K::Num4 => "wide",
-            _ => return None,
-        };
-        return Some(Command::new("panel.view_mode").arg("mode", mode));
+    let flags = FlagRegistry::with_builtin();
+    let (km, warnings) = Keymap::load(paths, &km_cfg, reg, &flags, Os::current());
+    for w in &warnings {
+        tracing::warn!(warning = %w, "keymap");
     }
-    if m.shift && !m.ctrl && !m.alt {
-        // Shift+стрелки: пометка с движением (Far).
-        return motion(key).map(|mo| Command::new("sel.move").arg("motion", mo));
-    }
-    if m.any() {
-        return None;
-    }
-    if let Some(mo) = motion(key) {
-        return Some(match mo {
-            "up" => Command::new("panel.cursor.up"),
-            "down" => Command::new("panel.cursor.down"),
-            "page_up" => Command::new("panel.cursor.page_up"),
-            "page_down" => Command::new("panel.cursor.page_down"),
-            "home" => Command::new("panel.cursor.home"),
-            _ => Command::new("panel.cursor.end"),
-        });
-    }
-    Some(match key {
-        // F-клавиши пресета Far, у которых уже есть действие (S3 §3); F9 — с меню S2-14.
-        K::F9 => Command::new("ui.menu"),
-        K::F10 => Command::new("app.quit"),
-        K::Enter => Command::new("panel.enter"),
-        K::Backspace => Command::new("panel.up"),
-        K::Tab => Command::new("panel.switch"),
-        // Колонка влево/вправо в Brief и Medium (S3 §3).
-        K::ArrowLeft => Command::new("panel.cursor.left"),
-        K::ArrowRight => Command::new("panel.cursor.right"),
-        // Insert — как в Far; Space — для клавиатур без Insert.
-        K::Insert | K::Space => Command::new("sel.toggle").arg("advance", true),
-        _ => return None,
-    })
-}
-
-/// Забирает из ввода egui клавиши панели и превращает их в команды. Клавиша — по
-/// позиции (`physical_key`): буквенные сочетания работают на любой раскладке (S0 v4 №5).
-/// Отпускание
-/// поглощённой клавиши тоже удаляется; пробел не уходит в egui текстом.
-fn take_keys(events: &mut Vec<egui::Event>, out: &mut Vec<Command>) {
-    events.retain(|e| match e {
-        egui::Event::Key {
-            key,
-            physical_key,
-            pressed,
-            modifiers,
-            ..
-        } => match hard_key(physical_key.unwrap_or(*key), *modifiers) {
-            Some(c) => {
-                if *pressed {
-                    out.push(c);
-                }
-                false
-            }
-            None => true,
-        },
-        egui::Event::Text(t) => t != " ",
-        _ => true,
-    });
-}
-
-/// Ввод в открытом оверлее: Esc → `ui.cancel`.
-fn take_overlay_keys(events: &mut Vec<egui::Event>, out: &mut Vec<Command>) {
-    events.retain(|e| match e {
-        egui::Event::Key {
-            key: egui::Key::Escape,
-            pressed,
-            modifiers,
-            ..
-        } if !modifiers.any() => {
-            if *pressed {
-                out.push(Command::new("ui.cancel"));
-            }
-            false
-        }
-        _ => true,
-    });
+    // Тостов — не больше трёх: остальное в логе.
+    out.extend(warnings.iter().take(3).map(|w| format!("keymap: {w}")));
+    (KeyInput::new(km, &km_cfg), out)
 }
 
 /// IME: в полях ввода (cmdline, терминал, оверлеи с вводом, редактор) включён,
@@ -307,6 +226,7 @@ enum Origin {
 
 struct Resume {
     core: Core,
+    keys: KeyInput,
     waker: Arc<EguiWaker>,
     startup: Startup,
     ipc: Option<crate::ipc::Inbox>,
@@ -395,7 +315,7 @@ fn create_app(
     // Масштаб — только командой `ui.zoom` (S0 v3 №13).
     ctx.options_mut(|o| o.zoom_with_keyboard = false);
     let resumed = matches!(from, Origin::Resume(_));
-    let (core, waker, startup, ipc, selftest) = match from {
+    let (core, keys, key_warnings, waker, startup, ipc, selftest) = match from {
         Origin::Launch(launch) => {
             let Launch {
                 boot,
@@ -405,6 +325,7 @@ fn create_app(
                 selftest,
             } = *launch;
             let services = crate::vfs_services(&boot.config);
+            let (config, paths) = (boot.config.clone(), boot.paths.clone());
             startup.window = window_started.elapsed();
             let waker = Arc::new(EguiWaker::new(ctx.clone()));
             let mut core = {
@@ -415,15 +336,24 @@ fn create_app(
                 startup.core = t.elapsed();
                 core
             };
+            let (keys, kw) = load_keys(&config, &paths, core.registry());
             for c in open {
                 core.dispatch(c);
             }
             let selftest = selftest.map(crate::selftest::SelfTest::new);
-            (core, waker, startup, ipc, selftest)
+            (core, keys, kw, waker, startup, ipc, selftest)
         }
         Origin::Resume(r) => {
             r.waker.set(ctx.clone());
-            (r.core, r.waker, r.startup, r.ipc, r.selftest)
+            (
+                r.core,
+                r.keys,
+                Vec::new(),
+                r.waker,
+                r.startup,
+                r.ipc,
+                r.selftest,
+            )
         }
     };
     if let Some(inbox) = &ipc {
@@ -459,6 +389,9 @@ fn create_app(
     for w in warnings {
         ui.toast(format!("ui.renderer: {w}"));
     }
+    for w in key_warnings {
+        ui.toast(w);
+    }
     if fallback {
         ui.toast(urfin_i18n::current().get("ui-renderer-fallback"));
     }
@@ -484,6 +417,7 @@ fn create_app(
     cc.egui_ctx.request_repaint_after(SHOW_AT_LATEST);
     App {
         core: Some(core),
+        keys: Some(keys),
         waker,
         ui,
         out: Vec::new(),
@@ -512,6 +446,8 @@ fn force_device_lost() -> Option<Duration> {
 
 struct App {
     core: Option<Core>,
+    /// Конвейер клавиатуры (S3-05); вместе с Core переживает перезапуск окна.
+    keys: Option<KeyInput>,
     waker: Arc<EguiWaker>,
     ui: UrfinUi,
     out: Vec<Command>,
@@ -536,11 +472,12 @@ impl App {
     /// Отдать Core и вторые запуски в [`run`] и закрыть окно: оно откроется заново
     /// на следующей попытке рендера. `on_exit` без Core сессию не трогает.
     fn hand_over(&mut self, ctx: &egui::Context) {
-        let Some(core) = self.core.take() else {
+        let (Some(core), Some(keys)) = (self.core.take(), self.keys.take()) else {
             return;
         };
         *self.restart.borrow_mut() = Some(Resume {
             core,
+            keys,
             waker: Arc::clone(&self.waker),
             startup: self.startup,
             ipc: self.ipc.take(),
@@ -706,18 +643,21 @@ impl eframe::App for App {
         }
     }
 
-    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
-        let Some(core) = self.core.as_ref() else {
+    /// Весь ввод клавиатуры — через keymap (S0 v3 №2, S3 §1.2); команды выполняются
+    /// в `logic` этого же кадра. Запросы S2 разбирают клавиши сами.
+    fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+        let (Some(core), Some(keys)) = (self.core.as_ref(), self.keys.as_mut()) else {
             return;
         };
         let s = core.state();
-        match s.focus {
-            // Оверлеи S2 пока без виджетов: Esc закрывает (до keymap S3).
-            Focus::Overlay(_) => take_overlay_keys(&mut raw.events, &mut self.out),
-            Focus::Panel if s.prompts.active().is_none() => {
-                take_keys(&mut raw.events, &mut self.out);
-            }
-            _ => {}
+        if s.prompts.active().is_some() {
+            return;
+        }
+        let now = Instant::now();
+        let o = keys.process(raw, s, now, &mut self.out);
+        // Дедлайн аккорда: кадр, в котором он сбросится.
+        if let Some(t) = o.wake_at {
+            ctx.request_repaint_after(t.saturating_duration_since(now));
         }
     }
 
@@ -738,35 +678,69 @@ impl eframe::App for App {
 mod tests {
     use super::*;
 
+    struct NoWake;
+
+    impl urfin_core::Waker for NoWake {
+        fn wake(&self) {}
+        fn wake_after(&self, _d: Duration) {}
+    }
+
+    fn core() -> (Core, urfin_core::Config, urfin_core::Paths) {
+        let loc = urfin_core::Location::local(std::env::temp_dir().join("urfin-app-keys"));
+        let boot = Boot::new(loc.clone(), loc);
+        let (config, paths) = (boot.config.clone(), boot.paths.clone());
+        let mut core = Core::new(boot, urfin_core::Services::null(), Arc::new(NoWake));
+        urfin_ui::register(&mut core);
+        (core, config, paths)
+    }
+
+    /// Встроенные пресеты — только команды настоящего реестра (core + ui), на всех ОС.
+    #[test]
+    fn builtin_presets_match_registry() {
+        let (core, _, paths) = core();
+        for preset in ["far", "dn"] {
+            for os in [Os::Windows, Os::Macos, Os::Linux] {
+                let cfg = KeymapCfg {
+                    preset: preset.into(),
+                    user: None,
+                    ..KeymapCfg::default()
+                };
+                let flags = FlagRegistry::with_builtin();
+                let (km, w) = Keymap::load(&paths, &cfg, core.registry(), &flags, os);
+                assert_eq!(w, Vec::new(), "{preset} {os:?}");
+                assert!(!km.bindings().is_empty());
+            }
+        }
+    }
+
     fn key(key: egui::Key, modifiers: egui::Modifiers, pressed: bool) -> egui::Event {
         egui::Event::Key {
             key,
-            physical_key: None,
+            physical_key: Some(key),
             pressed,
             repeat: false,
             modifiers,
         }
     }
 
+    /// Ввод кадра при фокусе на панели: остаток для egui и команды.
     fn run(events: Vec<egui::Event>) -> (Vec<egui::Event>, Vec<String>) {
-        let mut events = events;
+        let (core, config, paths) = core();
+        let (mut keys, w) = load_keys(&config, &paths, core.registry());
+        assert_eq!(w, Vec::<String>::new());
+        let mut raw = egui::RawInput {
+            events,
+            ..Default::default()
+        };
         let mut out = Vec::new();
-        take_keys(&mut events, &mut out);
-        (events, out.iter().map(ToString::to_string).collect())
+        keys.process(&mut raw, core.state(), Instant::now(), &mut out);
+        (raw.events, out.iter().map(ToString::to_string).collect())
     }
 
     #[test]
-    fn ctrl_o_by_position_on_any_layout() {
-        let ctrl = egui::Modifiers::CTRL;
-        // Русская раскладка: логической клавиши O нет, позиция — O.
-        let ev = egui::Event::Key {
-            key: egui::Key::Num0,
-            physical_key: Some(egui::Key::O),
-            pressed: true,
-            repeat: false,
-            modifiers: ctrl,
-        };
-        let (rest, cmds) = run(vec![ev]);
+    fn ctrl_o_on_any_layout() {
+        // Русская раскладка: у «щ» нет латинской клавиши — egui даёт позицию O.
+        let (rest, cmds) = run(vec![key(egui::Key::O, egui::Modifiers::CTRL, true)]);
         assert_eq!(rest.len(), 0);
         assert_eq!(cmds, ["ui.panels.toggle_all"]);
     }
@@ -777,6 +751,7 @@ mod tests {
         let ctrl = egui::Modifiers::CTRL;
         let (left, cmds) = run(vec![
             key(egui::Key::Num1, ctrl, true),
+            key(egui::Key::Num1, ctrl, false),
             key(egui::Key::Num2, ctrl, true),
             key(egui::Key::Num4, ctrl, true),
             key(egui::Key::ArrowRight, none, true),
@@ -831,6 +806,7 @@ mod tests {
         );
     }
 
+    /// Непривязанное и печать (пока нет cmdline S6) — виджетам egui.
     #[test]
     fn foreign_keys_and_text_pass_through() {
         let ctrl = egui::Modifiers::CTRL;

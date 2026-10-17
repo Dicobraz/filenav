@@ -1,3 +1,40 @@
 # Базовый слой: общие для пресетов привязки. Наполнение — S3-09 (таблицы S3 §3).
+# Пока здесь — клавиши, которые до S3-05 были зашиты в app (`hard_key`).
 format = 1
 name = "base"
+
+[context.panel]
+"Up" = "panel.cursor.up"
+"Down" = "panel.cursor.down"
+"PageUp" = "panel.cursor.page_up"
+"PageDown" = "panel.cursor.page_down"
+"Home" = "panel.cursor.home"
+"End" = "panel.cursor.end"
+# Колонка влево/вправо в Brief и Medium.
+"Left" = "panel.cursor.left"
+"Right" = "panel.cursor.right"
+# Пометка с движением (Far).
+"Shift+Up" = { cmd = "sel.move", motion = "up" }
+"Shift+Down" = { cmd = "sel.move", motion = "down" }
+"Shift+PageUp" = { cmd = "sel.move", motion = "page_up" }
+"Shift+PageDown" = { cmd = "sel.move", motion = "page_down" }
+"Shift+Home" = { cmd = "sel.move", motion = "home" }
+"Shift+End" = { cmd = "sel.move", motion = "end" }
+"Enter" = "panel.enter"
+"Backspace" = "panel.up"
+"Tab" = "panel.switch"
+# Insert — как в Far; Space — для клавиатур без Insert.
+"Insert" = { cmd = "sel.toggle", advance = true }
+"Space" = { cmd = "sel.toggle", advance = true }
+# Панели за терминалом (S0-decisions №27).
+"Ctrl+O" = "ui.panels.toggle_all"
+# Вид панели, как в Far.
+"Ctrl+1" = { cmd = "panel.view_mode", mode = "brief" }
+"Ctrl+2" = { cmd = "panel.view_mode", mode = "medium" }
+"Ctrl+3" = { cmd = "panel.view_mode", mode = "full" }
+"Ctrl+4" = { cmd = "panel.view_mode", mode = "wide" }
+"F9" = "ui.menu"
+"F10" = "app.quit"
+
+[context.overlay]
+"Esc" = "ui.cancel"
