@@ -309,7 +309,7 @@ impl UrfinUi {
             }
         }
         if let Some(sp) = regions.splitter {
-            let resp = root.interact(sp, root.id().with("splitter"), Sense::click());
+            let resp = root.interact(sp, root.scope_id().with("splitter"), Sense::click());
             if resp.hovered() {
                 root.ctx()
                     .set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
@@ -451,7 +451,7 @@ impl UrfinUi {
             } else {
                 Sense::hover()
             };
-            let resp = ui.interact(rect, ui.id().with(("fkey", item.n)), sense);
+            let resp = ui.interact(rect, ui.scope_id().with(("fkey", item.n)), sense);
             let painter = ui.painter_at(rect);
             let fill = if item.enabled && resp.hovered() {
                 t.c(Role::FillSubtleHover)
@@ -492,7 +492,7 @@ impl UrfinUi {
         if self.toasts.is_empty() {
             return;
         }
-        egui::Area::new(egui::Id::new("toasts"))
+        egui::Area::new(egui::Id::unique("toasts"))
             .anchor(
                 Align2::RIGHT_BOTTOM,
                 egui::vec2(

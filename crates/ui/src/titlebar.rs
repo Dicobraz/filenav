@@ -109,7 +109,11 @@ impl TitleBar<'_> {
                 break;
             }
             let rect = Rect::from_min_size(egui::pos2(x, top), egui::vec2(w, t.m(Metric::HTab)));
-            let resp = ui.interact(rect, ui.id().with(("tab", side_arg(side), i)), Sense::CLICK);
+            let resp = ui.interact(
+                rect,
+                ui.scope_id().with(("tab", side_arg(side), i)),
+                Sense::CLICK,
+            );
             if current {
                 let r = t.radius(Metric::RadiusOverlay).nw;
                 painter.rect_filled(
@@ -184,7 +188,7 @@ impl TitleBar<'_> {
                     false,
                 )
             } else {
-                let resp = ui.interact(rect, ui.id().with(("caption", i)), Sense::CLICK);
+                let resp = ui.interact(rect, ui.scope_id().with(("caption", i)), Sense::CLICK);
                 interactive.push(rect);
                 (
                     resp.hovered(),

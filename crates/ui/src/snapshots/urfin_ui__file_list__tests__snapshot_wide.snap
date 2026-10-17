@@ -15,17 +15,17 @@ expression: redact(&yaml)
 - galley: [32, 252, 60.5625, 16] ".gitignore #72000000"
 - galley: [556.5625, 252, 35.4375, 16] text.secondary "118 Б"
 - rect: [12, 272, 592, 24] accent.subtle
-- galley: [15.828125, 277, 12.34375, 14] accent.text "\u{e8fb}"
+- galley: [19, 277, 6, 14] accent.text "\u{e8fb}"
 - galley: [32, 276, 65.59375, 16] "Cargo.lock #004B87"
 - galley: [544.71875, 276, 47.28125, 16] text.secondary "47,1 КБ"
 - rect: [12, 296, 592, 24] accent.subtle
-- galley: [15.828125, 301, 12.34375, 14] accent.text "\u{e8fb}"
+- galley: [19, 301, 6, 14] accent.text "\u{e8fb}"
 - galley: [32, 300, 69.71875, 16] "Cargo.toml #004B87"
 - galley: [552.625, 300, 39.375, 16] text.secondary "1,2 КБ"
 - galley: [32, 324, 68.78125, 16] "clippy.toml #E4000000"
 - galley: [564.4375, 324, 27.5625, 16] text.secondary "96 Б"
 - rect: [12, 344, 592, 24] accent.subtle
-- galley: [15.828125, 349, 12.34375, 14] accent.text "\u{e8fb}"
+- galley: [19, 349, 6, 14] accent.text "\u{e8fb}"
 - galley: [32, 348, 62.84375, 16] "deny.toml #004B87"
 - galley: [552.625, 348, 39.375, 16] text.secondary "1,3 КБ"
 - galley: [32, 372, 107.25, 16] "LICENSE-APACHE #E4000000"
