@@ -10,9 +10,10 @@ pub mod name;
 pub mod path;
 pub mod service;
 pub mod sort;
+mod sys;
 
 pub use api::*;
-pub use local::LocalFs;
+pub use local::{ListMode, LocalFs};
 pub use service::{VfsCfg, VfsListing};
 
 /// Версия крейта из `Cargo.toml`.

@@ -153,6 +153,12 @@ const FILE_ATTRIBUTE_DIRECTORY: u32 = 0x10;
 #[cfg(windows)]
 fn attrs_of(name: &str, md: &fs::Metadata, _kind: EntryKind) -> Attrs {
     use std::os::windows::fs::MetadataExt;
+    windows_attrs(name, md.file_attributes())
+}
+
+/// Атрибуты записи из `FILE_ATTRIBUTE_*` — общее правило std-пути и fast path.
+#[cfg(windows)]
+pub(crate) fn windows_attrs(name: &str, fa: u32) -> Attrs {
     // FILE_ATTRIBUTE_*; OFFLINE — ещё и «скачивается при открытии» (облако).
     const MAP: [(u32, u32); 7] = [
         (0x2, Attrs::HIDDEN),
@@ -164,7 +170,6 @@ fn attrs_of(name: &str, md: &fs::Metadata, _kind: EntryKind) -> Attrs {
         (0x4000, Attrs::ENCRYPTED),
     ];
     const OFFLINE: u32 = 0x1000 | 0x4_0000 | 0x40_0000;
-    let fa = md.file_attributes();
     let mut a = MAP
         .iter()
         .filter(|(w, _)| fa & w != 0)
