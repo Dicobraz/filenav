@@ -35,6 +35,19 @@ pub trait Canvas {
         role: Role,
     ) -> Rect;
     fn galley(&mut self, pos: Pos2, galley: Arc<Galley>, role: Role);
+    /// Однострочный текст от `left_center` не шире `max_width`: лишнее — многоточием.
+    #[allow(clippy::too_many_arguments, reason = "плоский вызов отрисовки")]
+    fn text_clipped(
+        &mut self,
+        left_center: Pos2,
+        max_width: f32,
+        tx: &Tx<'_>,
+        font: Font,
+        size: f32,
+        role: Role,
+    );
+    /// Galley цветом не из ролей (раскраска по правилам пользователя).
+    fn tinted(&mut self, pos: Pos2, galley: Arc<Galley>, color: egui::Color32);
     fn icon(&mut self, center: Pos2, glyph: char, size: f32, role: Role);
 }
 
@@ -86,8 +99,34 @@ impl Canvas for EguiCanvas<'_> {
         )
     }
 
+    fn text_clipped(
+        &mut self,
+        left_center: Pos2,
+        max_width: f32,
+        tx: &Tx<'_>,
+        font: Font,
+        size: f32,
+        role: Role,
+    ) {
+        crate::text::paint_clipped(
+            &self.painter,
+            self.i18n,
+            left_center,
+            max_width,
+            tx,
+            self.fonts.id(font, size),
+            self.tokens.c(role),
+        );
+    }
+
     fn galley(&mut self, pos: Pos2, galley: Arc<Galley>, role: Role) {
-        self.painter.galley(pos, galley, self.tokens.c(role));
+        self.painter
+            .galley_with_override_text_color(pos, galley, self.tokens.c(role));
+    }
+
+    fn tinted(&mut self, pos: Pos2, galley: Arc<Galley>, color: egui::Color32) {
+        self.painter
+            .galley_with_override_text_color(pos, galley, color);
     }
 
     fn icon(&mut self, center: Pos2, glyph: char, size: f32, role: Role) {
@@ -194,6 +233,34 @@ impl Canvas for RecordCanvas<'_> {
     fn galley(&mut self, pos: Pos2, galley: Arc<Galley>, role: Role) {
         let r = Rect::from_min_size(pos, galley.size());
         self.push("galley", r, Some(role), Some(galley.text().to_owned()));
+    }
+
+    fn text_clipped(
+        &mut self,
+        left_center: Pos2,
+        max_width: f32,
+        tx: &Tx<'_>,
+        _font: Font,
+        size: f32,
+        role: Role,
+    ) {
+        let text = tx.resolve(self.i18n).into_owned();
+        let r = Rect::from_min_size(
+            Pos2::new(left_center.x, left_center.y - size / 2.0),
+            egui::vec2(max_width, size),
+        );
+        self.push("text", r, Some(role), Some(text));
+    }
+
+    fn tinted(&mut self, pos: Pos2, galley: Arc<Galley>, color: egui::Color32) {
+        let r = Rect::from_min_size(pos, galley.size());
+        let [cr, cg, cb, ca] = color.to_srgba_unmultiplied();
+        let text = if ca == 255 {
+            format!("{} #{cr:02X}{cg:02X}{cb:02X}", galley.text())
+        } else {
+            format!("{} #{ca:02X}{cr:02X}{cg:02X}{cb:02X}", galley.text())
+        };
+        self.push("galley", r, None, Some(text));
     }
 
     fn icon(&mut self, center: Pos2, glyph: char, size: f32, role: Role) {

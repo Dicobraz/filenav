@@ -71,6 +71,7 @@ fn lines_from_top_with_cursor() {
             font: egui::FontId::proportional(14.0),
             name_w: 300.0,
             digit_slot: None,
+            mtime: false,
         };
         crate::panel::fill_lines(&mut v, &mut cache, &cx, &t, 2);
     });

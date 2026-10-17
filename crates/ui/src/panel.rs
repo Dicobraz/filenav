@@ -6,15 +6,14 @@ use std::time::Duration;
 use std::fmt::Write as _;
 use std::sync::Arc;
 
-use egui::{CornerRadius, FontId, Galley, Sense, Stroke, StrokeKind};
-use filenav_core::{Command, ListingStatus, Row, Side, Tab};
+use egui::{CornerRadius, FontId, Galley};
+use filenav_core::{ListingStatus, Row, Side, Tab};
 use filenav_i18n::{FluentArgs, I18n};
 
 use crate::cache::{CellKey, CellSpec, RowCache, fingerprint};
 use crate::fmt_cell::{ColKind, FmtCfg, cell_text};
-use crate::fonts::{Font, FontSet};
 use crate::highlight::Highlighter;
-use crate::tokens::{Metric, Role, Tokens};
+use crate::tokens::{Metric, Tokens};
 
 /// Пока новый каталог ничего не прислал, панель показывает прежний кадр — не
 /// дольше этого (S2: `Loading` > 150 мс — индикатор загрузки).
@@ -28,6 +27,8 @@ pub(crate) struct Line {
     pub name: Arc<Galley>,
     /// Размер: galley, сдвиг первой цифры и ширина по слотам.
     pub size: Option<(Arc<Galley>, f32, f32)>,
+    /// Дата изменения (Full).
+    pub mtime: Option<Arc<Galley>>,
     pub cursor: bool,
     pub selected: bool,
     /// Группа раскраски ([`Highlighter::classify`]), 0 — без цвета.
@@ -134,10 +135,6 @@ pub(crate) fn path_text(t: &Tab) -> String {
     }
 }
 
-/// Видимые строки таба: `page` строк от `cursor.top`.
-/// Ширина колонки размера во временном списке (S2 §1.2, Full: 72).
-pub(crate) const SIZE_W: f32 = 72.0;
-
 /// Входы разметки строк.
 pub(crate) struct LineCx<'a> {
     pub ctx: &'a egui::Context,
@@ -147,9 +144,12 @@ pub(crate) struct LineCx<'a> {
     /// Ширина имени (логич.) и слот цифры размера (`None` — цифры табличные).
     pub name_w: f32,
     pub digit_slot: Option<f32>,
+    /// Колонка даты (Full).
+    pub mtime: bool,
 }
 
 /// Видимые строки таба (`page` строк от `cursor.top`) в `out` (буфер переиспользуется).
+#[allow(clippy::too_many_lines, reason = "ячейки строки по порядку колонок")]
 pub(crate) fn fill_lines(
     out: &mut Vec<Line>,
     cache: &mut RowCache,
@@ -186,6 +186,7 @@ pub(crate) fn fill_lines(
                     row: r,
                     name: Arc::clone(&name.galley),
                     size: None,
+                    mtime: None,
                     cursor: r == t.cursor.row,
                     selected: false,
                     group: 0,
@@ -228,12 +229,30 @@ pub(crate) fn fill_lines(
                         spec(&cx.font, f32::INFINITY, cx.digit_slot)
                     },
                 );
-                let size = (!size.galley.is_empty())
+                let size_cell = (!size.galley.text().is_empty())
                     .then(|| (Arc::clone(&size.galley), size.lead, size.width));
+                let mtime = cx.mtime.then(|| {
+                    let m = cache.get_or_layout(
+                        CellKey {
+                            idx,
+                            col: ColKind::Mtime as u8,
+                            width_px: 0,
+                            ..base
+                        },
+                        fp,
+                        cx.ctx,
+                        |c| {
+                            cell_text(ColKind::Mtime, entry, cx.fmt, c);
+                            spec(&cx.font, f32::INFINITY, None)
+                        },
+                    );
+                    Arc::clone(&m.galley)
+                });
                 Line {
                     row: r,
                     name: galley,
-                    size,
+                    size: size_cell,
+                    mtime,
                     cursor: r == t.cursor.row,
                     selected: t.selection.contains(idx),
                     group,
@@ -301,133 +320,4 @@ pub(crate) fn rows_fit(height: f32, row_h: f32) -> u32 {
 
 pub(crate) fn radius(t: &Tokens, m: Metric) -> CornerRadius {
     t.radius(m)
-}
-
-/// Отрисовка строк списка.
-pub(crate) struct Rows<'a> {
-    pub tokens: &'a Tokens,
-    pub hl: &'a Highlighter,
-    pub fonts: &'a FontSet,
-    pub tab: &'a Tab,
-    /// Колонка иконок (есть иконочный шрифт и `ui.icons != "none"`).
-    pub icons: bool,
-    pub active: bool,
-    /// Удержанный кадр (`false`) на мышь не отвечает.
-    pub interactive: bool,
-    pub side: Side,
-}
-
-impl Rows<'_> {
-    /// Строки рисуются вручную, без фокуса и подсветки при наведении (S0 v3 №13).
-    /// Курсор — рамка 1 px `stroke.strong`, помеченные — `accent.subtle` и `accent.text`
-    /// (S0-decisions №31). Тексты — galley из кэша с подменой цвета.
-    #[allow(
-        clippy::many_single_char_names,
-        reason = "геометрия строки: t, r, i, x, y"
-    )]
-    pub(crate) fn paint(
-        &self,
-        ui: &mut egui::Ui,
-        cache: &mut RowCache,
-        lines: &[Line],
-        out: &mut Vec<Command>,
-    ) {
-        let t = self.tokens;
-        let row_h = t.m(Metric::HRow);
-        let pad = t.m(Metric::PadRowX);
-        let icon_font = self.fonts.id(Font::Icons, t.m(Metric::WIcon));
-        // Иконка 16 px в слоте 20 (S2 §1.2).
-        let icon_slot = if self.icons {
-            t.m(Metric::WIcon) + 4.0
-        } else {
-            0.0
-        };
-        let ctrl = ui.input(|i| i.modifiers.command);
-        let sense = if self.interactive {
-            Sense::CLICK
-        } else {
-            Sense::hover()
-        };
-        let r = radius(t, Metric::RadiusControl);
-        let ctx = ui.ctx().clone();
-        // Прямоугольники строк — сами: `allocate_exact_size` добавлял `item_spacing.y`
-        // стиля (4 px), строки шли через 28 px и вылезали за список.
-        let list = ui.max_rect();
-        for (i, line) in lines.iter().enumerate() {
-            #[allow(clippy::cast_precision_loss, reason = "строк на странице — сотни")]
-            let y = list.top() + row_h * i as f32;
-            let rect = egui::Rect::from_min_size(
-                egui::pos2(list.left(), y),
-                egui::vec2(list.width(), row_h),
-            );
-            if rect.bottom() > list.bottom() + 0.5 {
-                break;
-            }
-            let resp = ui.interact(rect, ui.id().with(("row", i)), sense);
-            let painter = ui.painter_at(rect);
-            let mut color = self
-                .hl
-                .color(line.group, t)
-                .unwrap_or_else(|| t.c(Role::TextPrimary));
-            if line.selected {
-                painter.rect_filled(rect, r, t.c(Role::AccentSubtle));
-                color = t.c(Role::AccentText);
-            }
-            if line.cursor && self.active {
-                painter.rect_filled(rect, r, t.c(Role::FillCursor));
-                painter.rect_stroke(
-                    rect,
-                    r,
-                    Stroke::new(t.m(Metric::StrokeThin), t.c(Role::StrokeStrong)),
-                    StrokeKind::Inside,
-                );
-            } else if line.cursor {
-                painter.rect_filled(rect, r, t.c(Role::FillCursorPassive));
-            }
-            let mid = rect.center().y;
-            if let Some((g, lead, width)) = &line.size {
-                let x = rect.right() - pad - width + lead;
-                let pos = egui::pos2(x, mid - g.size().y / 2.0);
-                painter.galley_with_override_text_color(
-                    pos,
-                    Arc::clone(g),
-                    t.c(Role::TextSecondary),
-                );
-            }
-            let mut x = rect.left() + pad;
-            if self.icons {
-                let tone = match line.icon_tone {
-                    IconTone::Dir => t.c(Role::AccentText),
-                    IconTone::Hidden => t.c(Role::TextTertiary),
-                    IconTone::Normal => t.c(Role::TextSecondary),
-                };
-                let g = cache.icon(&ctx, line.icon, &icon_font);
-                let pos = egui::pos2(x + (icon_slot - g.size().x) / 2.0, mid - g.size().y / 2.0);
-                painter.galley_with_override_text_color(pos, g, tone);
-                x += icon_slot + t.m(Metric::SpaceS);
-            }
-            let pos = egui::pos2(x, mid - line.name.size().y / 2.0);
-            painter.galley_with_override_text_color(pos, Arc::clone(&line.name), color);
-            if !self.interactive {
-                continue;
-            }
-            if resp.clicked() {
-                if !self.active {
-                    out.push(Command::new("panel.focus").arg("side", side_arg(self.side)));
-                }
-                out.push(match self.tab.row(line.row) {
-                    Some(Row::Entry { entry, .. }) => {
-                        Command::new("panel.cursor.to").arg("name", entry.name.as_str())
-                    }
-                    _ => Command::new("panel.cursor.home"),
-                });
-                if ctrl && line.entry {
-                    out.push(Command::new("sel.toggle"));
-                }
-            }
-            if resp.double_clicked() {
-                out.push(Command::new("panel.enter"));
-            }
-        }
-    }
 }
