@@ -1,6 +1,8 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
+# Патченные копии зависимостей (vendor/*/PATCH.md) — не члены workspace.
+exclude = ["vendor"]
 
 [workspace.package]
 version = "0.1.0"
@@ -92,3 +94,8 @@ opt-level = 2
 inherits = "release"
 debug = "line-tables-only"
 strip = false
+
+# egui-wgpu 0.37.0 с правкой шейдера: старт DX12 без лишних ~40 мс на FXC
+# (vendor/egui-wgpu/PATCH.md). Убрать, когда исправление выйдет в egui.
+[patch.crates-io]
+egui-wgpu = { path = "vendor/egui-wgpu" }
