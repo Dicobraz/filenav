@@ -1,13 +1,15 @@
 //! Карточка панели: табы, путь, строки, подвал. Строки — временная простая отрисовка
-//! из `DebugUi` (S1-13), пока нет `FileList` (S2-10): имя и размер, курсор, пометка.
+//! (имя и размер), пока нет `FileList` (S2-10); цвета и размеры — из токенов.
 
 use std::time::Duration;
 
-use egui::{Align2, Color32, CornerRadius, Sense, Stroke, StrokeKind, TextStyle};
+use egui::{Align2, CornerRadius, Rect, Sense, Stroke, StrokeKind, TextStyle};
 use filenav_core::{Command, ListingStatus, Row, Side, Tab};
 use filenav_i18n::{FluentArgs, I18n};
 
+use crate::highlight::Highlighter;
 use crate::text::{self, Tx};
+use crate::tokens::{Metric, Role, Tokens};
 
 /// Пока новый каталог ничего не прислал, панель показывает прежний кадр — не
 /// дольше этого (S2: `Loading` > 150 мс — индикатор загрузки).
@@ -27,6 +29,8 @@ pub(crate) struct Line {
     pub size: String,
     pub cursor: bool,
     pub selected: bool,
+    /// Группа раскраски ([`Highlighter::classify`]), 0 — без цвета.
+    pub group: u8,
     /// Команда курсора на эту строку (клик).
     pub click: Command,
     pub entry: bool,
@@ -65,7 +69,7 @@ pub(crate) fn path_text(t: &Tab) -> String {
 }
 
 /// Видимые строки таба: `page` строк от `cursor.top`.
-pub(crate) fn lines(i18n: &I18n, t: &Tab, page: u32) -> Vec<Line> {
+pub(crate) fn lines(i18n: &I18n, hl: &Highlighter, t: &Tab, page: u32) -> Vec<Line> {
     let top = t.cursor.top;
     (top..(top + page).min(t.rows()))
         .map_while(|r| {
@@ -77,6 +81,7 @@ pub(crate) fn lines(i18n: &I18n, t: &Tab, page: u32) -> Vec<Line> {
                     size: String::new(),
                     cursor: false,
                     selected,
+                    group: 0,
                     click: Command::new("panel.cursor.home"),
                     entry: false,
                 },
@@ -95,6 +100,7 @@ pub(crate) fn lines(i18n: &I18n, t: &Tab, page: u32) -> Vec<Line> {
                         },
                         cursor: false,
                         selected,
+                        group: hl.classify(entry),
                         click: Command::new("panel.cursor.to").arg("name", entry.name.as_str()),
                         entry: true,
                     }
@@ -142,96 +148,118 @@ pub(crate) fn rows_fit(height: f32, row_h: f32) -> u32 {
     (height / row_h).floor().clamp(1.0, 10_000.0) as u32
 }
 
-/// Строки рисуются вручную, без фокуса и подсветки при наведении (S0 v3 №13).
-/// Удержанный кадр (`interactive = false`) на мышь не отвечает.
-#[allow(clippy::too_many_arguments, reason = "временная отрисовка до FileList")]
-pub(crate) fn paint_lines(
-    ui: &mut egui::Ui,
-    i18n: &I18n,
-    lines: &[Line],
-    active: bool,
-    interactive: bool,
-    row_h: f32,
-    side: Side,
-    out: &mut Vec<Command>,
-) {
-    let font = TextStyle::Monospace.resolve(ui.style());
-    let visuals = ui.visuals().clone();
-    let ctrl = ui.input(|i| i.modifiers.command);
-    let sense = if interactive {
-        Sense::CLICK
-    } else {
-        Sense::hover()
-    };
-    for line in lines {
-        let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), row_h), sense);
-        let mut color = visuals.text_color();
-        if line.cursor && active {
-            ui.painter()
-                .rect_filled(rect, 2.0, visuals.selection.bg_fill);
-            color = visuals.selection.stroke.color;
-        } else if line.cursor {
-            // Курсор неактивной панели виден рамкой.
-            ui.painter().rect_stroke(
-                rect,
-                2.0,
-                visuals.widgets.noninteractive.bg_stroke,
-                StrokeKind::Inside,
+pub(crate) fn radius(t: &Tokens, m: Metric) -> CornerRadius {
+    t.radius(m)
+}
+
+/// Отрисовка строк списка.
+pub(crate) struct Rows<'a> {
+    pub i18n: &'a I18n,
+    pub tokens: &'a Tokens,
+    pub hl: &'a Highlighter,
+    pub active: bool,
+    /// Удержанный кадр (`false`) на мышь не отвечает.
+    pub interactive: bool,
+    pub side: Side,
+}
+
+impl Rows<'_> {
+    /// Строки рисуются вручную, без фокуса и подсветки при наведении (S0 v3 №13).
+    /// Курсор — рамка 1 px `stroke.strong`, помеченные — `accent.subtle` и `accent.text`
+    /// (S0-decisions №31).
+    pub(crate) fn paint(&self, ui: &mut egui::Ui, lines: &[Line], out: &mut Vec<Command>) {
+        let t = self.tokens;
+        let row_h = t.m(Metric::HRow);
+        let pad = t.m(Metric::PadRowX);
+        let font = TextStyle::Body.resolve(ui.style());
+        let ctrl = ui.input(|i| i.modifiers.command);
+        let sense = if self.interactive {
+            Sense::CLICK
+        } else {
+            Sense::hover()
+        };
+        let r = radius(t, Metric::RadiusControl);
+        for line in lines {
+            let (rect, resp) =
+                ui.allocate_exact_size(egui::vec2(ui.available_width(), row_h), sense);
+            let painter = ui.painter();
+            let mut color = self
+                .hl
+                .color(line.group, t)
+                .unwrap_or_else(|| t.c(Role::TextPrimary));
+            if line.selected {
+                painter.rect_filled(rect, r, t.c(Role::AccentSubtle));
+                color = t.c(Role::AccentText);
+            }
+            if line.cursor && self.active {
+                painter.rect_filled(rect, r, t.c(Role::FillCursor));
+                painter.rect_stroke(
+                    rect,
+                    r,
+                    Stroke::new(t.m(Metric::StrokeThin), t.c(Role::StrokeStrong)),
+                    StrokeKind::Inside,
+                );
+            } else if line.cursor {
+                painter.rect_filled(rect, r, t.c(Role::FillCursorPassive));
+            }
+            let clip = ui.painter_at(rect);
+            let size_rect = text::paint(
+                &clip,
+                self.i18n,
+                rect.right_center() - egui::vec2(pad, 0.0),
+                Align2::RIGHT_CENTER,
+                &Tx::user(line.size.as_str()),
+                font.clone(),
+                t.c(Role::TextSecondary),
             );
-        }
-        if line.selected {
-            color = Color32::from_rgb(230, 190, 60);
-        }
-        let painter = ui.painter_at(rect);
-        let size_rect = text::paint(
-            &painter,
-            i18n,
-            rect.right_center() - egui::vec2(6.0, 0.0),
-            Align2::RIGHT_CENTER,
-            &Tx::user(line.size.as_str()),
-            font.clone(),
-            color,
-        );
-        // Имя не залезает на размер.
-        let name_painter = painter.with_clip_rect(rect.with_max_x(size_rect.left() - 8.0));
-        text::paint(
-            &name_painter,
-            i18n,
-            rect.left_center() + egui::vec2(6.0, 0.0),
-            Align2::LEFT_CENTER,
-            &Tx::user(line.name.as_str()),
-            font.clone(),
-            color,
-        );
-        if !interactive {
-            continue;
-        }
-        if resp.clicked() {
-            if !active {
-                out.push(Command::new("panel.focus").arg("side", side_arg(side)));
+            // Имя не залезает на размер.
+            let name_clip =
+                clip.with_clip_rect(rect.with_max_x(size_rect.left() - t.m(Metric::SpaceS)));
+            text::paint(
+                &name_clip,
+                self.i18n,
+                rect.left_center() + egui::vec2(pad, 0.0),
+                Align2::LEFT_CENTER,
+                &Tx::user(line.name.as_str()),
+                font.clone(),
+                color,
+            );
+            if !self.interactive {
+                continue;
             }
-            out.push(line.click.clone());
-            if ctrl && line.entry {
-                out.push(Command::new("sel.toggle"));
+            if resp.clicked() {
+                if !self.active {
+                    out.push(Command::new("panel.focus").arg("side", side_arg(self.side)));
+                }
+                out.push(line.click.clone());
+                if ctrl && line.entry {
+                    out.push(Command::new("sel.toggle"));
+                }
             }
-        }
-        if resp.double_clicked() {
-            out.push(Command::new("panel.enter"));
+            if resp.double_clicked() {
+                out.push(Command::new("panel.enter"));
+            }
         }
     }
 }
 
-/// Рамка карточки: активная — цветом выделения.
-pub(crate) fn card_frame(ui: &egui::Ui, active: bool) -> egui::Frame {
-    let v = ui.visuals();
-    let stroke = if active {
-        Stroke::new(1.0, v.selection.bg_fill)
-    } else {
-        v.widgets.noninteractive.bg_stroke
-    };
+/// Рамка карточки (S2 §1.2–1.3): `layer.panel`, `stroke.card`, `radius.overlay`.
+pub(crate) fn card_frame(t: &Tokens) -> egui::Frame {
+    let pad = t.m(Metric::SpaceS) as i8;
     egui::Frame::new()
-        .fill(v.extreme_bg_color)
-        .stroke(stroke)
-        .corner_radius(CornerRadius::same(6))
-        .inner_margin(egui::Margin::same(6))
+        .fill(t.c(Role::LayerPanel))
+        .stroke(Stroke::new(t.m(Metric::StrokeThin), t.c(Role::StrokeCard)))
+        .corner_radius(radius(t, Metric::RadiusOverlay))
+        .inner_margin(egui::Margin::same(pad))
+}
+
+/// Акцентная полоса активной панели — верх карточки (`w.accent_bar`).
+pub(crate) fn accent_bar(ui: &egui::Ui, t: &Tokens, card: Rect) {
+    let r = t.m(Metric::RadiusOverlay);
+    let bar = Rect::from_min_size(
+        card.min + egui::vec2(r, 0.0),
+        egui::vec2((card.width() - 2.0 * r).max(0.0), t.m(Metric::WAccentBar)),
+    );
+    let rr = CornerRadius::same(1);
+    ui.painter().rect_filled(bar, rr, t.c(Role::AccentFill));
 }

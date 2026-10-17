@@ -29,6 +29,19 @@ pub struct Look {
     /// Прозрачность окон включена (Mica — S2-06).
     pub transparency: bool,
     pub high_contrast: bool,
+    /// Системные цвета при высокой контрастности (Windows, `GetSysColor`).
+    pub hc: Option<HcColors>,
+}
+
+/// Минимальный набор системных цветов для режима высокой контрастности (S2 §1.5).
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct HcColors {
+    pub window: egui::Color32,
+    pub window_text: egui::Color32,
+    pub highlight: egui::Color32,
+    pub highlight_text: egui::Color32,
+    pub gray_text: egui::Color32,
+    pub hotlight: egui::Color32,
 }
 
 /// Возможности материала окна (S2 §1.4).

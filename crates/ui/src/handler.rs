@@ -165,7 +165,7 @@ impl Handler for UiHandler {
                         });
                     }
                 };
-                ui_state(cx).theme = mode;
+                ui_state(cx).theme = Some(mode);
             }
             "ui.zoom" => zoom(ui_state(cx), a.int("delta")),
             "ui.split" => split(ui_state(cx), a.bool("reset"), a.int("delta")),

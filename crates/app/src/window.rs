@@ -301,6 +301,10 @@ fn run_with(backends: wgpu::Backends, pending: &Pending) -> eframe::Result {
                 // Шрифты Segoe / JetBrains Mono — S2; пока шрифты egui по умолчанию.
                 ctx.options_mut(|o| o.zoom_with_keyboard = false);
             }
+            let (ui_cfg, ui_cfg_warning) = boot.config.section::<filenav_ui::config::UiCfg>("ui");
+            if let Some(w) = ui_cfg_warning {
+                tracing::warn!(key = %w.key, msg = %w.msg, "[ui] section ignored");
+            }
             let mut core = {
                 let _s = tracing::info_span!("startup.core").entered();
                 let t = Instant::now();
@@ -321,12 +325,15 @@ fn run_with(backends: wgpu::Backends, pending: &Pending) -> eframe::Result {
                 filenav_ui::sys::SysProbe::default()
             });
             let theme = probe.look.theme.unwrap_or_else(|| cc.egui_ctx.theme());
-            let mut ui = FileNavUi::new(core.registry(), &probe);
+            let mut ui = FileNavUi::new(core.registry(), &probe, &ui_cfg);
             ui.watch_system(&cc.egui_ctx);
             // Окно показывается скрытым от экрана: первые кадры рисуются уже в
             // итоговом размере, на экран выходит только готовый (S1-13).
             crate::sys::cloak(cc, true);
-            let bg = cc.egui_ctx.style_of(theme).visuals.panel_fill;
+            let bg = ui
+                .tokens()
+                .palette(theme)
+                .get(filenav_ui::tokens::Role::BgBase);
             crate::sys::set_background(cc, [bg.r(), bg.g(), bg.b()]);
             crate::sys::no_transitions(cc);
             cc.egui_ctx
