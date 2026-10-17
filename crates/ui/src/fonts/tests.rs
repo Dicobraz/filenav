@@ -1,4 +1,4 @@
-use egui::{Context, FontId, RawInput};
+use egui::{Context, RawInput};
 
 use super::*;
 
@@ -9,7 +9,7 @@ fn frame(ctx: &Context) {
 }
 
 #[cfg(windows)]
-fn width(ctx: &Context, id: &FontId, text: &str, slot: Option<f32>) -> f32 {
+fn width(ctx: &Context, id: &egui::FontId, text: &str, slot: Option<f32>) -> f32 {
     match slot {
         Some(slot) => tabular_layout(text, slot, |c| ctx.fonts_mut(|f| f.glyph_width(id, c))).1,
         None => text
