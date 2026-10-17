@@ -3,6 +3,7 @@
 //! S4-03 и дальше.
 
 mod api;
+pub mod icons;
 mod local;
 pub mod name;
 pub mod path;
