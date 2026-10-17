@@ -1044,7 +1044,9 @@ dependencies = [
  "compact_str",
  "crossbeam-channel",
  "filenav-core",
+ "proptest",
  "rustc-hash 2.1.3",
+ "smallvec",
  "tempfile",
  "thiserror 2.0.21",
 ]

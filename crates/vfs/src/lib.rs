@@ -4,6 +4,8 @@
 
 mod api;
 mod local;
+pub mod name;
+pub mod path;
 
 pub use api::*;
 pub use local::LocalFs;

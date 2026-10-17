@@ -228,3 +228,34 @@ fn cancelled_stream_stops() {
     ));
     assert_eq!(out.len(), 0);
 }
+
+/// Имя не в UTF-8 на настоящей ФС: листинг даёт экранированное имя с флагом, по
+/// нему запись снова находится (S4-02).
+#[test]
+fn non_utf8_name_roundtrips_through_fs() {
+    use std::ffi::OsString;
+    let tmp = tempfile::tempdir().unwrap();
+    #[cfg(windows)]
+    let raw = {
+        use std::os::windows::ffi::OsStringExt;
+        OsString::from_wide(&[0x61, 0xD800, 0x62])
+    };
+    #[cfg(unix)]
+    let raw = {
+        use std::os::unix::ffi::OsStringExt;
+        OsString::from_vec(b"a\xFFb".to_vec())
+    };
+    if fs::write(tmp.path().join(&raw), b"12").is_err() {
+        eprintln!("this file system rejects non-UTF-8 names, skipped");
+        return;
+    }
+    let v = list_all(tmp.path(), &ListOpts::default()).unwrap();
+    assert_eq!(v.len(), 1);
+    let e = &v[0];
+    assert!(e.attrs.has(Attrs::ESCAPED_NAME), "{e:?}");
+    let dir = Location::local(tmp.path());
+    assert_eq!(filenav_vfs::name::join_os(&dir, e), tmp.path().join(&raw));
+    let again = LocalFs::new().stat_entry(&dir, &e.name, e.attrs).unwrap();
+    assert_eq!((again.size, again.name.as_str()), (2, e.name.as_str()));
+    assert!(again.attrs.has(Attrs::ESCAPED_NAME));
+}
