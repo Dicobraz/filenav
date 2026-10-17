@@ -6,6 +6,7 @@ mod api;
 mod local;
 pub mod name;
 pub mod path;
+pub mod sort;
 
 pub use api::*;
 pub use local::LocalFs;

@@ -1042,6 +1042,7 @@ name = "filenav-vfs"
 version = "0.1.0"
 dependencies = [
  "compact_str",
+ "criterion",
  "crossbeam-channel",
  "filenav-core",
  "proptest",
