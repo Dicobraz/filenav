@@ -40,7 +40,8 @@ pub struct UiState {
     /// Свёрнутые вопросы (`ui.prompt.hide`).
     pub prompt_hidden: SmallVec<[PromptId; 4]>,
     pub jobs_expanded: bool,
-    pub theme: ThemeMode,
+    /// Тема командой `ui.theme`; `None` — из `[ui] theme`.
+    pub theme: Option<ThemeMode>,
     /// Масштаб в процентах (`ui.zoom`), 100 — без масштаба.
     pub zoom: u16,
     /// Доля левой панели (`ui.split`), 0,5 — поровну.
@@ -68,7 +69,7 @@ impl UiState {
             path_edit: None,
             prompt_hidden: SmallVec::new(),
             jobs_expanded: false,
-            theme: ThemeMode::System,
+            theme: None,
             columns: None,
         }
     }

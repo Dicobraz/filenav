@@ -9,6 +9,10 @@ use std::time::Duration;
 
 use windows_sys::Win32::Foundation::{ERROR_SUCCESS, HANDLE, WAIT_OBJECT_0};
 use windows_sys::Win32::Globalization::GetUserDefaultLocaleName;
+use windows_sys::Win32::Graphics::Gdi::{
+    COLOR_GRAYTEXT, COLOR_HIGHLIGHT, COLOR_HIGHLIGHTTEXT, COLOR_HOTLIGHT, COLOR_WINDOW,
+    COLOR_WINDOWTEXT, GetSysColor,
+};
 use windows_sys::Win32::System::Registry::{
     HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_NOTIFY, REG_NOTIFY_CHANGE_LAST_SET,
     RRF_RT_REG_BINARY, RRF_RT_REG_DWORD, RRF_RT_REG_SZ, RegGetValueW, RegNotifyChangeKeyValue,
@@ -18,7 +22,7 @@ use windows_sys::Win32::System::Threading::{CreateEventW, INFINITE, WaitForMulti
 use windows_sys::Win32::UI::Accessibility::{HCF_HIGHCONTRASTON, HIGHCONTRASTW};
 use windows_sys::Win32::UI::WindowsAndMessaging::{SPI_GETHIGHCONTRAST, SystemParametersInfoW};
 
-use super::{BackdropCaps, FontFiles, Look};
+use super::{BackdropCaps, FontFiles, HcColors, Look};
 use crate::accent::AccentPalette;
 
 const PERSONALIZE: &str = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
@@ -103,6 +107,7 @@ pub(super) fn look() -> Look {
     .and_then(|b| AccentPalette::from_registry(&b))
     .or_else(|| reg_dword(HKEY_CURRENT_USER, DWM, "AccentColor").map(AccentPalette::from_abgr))
     .unwrap_or_default();
+    let high_contrast = high_contrast();
     Look {
         theme: Some(if light {
             egui::Theme::Light
@@ -111,7 +116,26 @@ pub(super) fn look() -> Look {
         }),
         accent,
         transparency,
-        high_contrast: high_contrast(),
+        high_contrast,
+        hc: high_contrast.then(hc_colors),
+    }
+}
+
+fn hc_colors() -> HcColors {
+    let c = |index| {
+        // SAFETY: без указателей; индекс из констант COLOR_*.
+        let v = unsafe { GetSysColor(index) };
+        // COLORREF — 0x00BBGGRR.
+        let [r, g, b, _] = v.to_le_bytes();
+        egui::Color32::from_rgb(r, g, b)
+    };
+    HcColors {
+        window: c(COLOR_WINDOW),
+        window_text: c(COLOR_WINDOWTEXT),
+        highlight: c(COLOR_HIGHLIGHT),
+        highlight_text: c(COLOR_HIGHLIGHTTEXT),
+        gray_text: c(COLOR_GRAYTEXT),
+        hotlight: c(COLOR_HOTLIGHT),
     }
 }
 

@@ -58,7 +58,7 @@ fn lines_from_top_with_cursor() {
     let mut t = tab(&["a", "b", "c"]);
     t.cursor.top = 1;
     t.cursor.row = 2;
-    let v = lines(&en(), &t, 2);
+    let v = lines(&en(), &crate::highlight::Highlighter::default(), &t, 2);
     let got: Vec<_> = v
         .iter()
         .map(|l| (l.name.as_str(), l.size.as_str(), l.cursor))
@@ -238,7 +238,7 @@ fn toggles_theme_zoom_split_columns() {
     run(&mut c, "ui.jobs.toggle");
     assert!(ui_state(&c).jobs_expanded);
     run(&mut c, "ui.theme mode=dark");
-    assert_eq!(ui_state(&c).theme, ThemeMode::Dark);
+    assert_eq!(ui_state(&c).theme, Some(ThemeMode::Dark));
     run(&mut c, "ui.zoom delta=1");
     run(&mut c, "ui.zoom delta=1");
     assert_eq!(ui_state(&c).zoom, 120);
@@ -278,7 +278,7 @@ fn show_headless_frame() {
     let mut c = core();
     run(&mut c, "app.no_such");
     let ev = c.take_ui_events();
-    let mut ui = FileNavUi::new(c.registry(), &sys::SysProbe::default());
+    let mut ui = FileNavUi::new(c.registry(), &sys::SysProbe::default(), &UiCfg::default());
     let ctx = egui::Context::default();
     let mut out = Vec::new();
     for frame in 0..2 {
