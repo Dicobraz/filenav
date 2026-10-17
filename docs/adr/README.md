@@ -14,6 +14,6 @@
 | 0010 | [Поле поколения `generation`](0010-gen-field-name.md) |
 | 0011 | [UI-фронтенд получает корневой `egui::Ui`](0011-ui-show-root-ui.md) |
 | 0012 | [Рендер wgpu (DX12 на Windows) вместо glow](0012-renderer-wgpu.md) |
-| 0013 | [Аргумент `ui.draft` — `command`, а не `cmd`](0013-ui-draft-command-arg.md) (предложено) |
+| 0013 | [Аргумент `ui.draft` — `command`, а не `cmd`](0013-ui-draft-command-arg.md) |
 
 Новые ADR — со следующего свободного номера: `NNNN-кратко.md`.
