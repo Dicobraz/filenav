@@ -7,14 +7,17 @@
 //! (`clippy.toml`: `disallowed-methods`).
 
 pub mod accent;
+pub mod canvas;
 pub mod chrome;
 pub mod config;
 pub mod fmt_cell;
 pub mod fonts;
+mod frame;
 mod handler;
 pub mod highlight;
 pub mod icons;
 pub mod keybar;
+pub mod layout;
 mod panel;
 pub mod state;
 pub mod sys;
@@ -238,53 +241,55 @@ impl FileNavUi {
         }
         let t = &self.tokens;
         let gap = t.m(Metric::GapPanels);
+        // Регионы окна (S2-07) и базовый слой через Canvas; виджеты — в регионах.
+        let screen = root.max_rect();
+        let regions = layout::Layout::compute(screen, t, s, st);
+        root.painter().rect_filled(screen, 0.0, t.c(Role::BgBase));
+        let prompt = format!("{}>", panel::path_text(s.active_tab()));
+        frame::paint(
+            &mut canvas::EguiCanvas {
+                painter: root.painter().clone(),
+                tokens: t,
+                fonts: &self.fonts,
+                i18n: &i18n,
+            },
+            &regions,
+            t,
+            s,
+            st,
+            &prompt,
+        );
+        let mut child = |r: egui::Rect| root.new_child(egui::UiBuilder::new().max_rect(r));
         let title = titlebar::TitleBar {
             i18n: &i18n,
             tokens: t,
             fonts: &self.fonts,
             chrome: self.chrome.as_ref(),
-            split: st.split,
+            columns: regions.panels,
         };
-        egui::Panel::top("titlebar")
-            .resizable(false)
-            .exact_size(t.m(Metric::HTitlebar))
-            .frame(egui::Frame::new().fill(t.c(Role::BgBase)))
-            .show(root, |ui| title.show(ui, s, out));
-        if self.cfg.keybar {
-            egui::Panel::bottom("keybar")
-                .resizable(false)
-                .exact_size(t.m(Metric::HKeybar) + gap)
-                .frame(egui::Frame::new().fill(t.c(Role::BgBase)))
-                .show(root, |ui| self.paint_keybar(ui, &i18n, out));
+        title.show(&mut child(regions.titlebar), s, out);
+        self.paint_keybar(&mut child(regions.keybar), &i18n, out);
+        if let (Some(first), Some(last)) = (regions.banners.first(), regions.banners.last()) {
+            let mut ui = child(first.union(*last).shrink(gap));
+            top_bars(&mut ui, &i18n, &self.tokens, &self.fonts, s, st, out);
         }
-        let central = egui::Frame::new()
-            .fill(self.tokens.c(Role::BgBase))
-            .inner_margin(egui::Margin {
-                left: gap as i8,
-                right: gap as i8,
-                top: 0,
-                bottom: gap as i8,
-            });
-        egui::CentralPanel::default()
-            .frame(central)
-            .show(root, |ui| {
-                top_bars(ui, &i18n, &self.tokens, &self.fonts, s, st, out);
-                let h = ui.available_height();
-                let w = ui.available_width();
-                let left_w = ((w - gap) * st.split).max(0.0);
-                ui.horizontal_top(|ui| {
-                    for side in [Side::Left, Side::Right] {
-                        let width = match side {
-                            Side::Left => left_w,
-                            Side::Right => (w - gap - left_w).max(0.0),
-                        };
-                        let (rect, _) =
-                            ui.allocate_exact_size(egui::vec2(width, h), Sense::hover());
-                        let mut card = ui.new_child(egui::UiBuilder::new().max_rect(rect));
-                        self.card(&mut card, &i18n, s, side, out);
-                    }
-                });
-            });
+        self.paint_jobs(root, &regions, &i18n, s);
+        for side in [Side::Left, Side::Right] {
+            if let Some(r) = regions.panel(side) {
+                let mut card = root.new_child(egui::UiBuilder::new().max_rect(r));
+                self.card(&mut card, &i18n, s, side, out);
+            }
+        }
+        if let Some(sp) = regions.splitter {
+            let resp = root.interact(sp, root.id().with("splitter"), Sense::click());
+            if resp.hovered() {
+                root.ctx()
+                    .set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+            }
+            if resp.double_clicked() {
+                out.push(Command::new("ui.split").arg("reset", true));
+            }
+        }
         self.paint_toasts(&ctx, &i18n);
     }
 
@@ -358,8 +363,17 @@ impl FileNavUi {
         let hl = &self.highlighter;
         let fs = &self.fonts;
         let strong = fs.id(Font::Strong, tk.m(Metric::TypeBody));
-        let card = panel::card_frame(tk).show(ui, |ui| {
-            ui.set_min_size(ui.available_size());
+        // Карточка из фиксированных полос токенов (не от высоты подписей egui): путь,
+        // список, подвал — число строк не зависит от того, применился ли стиль.
+        let inner = ui.max_rect().shrink(tk.m(Metric::SpaceXs));
+        let path_rect = inner.with_max_y(inner.top() + tk.m(Metric::HBreadcrumb));
+        let footer_rect = inner.with_min_y(inner.bottom() - tk.m(Metric::HPanelFooter));
+        let list_rect = egui::Rect::from_min_max(
+            egui::pos2(inner.left(), path_rect.bottom()),
+            egui::pos2(inner.right(), footer_rect.top()),
+        );
+        let pad = tk.m(Metric::PadRowX);
+        {
             // Новый каталог ещё ничего не прислал — прежний кадр, а не пустая панель:
             // иначе каждый переход мигает (S2: индикатор — после 150 мс).
             let held = panel::hold_left(t).and_then(|left| {
@@ -372,19 +386,18 @@ impl FileNavUi {
                 Some(prev) => (prev.path.clone(), prev.footer.clone()),
                 None => (panel::path_text(t), panel::footer(i18n, t)),
             };
-            text::label_styled(
-                ui,
+            let body = fs.id(Font::Ui, tk.m(Metric::TypeBody));
+            text::paint_clipped(
+                ui.painter(),
                 i18n,
+                path_rect.left_center() + egui::vec2(pad, 0.0),
+                path_rect.width() - 2.0 * pad,
                 &Tx::user(path.as_str()),
-                Some(tk.c(Role::TextPrimary)),
-                active.then(|| strong.clone()),
+                if active { strong.clone() } else { body },
+                tk.c(Role::TextPrimary),
             );
-            ui.separator();
-
             let row_h = tk.m(Metric::HRow);
-            let footer_h = tk.m(Metric::HPanelFooter);
-            let list_h = (ui.available_height() - footer_h).max(row_h);
-            let page = panel::rows_fit(list_h, row_h);
+            let page = panel::rows_fit(list_rect.height(), row_h);
             if memo.page != page {
                 memo.page = page;
                 out.push(
@@ -394,22 +407,8 @@ impl FileNavUi {
                         .arg("cols", 1),
                 );
             }
-            let (list_rect, _) =
-                ui.allocate_exact_size(egui::vec2(ui.available_width(), list_h), Sense::hover());
-            let area = ui.interact(list_rect, ui.id().with("rows"), Sense::hover());
-            if interactive && area.hovered() {
-                let dy = ui.input(|i| i.smooth_scroll_delta.y);
-                let lines = (-dy / row_h).round() as i64;
-                if lines != 0 {
-                    let top = (i64::from(t.cursor.top) + lines).max(0);
-                    out.push(
-                        Command::new("panel.viewport")
-                            .arg("side", panel::side_arg(side))
-                            .arg("rows", i64::from(page))
-                            .arg("cols", 1)
-                            .arg("top", top),
-                    );
-                }
+            if interactive {
+                wheel(ui, list_rect, row_h, t, side, page, out);
             }
             let shown = held.unwrap_or_else(|| Shown {
                 path,
@@ -428,29 +427,48 @@ impl FileNavUi {
                 side,
             }
             .paint(&mut list, &shown.lines, out);
-            ui.separator();
-            text::label_styled(
-                ui,
+            let divider = tk.c(Role::StrokeDivider);
+            for y in [path_rect.bottom(), footer_rect.top()] {
+                ui.painter().hline(
+                    inner.x_range(),
+                    y,
+                    egui::Stroke::new(tk.m(Metric::StrokeThin), divider),
+                );
+            }
+            text::paint_clipped(
+                ui.painter(),
                 i18n,
+                footer_rect.left_center() + egui::vec2(pad, 0.0),
+                footer_rect.width() - 2.0 * pad,
                 &Tx::user(shown.footer.as_str()),
-                Some(tk.c(Role::TextSecondary)),
-                Some(fs.id(Font::Caption, tk.m(Metric::TypeCaption))),
+                fs.id(Font::Caption, tk.m(Metric::TypeCaption)),
+                tk.c(Role::TextSecondary),
             );
             memo.shown = Some(shown);
-        });
-        if active {
-            panel::accent_bar(ui, tk, card.response.rect);
+        }
+    }
+
+    fn paint_jobs(&self, root: &egui::Ui, regions: &layout::Regions, i18n: &I18n, s: &AppState) {
+        let t = &self.tokens;
+        let font = self.fonts.id(Font::Caption, t.m(Metric::TypeCaption));
+        let active = s.jobs.iter().filter(|j| j.state.is_active());
+        for (job, row) in active.zip(&regions.jobs) {
+            text::paint_clipped(
+                root.painter(),
+                i18n,
+                row.left_center() + egui::vec2(t.m(Metric::PadRowX), 0.0),
+                row.width() - 2.0 * t.m(Metric::PadRowX),
+                &Tx::user(job.title.as_str()),
+                font.clone(),
+                t.c(Role::TextPrimary),
+            );
         }
     }
 
     fn paint_keybar(&self, ui: &mut egui::Ui, i18n: &I18n, out: &mut Vec<Command>) {
         let t = &self.tokens;
         let n = 12.0;
-        let gap = t.m(Metric::GapPanels);
-        let strip = ui
-            .available_rect_before_wrap()
-            .shrink2(egui::vec2(gap, 0.0))
-            .with_max_y(ui.available_rect_before_wrap().bottom() - gap);
+        let strip = ui.max_rect();
         let w = strip.width() / n;
         let font = TextStyle::Small.resolve(ui.style());
         let chip = panel::radius(t, Metric::RadiusControl);
@@ -524,6 +542,34 @@ impl FileNavUi {
                     });
                 }
             });
+    }
+}
+
+/// Колесо над списком — `panel.viewport{top}` (строк за щелчок — по высоте строки).
+fn wheel(
+    ui: &egui::Ui,
+    list_rect: egui::Rect,
+    row_h: f32,
+    t: &filenav_core::Tab,
+    side: Side,
+    page: u32,
+    out: &mut Vec<Command>,
+) {
+    let area = ui.interact(list_rect, ui.id().with("rows"), Sense::hover());
+    if !area.hovered() {
+        return;
+    }
+    let dy = ui.input(|i| i.smooth_scroll_delta.y);
+    let lines = (-dy / row_h).round() as i64;
+    if lines != 0 {
+        let top = (i64::from(t.cursor.top) + lines).max(0);
+        out.push(
+            Command::new("panel.viewport")
+                .arg("side", panel::side_arg(side))
+                .arg("rows", i64::from(page))
+                .arg("cols", 1)
+                .arg("top", top),
+        );
     }
 }
 

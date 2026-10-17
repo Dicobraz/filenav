@@ -70,3 +70,4 @@ cmd-ui-zoom = Zoom
 cmd-ui-split = Panel split
 cmd-ui-lang = Language
 cmd-ui-columns = Columns
+cmd-ui-panels-toggle_all = Hide or show panels

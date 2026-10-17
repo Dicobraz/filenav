@@ -25,8 +25,8 @@ pub(crate) struct TitleBar<'a> {
     pub tokens: &'a Tokens,
     pub fonts: &'a FontSet,
     pub chrome: Option<&'a ChromeHandle>,
-    /// Доля левой панели и зазор — как у карточек.
-    pub split: f32,
+    /// Карточки панелей (из раскладки): табы — над ними.
+    pub columns: [Option<Rect>; 2],
 }
 
 impl TitleBar<'_> {
@@ -40,23 +40,16 @@ impl TitleBar<'_> {
             0.0
         };
         let mut interactive = Vec::new();
-        // Табы — над карточками: та же раскладка, что у панелей.
-        let content = bar
-            .with_max_x(bar.right() - buttons_w)
-            .shrink2(egui::vec2(gap, 0.0));
-        let left_w = ((bar.width() - 3.0 * gap) * self.split).max(0.0);
-        let columns = [
-            Rect::from_min_max(
-                content.min,
-                egui::pos2(content.left() + left_w, content.bottom()),
-            ),
-            Rect::from_min_max(
-                egui::pos2(content.left() + left_w + gap, content.top()),
-                content.max,
-            ),
-        ];
-        for (side, area) in [Side::Left, Side::Right].into_iter().zip(columns) {
-            self.tabs(ui, s, side, area, out, &mut interactive);
+        // Табы — над своими карточками, не заходя на кнопки caption.
+        let limit = bar.right() - buttons_w - gap;
+        for (side, card) in [Side::Left, Side::Right].into_iter().zip(self.columns) {
+            if let Some(card) = card {
+                let area = Rect::from_min_max(
+                    egui::pos2(card.left(), bar.top()),
+                    egui::pos2(card.right().min(limit), bar.bottom()),
+                );
+                self.tabs(ui, s, side, area, out, &mut interactive);
+            }
         }
         if let Some(chrome) = self.chrome {
             self.buttons(ui, bar, chrome, &mut interactive);
