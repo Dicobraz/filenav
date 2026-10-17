@@ -12,6 +12,7 @@ repository.workspace = true
 compact_str.workspace = true
 crossbeam-channel.workspace = true
 filenav-core.workspace = true
+rayon.workspace = true
 rustc-hash.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true

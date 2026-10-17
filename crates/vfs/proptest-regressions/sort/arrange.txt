@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 9d39dca02cdaf6e8f387ca41adbe69d91d3a8e058e963ee1d496b74a5a43b145 # shrinks to es = [Entry { name: "", size: 0, mtime: 0, attrs: Attrs(0), kind: Dir }, Entry { name: "", size: 0, mtime: 0, attrs: Attrs(0), kind: Dir }], key = Name, dirs_first = false
