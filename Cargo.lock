@@ -1040,6 +1040,14 @@ dependencies = [
 [[package]]
 name = "filenav-vfs"
 version = "0.1.0"
+dependencies = [
+ "compact_str",
+ "crossbeam-channel",
+ "filenav-core",
+ "rustc-hash 2.1.3",
+ "tempfile",
+ "thiserror 2.0.21",
+]
 
 [[package]]
 name = "filenav-view"
