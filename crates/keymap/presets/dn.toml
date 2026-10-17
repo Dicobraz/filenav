@@ -1,0 +1,4 @@
+# Пресет DN. Наполнение — S3-09 (таблицы S3 §3).
+format = 1
+name = "dn"
+extends = "base"

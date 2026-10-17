@@ -13,13 +13,18 @@ bitflags.workspace = true
 compact_str.workspace = true
 egui.workspace = true
 rustc-hash.workspace = true
+serde.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true
+toml.workspace = true
+tracing.workspace = true
 urfin-core.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
+insta.workspace = true
 proptest.workspace = true
+tempfile.workspace = true
 
 [[bench]]
 name = "when"
