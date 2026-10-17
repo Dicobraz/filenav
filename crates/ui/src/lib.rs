@@ -144,6 +144,11 @@ impl UrfinUi {
             .chain(&warnings)
             .map(|w| (format!("{}: {}", w.key, w.msg), far))
             .chain(menu_warnings.into_iter().map(|w| (w, far)))
+            .chain(
+                menu::letter_conflicts(&menus, &urfin_i18n::current())
+                    .into_iter()
+                    .map(|w| (w, far)),
+            )
             .collect();
         Self {
             menus,
@@ -189,8 +194,10 @@ impl UrfinUi {
         let far = Instant::now() + TOAST_TTL;
         match menu::parse(text, &self.commands) {
             Ok((menus, warnings)) => {
+                let letters = menu::letter_conflicts(&menus, &urfin_i18n::current());
                 self.menus = menus;
-                self.toasts.extend(warnings.into_iter().map(|w| (w, far)));
+                self.toasts
+                    .extend(warnings.into_iter().chain(letters).map(|w| (w, far)));
             }
             Err(e) => self.toasts.push_back((format!("menu.toml: {e}"), far)),
         }

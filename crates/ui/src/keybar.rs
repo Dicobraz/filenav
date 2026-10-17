@@ -341,3 +341,20 @@ pub(crate) fn show(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::FarStub;
+
+    /// У заглушки одно сочетание — одна команда (конфликты пользовательских keymap
+    /// ловит компиляция keymap S3, §2.5 `Ambiguous`).
+    #[test]
+    fn stub_keys_are_unique() {
+        let b = FarStub::bindings();
+        let mut keys: Vec<&str> = b.iter().map(|(_, k)| k.as_str()).collect();
+        keys.sort_unstable();
+        let mut dups = keys.clone();
+        dups.dedup();
+        assert_eq!(keys.len(), dups.len(), "{keys:?}");
+    }
+}

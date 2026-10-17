@@ -39,6 +39,44 @@ fn builtin_menu_has_only_registered_commands() {
     }
 }
 
+/// Во вшитом меню буквы выбора не повторяются ни в одном языке.
+#[test]
+fn builtin_menu_letters_are_unique() {
+    let (menus, _) = parse(MENU_TOML, &registered()).unwrap();
+    let catalog = urfin_i18n::Catalog::embedded();
+    for tag in ["en", "ru"] {
+        let i18n = catalog.build(&tag.parse().unwrap()).0;
+        assert_eq!(
+            letter_conflicts(&menus, &i18n),
+            Vec::<String>::new(),
+            "{tag}"
+        );
+    }
+}
+
+/// Повторяющаяся буква (своё меню) — пункты по кругу, без выполнения.
+#[test]
+fn shared_letter_cycles() {
+    let text = r#"
+[[menu]]
+id = "x"
+title = "menu-files"
+items = [
+    { cmd = "sel.all", label = "menu-sort-name" },
+    { cmd = "sel.none", label = "menu-sort-name" },
+]
+"#;
+    let menus = parse(text, &registered()).unwrap().0;
+    assert_eq!(letter_conflicts(&menus, &i18n()).len(), 1);
+    let mut fx = Fx::new();
+    fx.menus = menus;
+    fx.frame("x", Vec::new());
+    assert_eq!(fx.memo.sel, Some(0));
+    let (_, out) = fx.frame("x", vec![egui::Event::Text("и".into())]);
+    assert_eq!(out.len(), 0);
+    assert_eq!(fx.memo.sel, Some(1));
+}
+
 /// Неизвестный id — предупреждение, пункт скрыт; разделители по краям и подряд — нет.
 #[test]
 fn unknown_command_is_hidden_with_warning() {

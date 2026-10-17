@@ -167,16 +167,47 @@ fn label(i18n: &I18n, key: &str) -> String {
     i18n.get(key)
 }
 
-/// Буква выбора: атрибут `.menu-key`, иначе первая буква подписи.
+/// Буква выбора: атрибут `.menu-key`, если эта буква есть в подписи (атрибут из
+/// запасного языка — латиница у русской подписи — не годится), иначе первая буква.
 fn letter(i18n: &I18n, key: &str) -> Option<char> {
+    let lower = |c: char| c.to_lowercase().next().unwrap_or(c);
+    let text: String = label(i18n, key).chars().map(lower).collect();
     let attr = i18n
         .has(key)
         .then(|| i18n.attr(key, "menu-key"))
-        .filter(|a| !a.starts_with('⟨'));
-    attr.as_deref()
-        .and_then(|a| a.chars().next())
-        .or_else(|| label(i18n, key).chars().find(|c| c.is_alphanumeric()))
-        .map(|c| c.to_lowercase().next().unwrap_or(c))
+        .and_then(|a| a.chars().next().map(lower))
+        .filter(|c| text.contains(*c));
+    attr.or_else(|| text.chars().find(|c| c.is_alphanumeric()))
+}
+
+/// Одинаковые буквы выбора внутри меню (текущий язык): предупреждения. Такие пункты
+/// выбираются по кругу, но это неудобно — буквы стоит развести (`.menu-key`).
+pub fn letter_conflicts(menus: &[MenuDef], i18n: &I18n) -> Vec<String> {
+    let mut out = Vec::new();
+    for m in menus {
+        let mut seen: Vec<(char, Vec<String>)> = Vec::new();
+        for item in &m.items {
+            let Item::Cmd { label: key, .. } = item else {
+                continue;
+            };
+            let Some(ch) = letter(i18n, key) else {
+                continue;
+            };
+            let name = label(i18n, key);
+            match seen.iter_mut().find(|(c, _)| *c == ch) {
+                Some((_, names)) => names.push(name),
+                None => seen.push((ch, vec![name])),
+            }
+        }
+        for (ch, names) in seen.into_iter().filter(|(_, n)| n.len() > 1) {
+            out.push(format!(
+                "menu {}: letter '{ch}' is shared by {}",
+                m.id,
+                names.join(", ")
+            ));
+        }
+    }
+    out
 }
 
 /// Команды пункта: `ui.cancel`, для меню панели — `panel.focus`, сама команда.
@@ -416,12 +447,29 @@ fn keys(ui: &egui::Ui, i18n: &I18n, def: &MenuDef, memo: &mut MenuMemo, out: &mu
         return;
     }
     if let Some(ch) = typed.map(|c| c.to_lowercase().next().unwrap_or(c)) {
-        let hit = def.items.iter().find_map(|item| match item {
-            Item::Cmd { cmd, label } if letter(i18n, label) == Some(ch) => Some(cmd),
-            _ => None,
-        });
-        if let Some(cmd) = hit {
-            execute(def, cmd, out);
+        let hits: Vec<usize> = def
+            .items
+            .iter()
+            .enumerate()
+            .filter(|(_, item)| matches!(item, Item::Cmd { label, .. } if letter(i18n, label) == Some(ch)))
+            .map(|(i, _)| i)
+            .collect();
+        match hits.as_slice() {
+            [] => {}
+            // Одна буква — сразу выполнить.
+            [i] => {
+                if let Some(Item::Cmd { cmd, .. }) = def.items.get(*i) {
+                    execute(def, cmd, out);
+                }
+            }
+            // Буква повторяется — по кругу между её пунктами, Enter выполняет (как в Windows).
+            many => {
+                let next = many
+                    .iter()
+                    .find(|&&i| memo.sel.is_some_and(|s| i > s))
+                    .unwrap_or(&many[0]);
+                memo.sel = Some(*next);
+            }
         }
     }
 }
