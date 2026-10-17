@@ -1099,6 +1099,9 @@ dependencies = [
  "filenav-core",
  "filenav-i18n",
  "smallvec",
+ "tempfile",
+ "tracing",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

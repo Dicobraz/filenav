@@ -226,7 +226,11 @@ pub struct Launch {
 pub fn run(launch: Launch) -> anyhow::Result<()> {
     // `WGPU_BACKEND` (переменная wgpu) заменяет очередь — для диагностики.
     let order = wgpu::Backends::from_env().map_or_else(|| BACKENDS.to_vec(), |b| vec![b]);
-    let pending = Rc::new(RefCell::new(Some(launch)));
+    // Probe ОС (тема, акцент, шрифты) — параллельно созданию окна и `Core::new`.
+    let probe = std::thread::Builder::new()
+        .name("font-probe".into())
+        .spawn(filenav_ui::sys::probe_system)?;
+    let pending = Rc::new(RefCell::new(Some((launch, probe))));
     let mut last = None;
     for backends in order {
         match run_with(backends, &pending) {
@@ -245,13 +249,14 @@ pub fn run(launch: Launch) -> anyhow::Result<()> {
     ))
 }
 
-type Pending = Rc<RefCell<Option<Launch>>>;
+type Probe = std::thread::JoinHandle<filenav_ui::sys::SysProbe>;
+type Pending = Rc<RefCell<Option<(Launch, Probe)>>>;
 
 fn run_with(backends: wgpu::Backends, pending: &Pending) -> eframe::Result {
     let geom = pending
         .borrow()
         .as_ref()
-        .and_then(|l| l.boot.session.as_ref().and_then(|s| s.window));
+        .and_then(|(l, _)| l.boot.session.as_ref().and_then(|s| s.window));
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("FileNav")
         .with_visible(false)
@@ -278,13 +283,16 @@ fn run_with(backends: wgpu::Backends, pending: &Pending) -> eframe::Result {
         "FileNav",
         options,
         Box::new(move |cc| {
-            let Launch {
-                boot,
-                mut startup,
-                ipc,
-                open,
-                selftest,
-            } = pending.borrow_mut().take().expect("launch is taken once");
+            let (
+                Launch {
+                    boot,
+                    mut startup,
+                    ipc,
+                    open,
+                    selftest,
+                },
+                probe,
+            ) = pending.borrow_mut().take().expect("launch is taken once");
             let services = crate::vfs_services(&boot.config);
             startup.window = window_started.elapsed();
             let ctx = cc.egui_ctx.clone();
@@ -308,11 +316,17 @@ fn run_with(backends: wgpu::Backends, pending: &Pending) -> eframe::Result {
                 let ctx = cc.egui_ctx.clone();
                 inbox.set_waker(move || ctx.request_repaint());
             }
-            let ui = FileNavUi::new(core.registry());
+            let probe = probe.join().unwrap_or_else(|_| {
+                tracing::error!("system probe panicked; using defaults");
+                filenav_ui::sys::SysProbe::default()
+            });
+            let theme = probe.look.theme.unwrap_or_else(|| cc.egui_ctx.theme());
+            let mut ui = FileNavUi::new(core.registry(), &probe);
+            ui.watch_system(&cc.egui_ctx);
             // Окно показывается скрытым от экрана: первые кадры рисуются уже в
             // итоговом размере, на экран выходит только готовый (S1-13).
             crate::sys::cloak(cc, true);
-            let bg = cc.egui_ctx.style_of(cc.egui_ctx.theme()).visuals.panel_fill;
+            let bg = cc.egui_ctx.style_of(theme).visuals.panel_fill;
             crate::sys::set_background(cc, [bg.r(), bg.g(), bg.b()]);
             crate::sys::no_transitions(cc);
             cc.egui_ctx

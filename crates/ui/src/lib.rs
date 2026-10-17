@@ -5,13 +5,16 @@
 //! (`raw_input_hook`, до keymap S3); здесь — мышь. Тексты — только через [`text`]
 //! (`clippy.toml`: `disallowed-methods`).
 
+pub mod accent;
 mod handler;
 pub mod keybar;
 mod panel;
 pub mod state;
+pub mod sys;
 pub mod text;
 
 use std::collections::VecDeque;
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use egui::{Align2, Color32, Sense, TextStyle};
@@ -43,21 +46,40 @@ pub struct FileNavUi {
     cards: [CardMemo; 2],
     keybar: keybar::Keybar,
     registered: Vec<&'static str>,
-    /// Применённые тема и масштаб (меняются командами `ui.theme`, `ui.zoom`).
-    applied: Option<(ThemeMode, u16)>,
+    /// Тема, акцент и контрастность ОС (probe, затем `sys::watch`).
+    look: sys::Look,
+    look_rx: Option<mpsc::Receiver<sys::Look>>,
+    /// Применённые настройки вида: команды `ui.theme`, `ui.zoom` и `look` ОС.
+    applied: Option<(ThemeMode, u16, sys::Look)>,
 }
 
 impl FileNavUi {
-    /// `registry` — команды всех handlers (keybar гасит незарегистрированные).
-    /// Конфиг `[ui]` и системный probe добавят S2-03/S2-05.
-    pub fn new(registry: &CommandRegistry) -> Self {
+    /// `registry` — команды всех handlers (keybar гасит незарегистрированные);
+    /// `probe` — [`sys::probe_system`], его предупреждения показываются тостами.
+    /// Конфиг `[ui]` добавит S2-05.
+    pub fn new(registry: &CommandRegistry, probe: &sys::SysProbe) -> Self {
+        let far = Instant::now() + TOAST_TTL;
+        let toasts = probe
+            .warnings
+            .iter()
+            .map(|w| (format!("{}: {}", w.key, w.msg), far))
+            .collect();
         Self {
-            toasts: VecDeque::new(),
+            toasts,
             cards: [CardMemo::default(), CardMemo::default()],
             keybar: keybar::Keybar::default(),
             registered: keybar::registered(registry),
+            look: probe.look,
+            look_rx: None,
             applied: None,
         }
+    }
+
+    /// Следить за темой и акцентом ОС ([`sys::watch`]); без этого — только probe.
+    pub fn watch_system(&mut self, ctx: &egui::Context) {
+        let (tx, rx) = mpsc::channel();
+        sys::watch(ctx, tx);
+        self.look_rx = Some(rx);
     }
 
     /// Кадр (ADR-0011): `root` — корневой `Ui` окна от eframe.
@@ -103,16 +125,34 @@ impl FileNavUi {
     }
 
     fn apply_look(&mut self, ctx: &egui::Context, st: &UiState) {
-        let look = (st.theme, st.zoom);
-        if self.applied == Some(look) {
+        if let Some(rx) = &self.look_rx {
+            while let Ok(look) = rx.try_recv() {
+                self.look = look;
+            }
+        }
+        let want = (st.theme, st.zoom, self.look);
+        if self.applied == Some(want) {
             return;
         }
-        self.applied = Some(look);
-        ctx.set_theme(match st.theme {
-            ThemeMode::System => egui::ThemePreference::System,
-            ThemeMode::Light => egui::ThemePreference::Light,
-            ThemeMode::Dark => egui::ThemePreference::Dark,
+        self.applied = Some(want);
+        ctx.set_theme(match (st.theme, self.look.theme) {
+            (ThemeMode::Light, _) | (ThemeMode::System, Some(egui::Theme::Light)) => {
+                egui::ThemePreference::Light
+            }
+            (ThemeMode::Dark, _) | (ThemeMode::System, Some(egui::Theme::Dark)) => {
+                egui::ThemePreference::Dark
+            }
+            (ThemeMode::System, None) => egui::ThemePreference::System,
         });
+        for theme in [egui::Theme::Light, egui::Theme::Dark] {
+            let (fill, text, on) = accent_roles(&self.look.accent, theme);
+            ctx.style_mut_of(theme, |style| {
+                let v = &mut style.visuals;
+                v.selection.bg_fill = fill;
+                v.selection.stroke.color = on;
+                v.hyperlink_color = text;
+            });
+        }
         ctx.set_zoom_factor(f32::from(st.zoom) / 100.0);
     }
 
@@ -308,6 +348,15 @@ impl FileNavUi {
                     });
                 }
             });
+    }
+}
+
+/// Роли акцента S2 §1.3: `accent.fill`, `accent.text`, `accent.on`. Остальные токены —
+/// S2-05.
+fn accent_roles(a: &accent::AccentPalette, theme: egui::Theme) -> (Color32, Color32, Color32) {
+    match theme {
+        egui::Theme::Light => (a.dark1, a.dark2, Color32::WHITE),
+        egui::Theme::Dark => (a.light2, a.light3, Color32::BLACK),
     }
 }
 

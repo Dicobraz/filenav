@@ -17,3 +17,4 @@ ui-conflict-head = Конфликт { $index } из { $total } · { $job }
 ui-loading = Загрузка…
 ui-listing-failed = Не удалось прочитать папку: { $error }
 ui-lang-unavailable = Языка { $lang } нет, используется английский
+ui-warn-no-system-font = Системный шрифт интерфейса не найден, используется встроенный
