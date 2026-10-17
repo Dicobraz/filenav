@@ -15,8 +15,11 @@ use std::sync::Arc;
 use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
-use urfin_core::{CmdError, Command, CommandRegistry, ConfigWarning, Paths, Value};
+use urfin_core::{AppState, CmdError, Command, CommandRegistry, ConfigWarning, Paths, Value};
 
+use crate::compile::{
+    ChordState, Compiled, EffectiveBinding, KeybarItem, Lookup, fkey_stroke, label_key,
+};
 use crate::key::{Chord, KeyCode, Mods, Os, Stroke};
 use crate::when::{FlagRegistry, When, WhenErrorKind};
 
@@ -196,6 +199,7 @@ pub struct Keymap {
     os: Os,
     bindings: Vec<Binding>,
     warnings: Vec<KeymapWarning>,
+    compiled: Compiled,
 }
 
 impl Keymap {
@@ -288,6 +292,44 @@ impl Keymap {
 
     pub fn warnings(&self) -> &[KeymapWarning] {
         &self.warnings
+    }
+
+    /// Нажатие `s` (после начатого аккорда `pending`) в состоянии `st`. 0 аллокаций.
+    pub fn lookup(&self, pending: Option<&ChordState>, s: Stroke, st: &AppState) -> Lookup<'_> {
+        self.compiled.lookup(pending, s, st)
+    }
+
+    /// Сочетания, которые сейчас вызывают ровно `cmd` (меню и палитра S2).
+    pub fn keys_for(&self, cmd: &Command, st: &AppState) -> SmallVec<[Chord; 2]> {
+        self.bindings
+            .iter()
+            .enumerate()
+            .filter(|(_, b)| b.cmds.len() == 1 && b.cmds[0] == *cmd)
+            .filter(|(i, b)| {
+                self.compiled
+                    .wins(&b.chord, u32::try_from(*i).unwrap_or(u32::MAX), st)
+            })
+            .map(|(_, b)| b.chord.clone())
+            .collect()
+    }
+
+    /// F1…F12 для модификаторов `mods` в состоянии `st` (keybar S2): одиночная команда.
+    pub fn keybar(&self, mods: Mods, st: &AppState) -> [Option<KeybarItem>; 12] {
+        std::array::from_fn(|i| match self.lookup(None, fkey_stroke(i, mods), st) {
+            Lookup::Hit([cmd], _) => Some(KeybarItem {
+                label_key: label_key(cmd),
+                cmd: cmd.clone(),
+            }),
+            _ => None,
+        })
+    }
+
+    /// Все привязки после слоёв и снятий (`keymap.show`, `keymap.dump`).
+    pub fn effective(&self) -> impl Iterator<Item = EffectiveBinding<'_>> {
+        self.bindings.iter().map(|b| EffectiveBinding {
+            chord: &b.chord,
+            binding: b,
+        })
     }
 }
 
@@ -666,6 +708,7 @@ impl<'a> Builder<'a> {
         (
             Arc::new(Keymap {
                 os: self.os,
+                compiled: Compiled::build(&self.bindings),
                 bindings: self.bindings,
                 warnings: self.warnings,
             }),
