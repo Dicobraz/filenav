@@ -7,7 +7,7 @@
 2. docs/specs/S0-contracts-v5.md → v4 → v3 → v2 — изменения контрактов
 3. docs/specs/Sx.md — спецификации сессий
 4. docs/00-ARCHITECTURE.md, docs/01-ROADMAP.md
-Задачи: docs/TASKS-M0.md (текущий пакет). Читай только спеки, нужные задаче.
+Задачи: docs/TASKS-M1.md (текущий пакет; M0 — docs/TASKS-M0.md, закрыт). Читай только спеки, нужные задаче.
 
 ## Правила
 - Одна задача = ветка `sX/NN-кратко` = один PR. Выполняй критерии приёмки задачи дословно; тесты — cargo nextest; `cargo clippy --workspace --all-targets -- -D warnings` и `cargo fmt --check` зелёные перед PR.
