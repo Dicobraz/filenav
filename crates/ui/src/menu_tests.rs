@@ -3,6 +3,7 @@ use urfin_core::Command;
 
 use super::*;
 use crate::canvas::RecordCanvas;
+use crate::fonts::FontSet;
 use crate::keybar::FarStub;
 use crate::tokens::Tokens;
 
@@ -169,6 +170,7 @@ impl Fx {
                 root,
                 &self.i18n,
                 &self.tokens,
+                &FontSet::default(),
                 &FarStub,
                 &def,
                 &mut self.memo,

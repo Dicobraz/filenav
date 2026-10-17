@@ -210,6 +210,29 @@ pub fn letter_conflicts(menus: &[MenuDef], i18n: &I18n) -> Vec<String> {
     out
 }
 
+/// Подчёркивание буквы выбора (как мнемоника Windows): `x` начала и конца буквы от
+/// левого края подписи и `y` линии от центра строки. Первое вхождение буквы.
+fn underline(
+    ctx: &egui::Context,
+    fonts: &FontSet,
+    size: f32,
+    text: &str,
+    letter: Option<char>,
+) -> Option<(f32, f32, f32)> {
+    let ch = letter?;
+    let lower = |c: char| c.to_lowercase().next().unwrap_or(c);
+    let idx = text.chars().position(|c| lower(c) == ch)?;
+    let font = fonts.id(Font::Ui, size);
+    let g = ctx.fonts_mut(|f| f.layout_no_wrap(text.to_owned(), font, egui::Color32::WHITE));
+    let at = |i: usize| g.pos_from_cursor(egui::text::CCursor::new(i));
+    let (a, b) = (at(idx), at(idx + 1));
+    Some((
+        a.left(),
+        b.left().max(a.left() + 2.0),
+        g.size().y / 2.0 - 1.0,
+    ))
+}
+
 /// Команды пункта: `ui.cancel`, для меню панели — `panel.focus`, сама команда.
 fn execute(def: &MenuDef, cmd: &Command, out: &mut Vec<Command>) {
     out.push(Command::new("ui.cancel"));
@@ -310,12 +333,17 @@ pub(crate) fn bar(
 }
 
 /// Выпадающий список меню `def` от точки `at`: возвращает его прямоугольник.
-#[allow(clippy::too_many_arguments, reason = "список, подсказки и ввод")]
+#[allow(
+    clippy::too_many_arguments,
+    clippy::too_many_lines,
+    reason = "список, подсказки и ввод — пункты по порядку"
+)]
 pub(crate) fn flyout(
     c: &mut dyn Canvas,
     ui: &mut egui::Ui,
     i18n: &I18n,
     tokens: &Tokens,
+    fonts: &FontSet,
     hints: &dyn KeyHints,
     def: &MenuDef,
     memo: &mut MenuMemo,
@@ -403,14 +431,24 @@ pub(crate) fn flyout(
                     )
                     .width()
                 });
+                let text = label(i18n, key);
+                let left = row.left() + pad + 16.0;
                 c.text_clipped(
-                    pos2(row.left() + pad + 16.0, row.center().y),
+                    pos2(left, row.center().y),
                     row.width() - 2.0 * pad - 16.0 - hint_w - 8.0,
-                    &Tx::user(label(i18n, key)),
+                    &Tx::user(text.as_str()),
                     Font::Ui,
                     size,
                     Role::TextPrimary,
                 );
+                if let Some(u) = underline(ui.ctx(), fonts, size, &text, letter(i18n, key)) {
+                    let base = row.center().y + u.2;
+                    c.rect(
+                        Rect::from_min_max(pos2(left + u.0, base), pos2(left + u.1, base + 1.0)),
+                        Role::TextPrimary,
+                        egui::CornerRadius::ZERO,
+                    );
+                }
                 if resp.clicked() {
                     execute(def, cmd, out);
                 }

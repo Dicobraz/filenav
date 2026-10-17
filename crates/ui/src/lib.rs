@@ -561,6 +561,7 @@ impl UrfinUi {
                     ui,
                     i18n,
                     &self.tokens,
+                    &self.fonts,
                     self.hints.as_ref(),
                     def,
                     &mut self.menu_memo,
