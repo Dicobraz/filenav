@@ -81,6 +81,9 @@ pub struct FileNavUi {
     /// Эпоха стиля: тема, акцент, шрифты, масштаб, DPI — сброс `RowCache`.
     style_epoch: u64,
     last_ppp: f32,
+    /// Заполненность атласа шрифтов в конце прошлого кадра: упала — egui пересоздал
+    /// атлас, galley в `RowCache` ссылаются на старые места текстуры.
+    atlas_fill: f32,
     /// Языковые шаблоны ячеек и эпоха языка, для которой собраны.
     fmt: (u64, fmt_cell::FmtCfg),
     /// Применённые настройки вида: тема, масштаб, `look` ОС.
@@ -140,6 +143,7 @@ impl FileNavUi {
             rows: cache::RowCache::new(),
             style_epoch: 0,
             last_ppp: 0.0,
+            atlas_fill: 0.0,
             fmt: (
                 filenav_i18n::epoch(),
                 fmt_cell::FmtCfg::new(
@@ -240,6 +244,10 @@ impl FileNavUi {
             self.last_ppp = ppp;
             self.style_epoch += 1;
         }
+        let fill = atlas_fill(&ctx);
+        if fill + 1e-6 < self.atlas_fill {
+            self.style_epoch += 1;
+        }
         self.rows
             .sync_epochs(filenav_i18n::epoch(), self.style_epoch);
         self.tokens.set_theme(ctx.theme());
@@ -310,6 +318,7 @@ impl FileNavUi {
         }
         self.paint_toasts(&ctx, &i18n);
         self.rows.end_frame();
+        self.atlas_fill = atlas_fill(&ctx);
     }
 
     /// Счётчики `RowCache` (тесты, перф-лог).
@@ -435,7 +444,7 @@ impl FileNavUi {
                 );
             }
             if interactive {
-                wheel(ui, list_rect, row_h, t, side, page, out);
+                wheel(ui, list_rect, &mut memo.wheel_acc, t, side, page, out);
                 let icon_slot = if fs.icons {
                     tk.m(Metric::WIcon) + 4.0
                 } else {
@@ -592,18 +601,42 @@ impl FileNavUi {
 fn wheel(
     ui: &egui::Ui,
     list_rect: egui::Rect,
-    row_h: f32,
+    acc: &mut f32,
     t: &filenav_core::Tab,
     side: Side,
     page: u32,
     out: &mut Vec<Command>,
 ) {
-    let area = ui.interact(list_rect, ui.id().with("rows"), Sense::hover());
-    if !area.hovered() {
+    let over = ui
+        .input(|i| i.pointer.hover_pos())
+        .is_some_and(|p| list_rect.contains(p));
+    if !over {
+        *acc = 0.0;
         return;
     }
-    let dy = ui.input(|i| i.smooth_scroll_delta.y);
-    let lines = (-dy / row_h).round() as i64;
+    // Сырые события колеса: сглаженная дельта egui приходит по кадрам долями строки,
+    // и округление каждой доли давало ноль. Деление колеса — 3 строки (как в Windows).
+    #[allow(clippy::cast_precision_loss, reason = "страница — сотни строк")]
+    let page_f = page as f32;
+    let rows: f32 = ui.input(|i| {
+        i.raw
+            .events
+            .iter()
+            .map(|e| match e {
+                egui::Event::MouseWheel { unit, delta, .. } => match unit {
+                    egui::MouseWheelUnit::Line => -delta.y * WHEEL_ROWS,
+                    egui::MouseWheelUnit::Point => -delta.y / 24.0,
+                    egui::MouseWheelUnit::Page => -delta.y * page_f,
+                },
+                _ => 0.0,
+            })
+            .sum()
+    });
+    *acc += rows;
+    let whole = acc.trunc();
+    *acc -= whole;
+    #[allow(clippy::cast_possible_truncation, reason = "строк за кадр немного")]
+    let lines = whole as i64;
     if lines != 0 {
         let top = (i64::from(t.cursor.top) + lines).max(0);
         out.push(
@@ -615,6 +648,18 @@ fn wheel(
         );
     }
 }
+
+/// Заполненность атласа шрифтов egui.
+#[allow(
+    clippy::redundant_closure_for_method_calls,
+    reason = "путь метода не выводит время жизни FontsView"
+)]
+fn atlas_fill(ctx: &egui::Context) -> f32 {
+    ctx.fonts(|f| f.font_atlas_fill_ratio())
+}
+
+/// Строк на деление колеса.
+const WHEEL_ROWS: f32 = 3.0;
 
 /// Баннер core и активный вопрос над карточками. Тексты и подписи уже переведены core.
 fn top_bars(

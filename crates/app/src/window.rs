@@ -365,6 +365,9 @@ fn run_with(backends: wgpu::Backends, pending: &Pending, mica: bool) -> eframe::
                 .tokens()
                 .palette(theme)
                 .get(filenav_ui::tokens::Role::BgBase);
+            // При Mica под визуалом DirectComposition видна поверхность окна: чёрные
+            // пиксели в продлённой рамке DWM прозрачны, цветная кисть закрыла бы Mica.
+            let bg = if mica { egui::Color32::BLACK } else { bg };
             crate::sys::set_background(cc, [bg.r(), bg.g(), bg.b()]);
             crate::sys::no_transitions(cc);
             // Своя рамка (заголовок с табами, Snap Layouts) — пока окно скрыто.

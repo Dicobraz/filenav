@@ -57,6 +57,8 @@ pub(crate) struct CardMemo {
     pub footer: String,
     /// Есть что показать при удержании прежнего кадра.
     pub has_frame: bool,
+    /// Дробный остаток прокрутки колесом (в строках).
+    pub wheel_acc: f32,
     path_key: Option<(filenav_core::TabId, filenav_core::Location)>,
     footer_key: Option<FooterKey>,
 }
@@ -319,6 +321,10 @@ impl Rows<'_> {
     /// Строки рисуются вручную, без фокуса и подсветки при наведении (S0 v3 №13).
     /// Курсор — рамка 1 px `stroke.strong`, помеченные — `accent.subtle` и `accent.text`
     /// (S0-decisions №31). Тексты — galley из кэша с подменой цвета.
+    #[allow(
+        clippy::many_single_char_names,
+        reason = "геометрия строки: t, r, i, x, y"
+    )]
     pub(crate) fn paint(
         &self,
         ui: &mut egui::Ui,
@@ -344,9 +350,20 @@ impl Rows<'_> {
         };
         let r = radius(t, Metric::RadiusControl);
         let ctx = ui.ctx().clone();
-        for line in lines {
-            let (rect, resp) =
-                ui.allocate_exact_size(egui::vec2(ui.available_width(), row_h), sense);
+        // Прямоугольники строк — сами: `allocate_exact_size` добавлял `item_spacing.y`
+        // стиля (4 px), строки шли через 28 px и вылезали за список.
+        let list = ui.max_rect();
+        for (i, line) in lines.iter().enumerate() {
+            #[allow(clippy::cast_precision_loss, reason = "строк на странице — сотни")]
+            let y = list.top() + row_h * i as f32;
+            let rect = egui::Rect::from_min_size(
+                egui::pos2(list.left(), y),
+                egui::vec2(list.width(), row_h),
+            );
+            if rect.bottom() > list.bottom() + 0.5 {
+                break;
+            }
+            let resp = ui.interact(rect, ui.id().with(("row", i)), sense);
             let painter = ui.painter_at(rect);
             let mut color = self
                 .hl
