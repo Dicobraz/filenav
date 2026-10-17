@@ -1014,6 +1014,7 @@ dependencies = [
  "eframe",
  "egui-wgpu",
  "filenav-core",
+ "filenav-i18n",
  "filenav-ui",
  "filenav-vfs",
  "raw-window-handle",
@@ -1039,6 +1040,7 @@ dependencies = [
  "criterion",
  "crossbeam-channel",
  "dirs",
+ "filenav-i18n",
  "insta",
  "proptest",
  "rayon",
@@ -1056,6 +1058,7 @@ name = "filenav-i18n"
 version = "0.1.0"
 dependencies = [
  "fluent-bundle",
+ "fluent-syntax",
  "insta",
  "jiff",
  "proptest",
@@ -1091,8 +1094,11 @@ version = "0.1.0"
 name = "filenav-ui"
 version = "0.1.0"
 dependencies = [
+ "compact_str",
  "egui",
  "filenav-core",
+ "filenav-i18n",
+ "smallvec",
 ]
 
 [[package]]

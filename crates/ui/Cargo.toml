@@ -9,8 +9,14 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
+compact_str.workspace = true
 egui.workspace = true
 filenav-core.workspace = true
+filenav-i18n.workspace = true
+smallvec.workspace = true
+
+[dev-dependencies]
+filenav-core = { workspace = true, features = ["fake"] }
 
 [lints]
 workspace = true

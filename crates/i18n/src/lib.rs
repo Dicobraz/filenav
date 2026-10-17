@@ -12,7 +12,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, PoisonError, RwLock};
 
-pub use bundle::{Catalog, FALLBACK, I18n, I18nWarning};
+pub use bundle::{Catalog, EMBEDDED, FALLBACK, I18n, I18nWarning};
 pub use fluent_bundle::{FluentArgs, FluentValue};
 pub use unic_langid::LanguageIdentifier;
 

@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use eframe::egui;
 use filenav_core::{Boot, Command, Core, Focus, OverlayKind, Session, WindowGeom};
-use filenav_ui::DebugUi;
+use filenav_ui::FileNavUi;
 
 use crate::Startup;
 
@@ -67,6 +67,8 @@ fn hard_key(key: egui::Key, m: egui::Modifiers) -> Option<Command> {
         });
     }
     Some(match key {
+        // F-клавиши пресета Far, у которых уже есть действие (S3 §3); F9 — с меню S2-14.
+        K::F10 => Command::new("app.quit"),
         K::Enter => Command::new("panel.enter"),
         K::Backspace => Command::new("panel.up"),
         K::Tab => Command::new("panel.switch"),
@@ -95,6 +97,24 @@ fn take_keys(events: &mut Vec<egui::Event>, out: &mut Vec<Command>) {
             None => true,
         },
         egui::Event::Text(t) => t != " ",
+        _ => true,
+    });
+}
+
+/// Ввод в открытом оверлее: Esc → `ui.cancel`.
+fn take_overlay_keys(events: &mut Vec<egui::Event>, out: &mut Vec<Command>) {
+    events.retain(|e| match e {
+        egui::Event::Key {
+            key: egui::Key::Escape,
+            pressed,
+            modifiers,
+            ..
+        } if !modifiers.any() => {
+            if *pressed {
+                out.push(Command::new("ui.cancel"));
+            }
+            false
+        }
         _ => true,
     });
 }
@@ -276,7 +296,8 @@ fn run_with(backends: wgpu::Backends, pending: &Pending) -> eframe::Result {
             let mut core = {
                 let _s = tracing::info_span!("startup.core").entered();
                 let t = Instant::now();
-                let core = Core::new(boot, services, Arc::new(EguiWaker(ctx)));
+                let mut core = Core::new(boot, services, Arc::new(EguiWaker(ctx)));
+                filenav_ui::register(&mut core);
                 startup.core = t.elapsed();
                 core
             };
@@ -287,6 +308,7 @@ fn run_with(backends: wgpu::Backends, pending: &Pending) -> eframe::Result {
                 let ctx = cc.egui_ctx.clone();
                 inbox.set_waker(move || ctx.request_repaint());
             }
+            let ui = FileNavUi::new(core.registry());
             // Окно показывается скрытым от экрана: первые кадры рисуются уже в
             // итоговом размере, на экран выходит только готовый (S1-13).
             crate::sys::cloak(cc, true);
@@ -300,7 +322,7 @@ fn run_with(backends: wgpu::Backends, pending: &Pending) -> eframe::Result {
             cc.egui_ctx.request_repaint_after(SHOW_AT_LATEST);
             Ok(Box::new(App {
                 core: Some(core),
-                ui: DebugUi::new(),
+                ui,
                 out: Vec::new(),
                 startup,
                 first_frame_done: false,
@@ -317,7 +339,7 @@ fn run_with(backends: wgpu::Backends, pending: &Pending) -> eframe::Result {
 
 struct App {
     core: Option<Core>,
-    ui: DebugUi,
+    ui: FileNavUi,
     out: Vec<Command>,
     startup: Startup,
     first_frame_done: bool,
@@ -480,10 +502,14 @@ impl eframe::App for App {
             return;
         };
         let s = core.state();
-        if s.focus != Focus::Panel || s.prompts.active().is_some() {
-            return;
+        match s.focus {
+            // Оверлеи S2 пока без виджетов: Esc закрывает (до keymap S3).
+            Focus::Overlay(_) => take_overlay_keys(&mut raw.events, &mut self.out),
+            Focus::Panel if s.prompts.active().is_none() => {
+                take_keys(&mut raw.events, &mut self.out);
+            }
+            _ => {}
         }
-        take_keys(&mut raw.events, &mut self.out);
     }
 
     /// Фон окна до первой отрисовки — как у панели: без белой вспышки.
