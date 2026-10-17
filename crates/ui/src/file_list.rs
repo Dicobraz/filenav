@@ -237,7 +237,7 @@ pub(crate) fn show(
     // Подсказка подвала — точный размер (S2 §2.1).
     let foot = cx.ui.interact(
         foot_r,
-        cx.ui.id().with(("footer", side_arg(side))),
+        cx.ui.scope_id().with(("footer", side_arg(side))),
         Sense::hover(),
     );
     if foot.hovered() {
@@ -312,7 +312,7 @@ fn header(
         let cell = Rect::from_min_max(pos2(x0, r.top()), pos2(x1, r.bottom()));
         let resp = cx.ui.interact(
             cell,
-            cx.ui.id().with(("col", side_arg(side), key)),
+            cx.ui.scope_id().with(("col", side_arg(side), key)),
             Sense::click(),
         );
         if resp.clicked() {
@@ -344,7 +344,7 @@ fn header(
         );
         let resp = cx.ui.interact(
             hr,
-            cx.ui.id().with(("divider", side_arg(side), which)),
+            cx.ui.scope_id().with(("divider", side_arg(side), which)),
             Sense::click_and_drag(),
         );
         if resp.hovered() || resp.dragged() {
@@ -454,9 +454,11 @@ fn rows(
         if !interactive {
             continue;
         }
-        let resp = cx
-            .ui
-            .interact(row, cx.ui.id().with(("row", side_arg(side), i)), sense);
+        let resp = cx.ui.interact(
+            row,
+            cx.ui.scope_id().with(("row", side_arg(side), i)),
+            sense,
+        );
         let to_row = || match t.row(line.row) {
             Some(Row::Entry { entry, .. }) => {
                 Command::new("panel.cursor.to").arg("name", entry.name.as_str())

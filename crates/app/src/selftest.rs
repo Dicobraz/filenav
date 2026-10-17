@@ -6,7 +6,7 @@
 
 use std::collections::{BTreeMap, VecDeque};
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock, PoisonError};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::time::{Duration, Instant};
 
 use eframe::egui;
@@ -104,6 +104,9 @@ struct Report {
     total_ms: f64,
 }
 
+/// Скриншоты от callback egui: имя шага и картинка.
+type ShotInbox = Arc<Mutex<Vec<(&'static str, Arc<egui::ColorImage>)>>>;
+
 pub struct SelfTest {
     dir: PathBuf,
     steps: VecDeque<Step>,
@@ -114,6 +117,8 @@ pub struct SelfTest {
     windows: Vec<Window>,
     shots: Vec<Shot>,
     pending_shot: Option<(&'static str, Instant)>,
+    /// Готовые скриншоты из callback egui (приходят после кадра).
+    shot_inbox: ShotInbox,
     first_frame_tabs: Option<[String; 2]>,
     background: egui::Color32,
 }
@@ -131,6 +136,7 @@ impl SelfTest {
             windows: Vec::new(),
             shots: Vec::new(),
             pending_shot: None,
+            shot_inbox: Arc::default(),
             first_frame_tabs: None,
             background: egui::Color32::TRANSPARENT,
         }
@@ -178,9 +184,15 @@ impl SelfTest {
                 Step::Core(c) => core.dispatch(c),
                 Step::Shot(name) => {
                     self.pending_shot = Some((name, Instant::now()));
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::new(
-                        name,
-                    )));
+                    let inbox = Arc::clone(&self.shot_inbox);
+                    let repaint = ctx.clone();
+                    ctx.request_screenshot(move |image| {
+                        inbox
+                            .lock()
+                            .unwrap_or_else(PoisonError::into_inner)
+                            .push((name, image));
+                        repaint.request_repaint();
+                    });
                     ctx.request_repaint();
                     return;
                 }
@@ -218,23 +230,14 @@ impl SelfTest {
             ppp: ui.ctx().pixels_per_point(),
             tabs,
         });
-        let shots: Vec<(String, std::sync::Arc<egui::ColorImage>)> = ui.ctx().input(|i| {
-            i.events
-                .iter()
-                .filter_map(|e| match e {
-                    egui::Event::Screenshot {
-                        user_data, image, ..
-                    } => user_data
-                        .data
-                        .as_ref()
-                        .and_then(|d| d.downcast_ref::<&'static str>())
-                        .map(|n| ((*n).to_owned(), image.clone())),
-                    _ => None,
-                })
-                .collect()
-        });
+        let shots = std::mem::take(
+            &mut *self
+                .shot_inbox
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner),
+        );
         for (name, image) in shots {
-            let shot = self.save_shot(&name, &image);
+            let shot = self.save_shot(name, &image);
             self.shots.push(shot);
             if self.pending_shot.is_some_and(|(n, _)| n == name) {
                 self.pending_shot = None;

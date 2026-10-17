@@ -403,6 +403,7 @@ fn mouse_wheel_scrolls_by_three_rows() {
             delta: egui::vec2(0.0, -1.0),
             modifiers: egui::Modifiers::NONE,
             phase: egui::TouchPhase::Move,
+            source: egui::MouseWheelSource::Wheel,
         },
     ];
     headless_frame(&ctx, &mut ui, &c, events, &mut out);

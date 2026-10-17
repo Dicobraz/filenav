@@ -307,6 +307,9 @@ fn run_with(backends: wgpu::Backends, pending: &Pending, mica: bool) -> eframe::
         // Хук сообщений Windows (KeyNotes, numpad, Ctrl+Ins/Shift+Del) поставит
         // keymap S3 (S0 v3 №10); winit — ровно версия eframe.
         event_loop_builder: Some(Box::new(|_builder| {})),
+        // Запасные шрифты — свои (`ui::fonts`); провайдер eframe без фичи
+        // `system_fonts` только пишет в лог предупреждение.
+        system_font_fallback: false,
         ..Default::default()
     };
     let window_started = Instant::now();

@@ -23,12 +23,12 @@ expression: redact(&yaml)
 - galley: [436.5625, 252, 35.4375, 16] text.secondary "118 Б"
 - galley: [480, 252, 92.46875, 16] text.secondary "02.10.26 09:03"
 - rect: [12, 272, 592, 24] accent.subtle
-- galley: [15.828125, 277, 12.34375, 14] accent.text "\u{e8fb}"
+- galley: [19, 277, 6, 14] accent.text "\u{e8fb}"
 - galley: [32, 276, 65.59375, 16] "Cargo.lock #004B87"
 - galley: [424.71875, 276, 47.28125, 16] text.secondary "47,1 КБ"
 - galley: [480, 276, 92.46875, 16] text.secondary "14.10.26 08:59"
 - rect: [12, 296, 592, 24] accent.subtle
-- galley: [15.828125, 301, 12.34375, 14] accent.text "\u{e8fb}"
+- galley: [19, 301, 6, 14] accent.text "\u{e8fb}"
 - galley: [32, 300, 69.71875, 16] "Cargo.toml #004B87"
 - galley: [432.625, 300, 39.375, 16] text.secondary "1,2 КБ"
 - galley: [480, 300, 92.46875, 16] text.secondary "14.10.26 08:58"
@@ -36,7 +36,7 @@ expression: redact(&yaml)
 - galley: [444.4375, 324, 27.5625, 16] text.secondary "96 Б"
 - galley: [480, 324, 92.46875, 16] text.secondary "02.10.26 09:03"
 - rect: [12, 344, 592, 24] accent.subtle
-- galley: [15.828125, 349, 12.34375, 14] accent.text "\u{e8fb}"
+- galley: [19, 349, 6, 14] accent.text "\u{e8fb}"
 - galley: [32, 348, 62.84375, 16] "deny.toml #004B87"
 - galley: [432.625, 348, 39.375, 16] text.secondary "1,3 КБ"
 - galley: [480, 348, 92.46875, 16] text.secondary "03.10.26 07:20"
