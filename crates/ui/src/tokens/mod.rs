@@ -244,6 +244,18 @@ impl Tokens {
         &self.palettes[usize::from(theme == Theme::Dark)]
     }
 
+    /// Mica за базовым слоем (S2 §1.4): `bg.base` и `bg.base.alt` прозрачные — сквозь
+    /// них виден материал окна; карточки остаются непрозрачными (S0-decisions №33).
+    pub fn set_mica(&mut self, on: bool) {
+        if !on || self.high_contrast {
+            return;
+        }
+        for p in &mut self.palettes {
+            p.set(Role::BgBase, [0; 4]);
+            p.set(Role::BgBaseAlt, [0; 4]);
+        }
+    }
+
     pub fn theme(&self) -> Theme {
         self.theme
     }
