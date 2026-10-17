@@ -16,7 +16,7 @@ use filenav_core::{
 use serde::Deserialize;
 
 use crate::api::{ListOpts, VfsError, VfsRegistry};
-use crate::batch::Batcher;
+use crate::batch::{Batcher, Resort};
 use crate::sort::{ArrangeOpts, arrange, visible};
 
 /// Секция `[vfs]` конфига (S4 §2.2). Поля кэша и watcher'а читают S4-12…16.
@@ -123,18 +123,14 @@ fn load(reg: &VfsRegistry, req: &LoadReq, opts: ArrangeOpts, cx: &TaskCx) {
             .is_ok()
     };
     match stream(reg, req, opts, cx, &send, t0) {
-        Ok(Some(all)) => {
-            if req.view.sort.key != SortKey::Unsorted {
-                let order = arrange(&all, &req.view, opts);
-                let ok = send(ListingUpdate::Order {
-                    order: Arc::new(order),
-                    for_len: u32::try_from(all.len()).unwrap_or(u32::MAX),
-                    seq: req.seq,
-                });
-                if !ok {
-                    return;
-                }
+        Ok(Some((all, resort))) => {
+            if req.view.sort.key != SortKey::Unsorted
+                && resort.final_due(all.len())
+                && !send_order(&all, req, opts, &send)
+            {
+                return;
             }
+            tracing::debug!(target: "list.sorted", elapsed = ?t0.elapsed(), entries = all.len());
             if send(ListingUpdate::Done) {
                 tracing::debug!(target: "list.done", elapsed = ?t0.elapsed(), entries = all.len(), loc = %req.loc.path.display());
             }
@@ -150,7 +146,25 @@ fn load(reg: &VfsRegistry, req: &LoadReq, opts: ArrangeOpts, cx: &TaskCx) {
     }
 }
 
-/// Чтение и чанки. `Ok(None)` — отменено или отправка не прошла (отмена).
+/// Полный порядок `all`; `false` — отправка не прошла (отмена).
+fn send_order(
+    all: &[Entry],
+    req: &LoadReq,
+    opts: ArrangeOpts,
+    send: &impl Fn(ListingUpdate) -> bool,
+) -> bool {
+    let order = arrange(all, &req.view, opts);
+    send(ListingUpdate::Order {
+        order: Arc::new(order),
+        for_len: u32::try_from(all.len()).unwrap_or(u32::MAX),
+        seq: req.seq,
+    })
+}
+
+/// Чтение и чанки с геометрическим пересортом: на CHUNK·2^k записей — полный
+/// `Order` до следующего чанка (core принимает `Order` только при
+/// `for_len == entries.len()`), сортировка — rayon внутри. `Ok(None)` —
+/// отменено или отправка не прошла (отмена).
 fn stream(
     reg: &VfsRegistry,
     req: &LoadReq,
@@ -158,7 +172,9 @@ fn stream(
     cx: &TaskCx,
     send: &impl Fn(ListingUpdate) -> bool,
     t0: Instant,
-) -> Result<Option<Vec<Entry>>, VfsError> {
+) -> Result<Option<(Vec<Entry>, Resort)>, VfsError> {
+    let sorting = req.view.sort.key != SortKey::Unsorted;
+    let mut resort = Resort::default();
     let fs = reg.get(&req.loc)?;
     let mut s = fs.list(&req.loc, &ListOpts::default())?;
     let mut all: Vec<Entry> = Vec::with_capacity(s.size_hint().unwrap_or(0) as usize);
@@ -188,11 +204,17 @@ fn stream(
             tracing::debug!(target: "list.first_chunk", elapsed = ?t0.elapsed(), entries = all.len());
         }
         batcher.flushed();
+        if sorting && more && resort.due(all.len()) {
+            if !send_order(&all, req, opts, send) {
+                return Ok(None);
+            }
+            resort.sorted(all.len());
+        }
         if !more {
             break;
         }
     }
-    Ok(Some(all))
+    Ok(Some((all, resort)))
 }
 
 /// `visible` чанка: абсолютные индексы прошедших hidden и фильтр. Первый чанк —

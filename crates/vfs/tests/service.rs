@@ -98,6 +98,9 @@ struct Slow {
 
 struct SlowStream {
     left: u32,
+    /// Записей в батче; имена по убыванию (`n99999`, `n99998`, …).
+    per: u32,
+    next_name: u32,
     calls: Arc<AtomicU32>,
     cancelled_at: Arc<Mutex<Option<u32>>>,
 }
@@ -110,9 +113,15 @@ impl ListStream for SlowStream {
             return Err(VfsError::Cancelled);
         }
         std::thread::sleep(Duration::from_millis(60));
-        for i in 0..10 {
+        for i in 0..self.per {
+            let name = if self.per == 10 {
+                format!("e{}-{i}", self.left)
+            } else {
+                self.next_name -= 1;
+                format!("n{:05}", self.next_name)
+            };
             out.push(Entry {
-                name: format!("e{}-{i}", self.left).into(),
+                name: name.into(),
                 size: 0,
                 mtime: 0,
                 attrs: Attrs::default(),
@@ -132,15 +141,28 @@ impl Vfs for Slow {
         Caps::default()
     }
     fn list(&self, dir: &VfsPath, _opts: &ListOpts) -> Result<Box<dyn ListStream>, VfsError> {
+        if dir.path.ends_with("desc") {
+            return Ok(Box::new(SlowStream {
+                left: 5,
+                per: 1000,
+                next_name: 100_000,
+                calls: Arc::new(AtomicU32::new(0)),
+                cancelled_at: Arc::default(),
+            }));
+        }
         if !dir.path.ends_with("slow") {
             return Ok(Box::new(SlowStream {
                 left: 1,
+                per: 10,
+                next_name: 0,
                 calls: Arc::new(AtomicU32::new(0)),
                 cancelled_at: Arc::default(),
             }));
         }
         Ok(Box::new(SlowStream {
             left: 5,
+            per: 10,
+            next_name: 0,
             calls: Arc::clone(&self.calls),
             cancelled_at: Arc::clone(&self.cancelled_at),
         }))
@@ -226,4 +248,30 @@ fn navigation_cancels_listing_within_one_batch() {
     let _ = cancelled_at;
     // На экране — новый каталог, записей старого нет.
     assert!(names(&core).iter().all(|n| n.starts_with("e1-")));
+}
+
+/// S4-06: на 2048+ записях — полная сортировка, пока каталог ещё грузится.
+#[test]
+fn list_is_resorted_while_streaming() {
+    let (reg, _, _) = slow();
+    let mut core = core_with(
+        reg,
+        Location::local(root().join("desc")),
+        Location::local(root().join("fast")),
+    );
+    // Хвост между пересортами — в порядке прихода; после пересорта на 2048+
+    // список отсортирован, хотя каталог ещё грузится (батч — раз в 60 мс).
+    let sorted = |c: &Core| {
+        let v = names(c);
+        v.len() >= 3000 && v.windows(2).all(|w| w[0] < w[1])
+    };
+    pump_until(&mut core, sorted);
+    assert!(
+        matches!(status(&core), ListingStatus::Loading { .. }),
+        "отсортировано до конца загрузки"
+    );
+    pump_until(&mut core, |c| matches!(status(c), ListingStatus::Complete));
+    let v = names(&core);
+    assert_eq!(v.len(), 5000);
+    assert!(v.windows(2).all(|w| w[0] < w[1]));
 }
