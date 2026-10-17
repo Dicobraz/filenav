@@ -3,7 +3,8 @@
 use std::hint::black_box;
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
-use filenav_vfs::sort::{natural_cmp, prefix_key};
+use filenav_core::{ArrangeSpec, Attrs, Entry, EntryKind, SortKey, SortSpec};
+use filenav_vfs::sort::{ArrangeOpts, arrange, natural_cmp, prefix_key};
 
 /// Имена как в реальных каталогах: общий префикс, расширения, номера.
 fn names(n: u32) -> Vec<String> {
@@ -44,6 +45,41 @@ fn bench(c: &mut Criterion) {
             }
         });
     });
+    g.finish();
+
+    // S4-05: 100k < 10 мс, 1M < 90 мс (стенд).
+    let mut g = c.benchmark_group("arrange");
+    g.sample_size(20);
+    for n in [100_000u32, 1_000_000] {
+        let entries: Vec<Entry> = names(n)
+            .into_iter()
+            .enumerate()
+            .map(|(i, name)| Entry {
+                name: format!("{i:x}{name}").into(),
+                size: (i as u64).wrapping_mul(7919) % 1_000_000,
+                mtime: 0,
+                attrs: Attrs::default(),
+                kind: if i % 50 == 0 {
+                    EntryKind::Dir
+                } else {
+                    EntryKind::File
+                },
+            })
+            .collect();
+        let spec = ArrangeSpec {
+            sort: SortSpec {
+                key: SortKey::Name,
+                desc: false,
+                dirs_first: true,
+            },
+            filter: None,
+            show_hidden: false,
+        };
+        let opts = ArrangeOpts::default();
+        g.bench_function(format!("name {n}"), |b| {
+            b.iter(|| black_box(arrange(black_box(&entries), &spec, opts)));
+        });
+    }
     g.finish();
 }
 
