@@ -339,7 +339,7 @@ fn smoke(
     let mut core = Core::new(boot, demo_services(), Arc::new(NoWake));
     filenav_ui::register(&mut core);
     // Кадры FileNavUi без окна: каркас UI рисуется на каждом шаге прогона.
-    let mut ui = filenav_ui::FileNavUi::new(core.registry());
+    let mut ui = filenav_ui::FileNavUi::new(core.registry(), &filenav_ui::sys::probe_system());
     let ctx = eframe::egui::Context::default();
     let pump = |core: &mut Core| {
         for _ in 0..3 {

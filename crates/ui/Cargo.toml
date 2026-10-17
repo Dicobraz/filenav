@@ -14,8 +14,21 @@ egui.workspace = true
 filenav-core.workspace = true
 filenav-i18n.workspace = true
 smallvec.workspace = true
+tracing.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Globalization",
+    "Win32_Security",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_UI_Accessibility",
+    "Win32_UI_WindowsAndMessaging",
+] }
 
 [dev-dependencies]
+tempfile.workspace = true
 filenav-core = { workspace = true, features = ["fake"] }
 
 [lints]
