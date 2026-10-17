@@ -4,13 +4,10 @@
 
 use std::fmt::{self, Write as _};
 
+use crate::sys::{LocalTime, Zone};
 use filenav_core::{Attrs, Entry, EntryKind};
 use filenav_i18n::{FluentArgs, I18n};
 use filenav_vfs::icons::{IconClass, icon_class};
-use jiff::Timestamp;
-use jiff::fmt::StdFmtWrite;
-use jiff::fmt::strtime::BrokenDownTime;
-use jiff::tz::TimeZone;
 
 /// Строка фиксированной ёмкости на стеке (как `arrayvec::ArrayString`). Не влезло —
 /// обрезается по границе символа многоточием.
@@ -156,9 +153,9 @@ impl Template {
 pub struct FmtCfg {
     decimal: char,
     units: [String; 7],
-    /// jiff strftime: `fmt-datetime` или ISO (`[ui] date_format = "iso"`).
+    /// Шаблон strftime: `fmt-datetime` или ISO (`[ui] date_format = "iso"`).
     datetime: String,
-    tz: TimeZone,
+    zone: Zone,
     folder: String,
     file: String,
     app: String,
@@ -172,7 +169,7 @@ const ISO: &str = "%Y-%m-%d %H:%M";
 
 impl FmtCfg {
     /// `iso` — `[ui] date_format = "iso"`, иначе — по языку.
-    pub fn new(i18n: &I18n, iso: bool, tz: TimeZone) -> Self {
+    pub fn new(i18n: &I18n, iso: bool, zone: Zone) -> Self {
         let units = filenav_i18n::fmt::UNIT_KEYS.map(|k| i18n.get(k));
         Self {
             decimal: i18n.num_fmt().decimal,
@@ -182,7 +179,7 @@ impl FmtCfg {
             } else {
                 i18n.get("fmt-datetime")
             },
-            tz,
+            zone,
             folder: i18n.get("ui-type-folder"),
             file: i18n.get("ui-type-file"),
             app: i18n.get("ui-type-app"),
@@ -198,21 +195,18 @@ impl FmtCfg {
         let _ = filenav_i18n::fmt::write_bytes(out, n, self.decimal, &units);
     }
 
-    /// Дата по шаблону в зоне `tz`; `i64::MIN` и вне диапазона — ничего.
-    pub fn write_datetime(&self, out: &mut impl fmt::Write, mtime: i64) {
+    /// Дата по шаблону в поясе ОС; `i64::MIN` и вне диапазона — ничего.
+    pub fn write_datetime(&self, out: &mut Cell, mtime: i64) {
         if mtime == i64::MIN {
             return;
         }
-        let Ok(ts) = Timestamp::from_nanosecond(i128::from(mtime)) else {
+        let Some(t) = self.zone.local(mtime) else {
             return;
         };
-        let dt = self.tz.to_datetime(ts);
-        if BrokenDownTime::from(dt)
-            .format(&self.datetime, StdFmtWrite(&mut *out))
-            .is_err()
-        {
-            // Битый пользовательский шаблон (предупреждение — в `fmt::datetime`).
-            let _ = BrokenDownTime::from(dt).format(ISO, StdFmtWrite(out));
+        if write_pattern(out, &self.datetime, &t).is_err() {
+            // Неизвестный спецификатор в пользовательском шаблоне — ISO.
+            out.clear();
+            let _ = write_pattern(out, ISO, &t);
         }
     }
 }
@@ -289,6 +283,50 @@ fn write_attrs(e: &Entry, out: &mut Cell) {
             let _ = out.write_char(c);
         }
     }
+}
+
+/// Мини-strftime без кучи: `%Y %y %m %-m %d %-d %H %-H %I %-I %M %S %p %%`.
+/// Неизвестный спецификатор — ошибка (вызывающий берёт ISO).
+fn write_pattern(out: &mut impl fmt::Write, pattern: &str, t: &LocalTime) -> fmt::Result {
+    let hour12 = match t.hour % 12 {
+        0 => 12,
+        h => h,
+    };
+    let mut chars = pattern.chars();
+    while let Some(c) = chars.next() {
+        if c != '%' {
+            out.write_char(c)?;
+            continue;
+        }
+        let mut spec = chars.next().ok_or(fmt::Error)?;
+        let pad = if spec == '-' {
+            spec = chars.next().ok_or(fmt::Error)?;
+            false
+        } else {
+            true
+        };
+        let two = |out: &mut dyn fmt::Write, v: u8| {
+            if pad {
+                write!(out, "{v:02}")
+            } else {
+                write!(out, "{v}")
+            }
+        };
+        match spec {
+            'Y' => write!(out, "{:04}", t.year)?,
+            'y' => write!(out, "{:02}", t.year.rem_euclid(100))?,
+            'm' => two(out, t.month)?,
+            'd' => two(out, t.day)?,
+            'H' => two(out, t.hour)?,
+            'I' => two(out, hour12)?,
+            'M' => two(out, t.minute)?,
+            'S' => two(out, t.second)?,
+            'p' => out.write_str(if t.hour < 12 { "AM" } else { "PM" })?,
+            '%' => out.write_char('%')?,
+            _ => return Err(fmt::Error),
+        }
+    }
+    Ok(())
 }
 
 /// Верхний регистр без аллокации.

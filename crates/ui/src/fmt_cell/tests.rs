@@ -1,5 +1,5 @@
+use crate::sys::Zone;
 use filenav_core::{Attrs, Entry, EntryKind};
-use jiff::tz::{Offset, TimeZone};
 use proptest::prelude::*;
 
 use super::*;
@@ -8,7 +8,7 @@ fn cfg(tag: &str) -> FmtCfg {
     let i18n = filenav_i18n::Catalog::embedded()
         .build(&tag.parse().unwrap())
         .0;
-    FmtCfg::new(&i18n, false, TimeZone::fixed(Offset::UTC))
+    FmtCfg::new(&i18n, false, Zone::utc())
 }
 
 fn entry(name: &str, size: u64, attrs: u32, kind: EntryKind) -> Entry {
@@ -94,7 +94,7 @@ fn english_and_iso() {
     let i18n = filenav_i18n::Catalog::embedded()
         .build(&"en".parse().unwrap())
         .0;
-    let iso = FmtCfg::new(&i18n, true, TimeZone::fixed(Offset::UTC));
+    let iso = FmtCfg::new(&i18n, true, Zone::utc());
     assert_eq!(text(ColKind::Mtime, &e, &iso), "2026-10-14 09:12");
 }
 
@@ -132,7 +132,7 @@ fn size_matches_i18n_bytes() {
     let i18n = filenav_i18n::Catalog::embedded()
         .build(&"ru".parse().unwrap())
         .0;
-    let c = FmtCfg::new(&i18n, false, TimeZone::UTC);
+    let c = FmtCfg::new(&i18n, false, Zone::utc());
     for n in [0, 1, 1023, 1024, 48_213, 1 << 30, u64::MAX] {
         assert_eq!(
             text(ColKind::Size, &file("f", n), &c),
@@ -174,7 +174,48 @@ proptest! {
     #[test]
     fn size_cell_equals_bytes(n: u64) {
         let i18n = filenav_i18n::Catalog::embedded().build(&"en".parse().unwrap()).0;
-        let c = FmtCfg::new(&i18n, false, TimeZone::UTC);
+        let c = FmtCfg::new(&i18n, false, Zone::utc());
         prop_assert_eq!(text(ColKind::Size, &file("f", n), &c), filenav_i18n::fmt::bytes_with(&i18n, n));
     }
+}
+
+#[test]
+fn pattern_subset_and_fallback() {
+    let t = LocalTime {
+        year: 2026,
+        month: 3,
+        day: 7,
+        hour: 0,
+        minute: 5,
+        second: 9,
+    };
+    let fmt = |p: &str| {
+        let mut out = Cell::new();
+        write_pattern(&mut out, p, &t).map(|()| out.as_str().to_owned())
+    };
+    assert_eq!(fmt("%d.%m.%y %H:%M").unwrap(), "07.03.26 00:05");
+    assert_eq!(fmt("%m/%d/%y %-I:%M %p").unwrap(), "03/07/26 12:05 AM");
+    assert_eq!(fmt("%-d.%-m.%Y %S %%").unwrap(), "7.3.2026 09 %");
+    assert!(fmt("%Q").is_err());
+    assert!(fmt("%").is_err());
+    // Пользовательский шаблон с неизвестным спецификатором — ISO.
+    let i18n = filenav_i18n::Catalog::embedded()
+        .build(&"en".parse().unwrap())
+        .0;
+    let mut c = FmtCfg::new(&i18n, false, Zone::utc());
+    c.datetime = "%d %Q".into();
+    assert_eq!(text(ColKind::Mtime, &file("a", 1), &c), "2026-10-14 09:12");
+}
+
+/// Пояс ОС на Windows — без tzdb: дата 1 июля и 1 января сдвинуты на смещение пояса,
+/// для UTC совпадают с UTC.
+#[test]
+fn system_zone_converts() {
+    let ns = 1_782_864_000 * 1_000_000_000; // 2026-07-01 00:00 UTC
+    let utc = Zone::utc().local(ns).unwrap();
+    assert_eq!((utc.year, utc.month, utc.day, utc.hour), (2026, 7, 1, 0));
+    assert!(Zone::system().local(ns).is_some());
+    // Весь диапазон i64 в наносекундах (1677–2262) — внутри FILETIME.
+    assert_eq!(Zone::utc().local(i64::MIN + 1).map(|t| t.year), Some(1677));
+    assert_eq!(Zone::utc().local(i64::MAX).map(|t| t.year), Some(2262));
 }

@@ -8,7 +8,7 @@ use std::cell::Cell as StdCell;
 
 use filenav_core::{Attrs, Entry, EntryKind};
 use filenav_ui::fmt_cell::{Cell, ColKind, FmtCfg, cell_text};
-use jiff::tz::TimeZone;
+use filenav_ui::sys::Zone;
 
 struct Counting;
 
@@ -87,10 +87,10 @@ fn cell_text_does_not_allocate() {
             .build(&tag.parse().unwrap())
             .0;
         // Системная зона: как в окне.
-        let cfg = FmtCfg::new(&i18n, false, TimeZone::system());
+        let cfg = FmtCfg::new(&i18n, false, Zone::system());
         let mut out = Cell::new();
         // Прогрев вне замера: разовая ленивая инициализация — таблица расширений
-        // `icon_class` (vfs) и структуры зоны jiff.
+        // `icon_class` (vfs) и (Linux/macOS) пояс jiff.
         cell_text(ColKind::Type, &entries[0], &cfg, &mut out);
         cell_text(ColKind::Mtime, &entries[1], &cfg, &mut out);
         let n = allocations(|| {

@@ -58,7 +58,7 @@ fn lines_from_top_with_cursor() {
     let mut t = tab(&["a", "b", "c"]);
     t.cursor.top = 1;
     t.cursor.row = 2;
-    let fmt = crate::fmt_cell::FmtCfg::new(&en(), false, jiff::tz::TimeZone::UTC);
+    let fmt = crate::fmt_cell::FmtCfg::new(&en(), false, crate::sys::Zone::utc());
     let v = lines(&fmt, &crate::highlight::Highlighter::default(), &t, 2);
     let got: Vec<_> = v
         .iter()

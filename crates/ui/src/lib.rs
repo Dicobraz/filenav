@@ -128,7 +128,7 @@ impl FileNavUi {
                 fmt_cell::FmtCfg::new(
                     &filenav_i18n::current(),
                     cfg.date_format.eq_ignore_ascii_case("iso"),
-                    jiff::tz::TimeZone::system(),
+                    sys::Zone::system(),
                 ),
             ),
             applied: None,
@@ -214,7 +214,7 @@ impl FileNavUi {
             let iso = self.cfg.date_format.eq_ignore_ascii_case("iso");
             self.fmt = (
                 epoch,
-                fmt_cell::FmtCfg::new(&i18n, iso, jiff::tz::TimeZone::system()),
+                fmt_cell::FmtCfg::new(&i18n, iso, sys::Zone::system()),
             );
         }
 
