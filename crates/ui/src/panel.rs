@@ -50,8 +50,10 @@ pub(crate) enum IconTone {
 /// пересчитываются, только когда меняются их входы.
 #[derive(Debug, Default)]
 pub(crate) struct CardMemo {
-    /// Последний сообщённый размер страницы (чтобы не слать `panel.viewport` каждый кадр).
+    /// Последние сообщённые строки в колонке и колонки (чтобы не слать `panel.viewport`
+    /// каждый кадр).
     pub page: u32,
+    pub cols: u32,
     /// Кадр, каким его увидел пользователь: путь, подвал, строки.
     pub lines: Vec<Line>,
     pub path: String,
@@ -144,6 +146,8 @@ pub(crate) struct LineCx<'a> {
     /// Ширина имени (логич.) и слот цифры размера (`None` — цифры табличные).
     pub name_w: f32,
     pub digit_slot: Option<f32>,
+    /// Колонка размера (все виды, кроме Brief).
+    pub size: bool,
     /// Колонка даты (Full).
     pub mtime: bool,
 }
@@ -215,22 +219,25 @@ pub(crate) fn fill_lines(
                     }
                 });
                 let (galley, group, icon) = (Arc::clone(&name.galley), name.group, name.icon);
-                let size = cache.get_or_layout(
-                    CellKey {
-                        idx,
-                        col: ColKind::Size as u8,
-                        width_px: 0,
-                        ..base
-                    },
-                    fp,
-                    cx.ctx,
-                    |c| {
-                        cell_text(ColKind::Size, entry, cx.fmt, c);
-                        spec(&cx.font, f32::INFINITY, cx.digit_slot)
-                    },
-                );
-                let size_cell = (!size.galley.text().is_empty())
-                    .then(|| (Arc::clone(&size.galley), size.lead, size.width));
+                let size_cell = cx.size.then(|| {
+                    let size = cache.get_or_layout(
+                        CellKey {
+                            idx,
+                            col: ColKind::Size as u8,
+                            width_px: 0,
+                            ..base
+                        },
+                        fp,
+                        cx.ctx,
+                        |c| {
+                            cell_text(ColKind::Size, entry, cx.fmt, c);
+                            spec(&cx.font, f32::INFINITY, cx.digit_slot)
+                        },
+                    );
+                    (!size.galley.text().is_empty())
+                        .then(|| (Arc::clone(&size.galley), size.lead, size.width))
+                });
+                let size_cell = size_cell.flatten();
                 let mtime = cx.mtime.then(|| {
                     let m = cache.get_or_layout(
                         CellKey {

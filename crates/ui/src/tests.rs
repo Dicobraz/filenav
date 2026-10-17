@@ -71,6 +71,7 @@ fn lines_from_top_with_cursor() {
             font: egui::FontId::proportional(14.0),
             name_w: 300.0,
             digit_slot: None,
+            size: true,
             mtime: false,
         };
         crate::panel::fill_lines(&mut v, &mut cache, &cx, &t, 2);
@@ -152,12 +153,13 @@ impl Waker for NoWake {
 }
 
 fn core() -> Core {
+    core_with(vec![FakeListing::dir("d"), FakeListing::file("f.txt", 10)])
+}
+
+fn core_with(entries: Vec<Entry>) -> Core {
     let root = Location::local(std::env::temp_dir().join("urfin-ui-test"));
     let fake = FakeListing::new(64);
-    fake.set_dir(
-        root.clone(),
-        vec![FakeListing::dir("d"), FakeListing::file("f.txt", 10)],
-    );
+    fake.set_dir(root.clone(), entries);
     let mut core = Core::new(
         Boot::new(root.clone(), root),
         Services {
@@ -462,4 +464,37 @@ fn font_atlas_recreate_resets_row_cache() {
         ui.row_cache_stats().0.misses > steady.misses,
         "после новых шрифтов ячейки размечены заново"
     );
+}
+
+/// Brief (S2-11): UI сообщает строки в колонке и колонки; ← → прыгает на колонку
+/// (`rows`), `PgDn` — на страницу (`rows × cols`).
+#[test]
+fn brief_columns_drive_left_right_and_page_down() {
+    let files = (0..300)
+        .map(|i| FakeListing::file(&format!("f{i:03}.txt"), 10))
+        .collect();
+    let mut c = core_with(files);
+    run(&mut c, "panel.view_mode mode=brief");
+    let mut ui = new_ui(&c);
+    let ctx = egui::Context::default();
+    let mut out = Vec::new();
+    headless_frame(&ctx, &mut ui, &c, Vec::new(), &mut out);
+    let vp = out
+        .iter()
+        .find(|cmd| cmd.id.as_str() == "panel.viewport" && cmd.args.str("side") == Some("left"))
+        .expect("panel.viewport for the left panel");
+    let (rows, cols) = (vp.args.int("rows").unwrap(), vp.args.int("cols").unwrap());
+    assert!(rows > 10 && cols >= 2, "rows {rows}, cols {cols}");
+    for cmd in out.drain(..) {
+        c.dispatch(cmd);
+    }
+    c.pump(Duration::from_millis(5));
+    let row = |c: &Core| i64::from(c.state().panel(Side::Left).tab().cursor.row);
+    let start = row(&c);
+    run(&mut c, "panel.cursor.right");
+    assert_eq!(row(&c), start + rows);
+    run(&mut c, "panel.cursor.left");
+    assert_eq!(row(&c), start);
+    run(&mut c, "panel.cursor.page_down");
+    assert_eq!(row(&c), start + rows * cols);
 }

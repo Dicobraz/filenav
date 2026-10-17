@@ -1,6 +1,11 @@
-//! `FileList`: «Таблица» (Full) и Wide (S2 §2.1–2.2, S2-10). Отрисовка — через
+//! `FileList`: «Таблица» (Full), Wide, «Список» (Brief) и Medium (S2 §2.1–2.2, S2-10,
+//! S2-11). Отрисовка — через
 //! [`Canvas`] (снапшоты без GPU), ввод — через `egui::Ui` (клики, колесо, перетаскивание
 //! разделителей колонок). Тексты строк — из [`RowCache`].
+//!
+//! Brief — колонки только с именем, по ширине (не уже 160 px), Medium — две колонки
+//! «имя + размер»; строки идут по столбцам: элемент `top + блок·rows + строка`,
+//! ← → и `PgDn` считает core по `cols` из `panel.viewport` (S0 v3 №3).
 //!
 //! Карточка: путь (`h.breadcrumb`; breadcrumb — S2-12) → заголовки колонок
 //! (`h.col_header`, клик — `panel.sort`, разделители тянутся) → строки 24 px → подвал
@@ -12,6 +17,7 @@ use std::time::Duration;
 
 use egui::{Align2, CursorIcon, Pos2, Rect, Sense, pos2, vec2};
 use rustc_hash::FxHashMap;
+use smallvec::SmallVec;
 use urfin_core::{Command, ListingStatus, Row, Side, SortKey, Tab, TabId, ViewMode};
 use urfin_i18n::{FluentArgs, I18n};
 
@@ -35,6 +41,14 @@ const COL_GAP: f32 = 8.0;
 const HANDLE_W: f32 = 6.0;
 /// Строк на деление колеса (как в Windows по умолчанию).
 const WHEEL_ROWS: f32 = 3.0;
+/// Brief: колонка не уже (S2 §2.1); больше колонок не бывает и на 4K.
+const BRIEF_MIN: f32 = 160.0;
+const MAX_BLOCKS: usize = 24;
+/// Medium: колонок «имя + размер» (S2 §2.2).
+const MEDIUM_BLOCKS: usize = 2;
+
+/// Колонки строк по блокам слева направо (без кучи: блоков ≤ [`MAX_BLOCKS`]).
+pub type Blocks = SmallVec<[Columns; MAX_BLOCKS]>;
 
 /// Ширины колонок таба в режиме (тянутся мышью; в сессию — S2-22).
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -58,6 +72,8 @@ pub type Widths = FxHashMap<(TabId, ViewMode), ColWidths>;
 /// Горизонтальная раскладка строки: колонки в координатах x.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Columns {
+    /// Границы блока (строка, подсветка курсора).
+    pub block: (f32, f32),
     pub mark: (f32, f32),
     pub icon: Option<(f32, f32)>,
     pub name: (f32, f32),
@@ -66,13 +82,24 @@ pub struct Columns {
 }
 
 impl Columns {
-    /// Колонки для строки `left..right` (Full — с датой; Wide и прочие режимы до S2-11 —
-    /// без неё).
+    /// Колонки для строки `left..right`: Full — имя, размер, дата; Wide и Medium — имя и
+    /// размер; Brief — только имя.
     pub fn new(left: f32, right: f32, mode: ViewMode, w: ColWidths, icons: bool, pad: f32) -> Self {
         let mark = (left + 4.0, left + 4.0 + MARK_W);
         let icon = icons.then_some((mark.1, mark.1 + ICON_W));
         let name_left = icon.map_or(mark.1, |i| i.1) + 4.0;
         let full = mode == ViewMode::Full;
+        if mode == ViewMode::Brief {
+            let name = (name_left, (right - pad).max(name_left));
+            return Self {
+                block: (left, right),
+                mark,
+                icon,
+                name,
+                size: (name.1, name.1),
+                mtime: None,
+            };
+        }
         let avail = right - pad - name_left;
         // Имя — не уже 120: лишняя ширина колонок срезается.
         let (mut size_w, mut mtime_w) = (w.size, if full { w.mtime } else { 0.0 });
@@ -87,12 +114,58 @@ impl Columns {
         let size = (size_right - size_w, size_right);
         let name = (name_left, (size.0 - COL_GAP).max(name_left));
         Self {
+            block: (left, right),
             mark,
             icon,
             name,
             size,
             mtime,
         }
+    }
+
+    /// Есть колонка размера.
+    pub fn has_size(&self) -> bool {
+        self.size.1 > self.size.0
+    }
+}
+
+/// Блоки колонок вида `mode` в `left..right`: Brief — по ширине, Medium — два, прочие — один.
+pub fn blocks(
+    left: f32,
+    right: f32,
+    mode: ViewMode,
+    w: ColWidths,
+    icons: bool,
+    pad: f32,
+) -> Blocks {
+    let width = right - left;
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "колонок — единицы"
+    )]
+    let n = match mode {
+        ViewMode::Brief => ((width / BRIEF_MIN).floor() as usize).clamp(1, MAX_BLOCKS),
+        ViewMode::Medium => MEDIUM_BLOCKS,
+        _ => 1,
+    };
+    // Целые пиксели: разделители колонок — чёткие линии 1 px.
+    #[allow(clippy::cast_precision_loss, reason = "колонок — единицы")]
+    let bw = (width / n as f32).floor();
+    (0..n)
+        .map(|i| {
+            #[allow(clippy::cast_precision_loss, reason = "колонок — единицы")]
+            let l = left + bw * i as f32;
+            Columns::new(l, l + bw, mode, w, icons, pad)
+        })
+        .collect()
+}
+
+/// Вид для раскладки: Custom (M2+) пока рисуется таблицей.
+fn layout_mode(m: ViewMode) -> ViewMode {
+    match m {
+        ViewMode::Full | ViewMode::Wide | ViewMode::Brief | ViewMode::Medium => m,
+        ViewMode::Custom(_) => ViewMode::Full,
     }
 }
 
@@ -157,25 +230,10 @@ pub(crate) fn show(
         Role::TextPrimary,
     );
 
-    // Страница и `panel.viewport` — только при изменении (S0 v3 №3).
-    let page = rows_fit(list_r.height(), row_h);
-    if cx.memo.page != page {
-        cx.memo.page = page;
-        out.push(
-            Command::new("panel.viewport")
-                .arg("side", side_arg(side))
-                .arg("rows", i64::from(page))
-                .arg("cols", 1),
-        );
-    }
-
     // Колонки и заголовки.
-    let mode = match t.view_mode {
-        ViewMode::Wide => ViewMode::Wide,
-        _ => ViewMode::Full,
-    };
+    let mode = layout_mode(t.view_mode);
     let widths = *cx.widths.entry((t.id, mode)).or_default();
-    let cols = Columns::new(
+    let blocks = blocks(
         list_r.left(),
         list_r.right(),
         mode,
@@ -183,11 +241,34 @@ pub(crate) fn show(
         cx.fonts.icons,
         pad,
     );
-    header(c, cx, head_r, &cols, t, side, active, mode, out);
+    let cols = blocks[0];
+    header(c, cx, head_r, &blocks, t, side, active, mode, out);
+
+    // Строк в колонке, колонки и `panel.viewport` — только при изменении (S0 v3 №3).
+    let page = rows_fit(list_r.height(), row_h);
+    let ncols = u32::try_from(blocks.len()).unwrap_or(1);
+    if (cx.memo.page, cx.memo.cols) != (page, ncols) {
+        cx.memo.page = page;
+        cx.memo.cols = ncols;
+        out.push(
+            Command::new("panel.viewport")
+                .arg("side", side_arg(side))
+                .arg("rows", i64::from(page))
+                .arg("cols", i64::from(ncols)),
+        );
+    }
 
     // Строки.
     if interactive {
-        wheel(cx.ui, list_r, &mut cx.memo.wheel_acc, t, side, page, out);
+        wheel(
+            cx.ui,
+            list_r,
+            &mut cx.memo.wheel_acc,
+            t,
+            side,
+            (page, ncols),
+            out,
+        );
         let digit_slot = (!cx.fonts.tabular_ok(Font::Ui)).then(|| FontSet::digit_slot(&ctx, &body));
         let lcx = LineCx {
             ctx: &ctx,
@@ -196,9 +277,10 @@ pub(crate) fn show(
             font: body.clone(),
             name_w: cols.name.1 - cols.name.0,
             digit_slot,
+            size: cols.has_size(),
             mtime: cols.mtime.is_some(),
         };
-        fill_lines(&mut cx.memo.lines, cx.cache, &lcx, t, page);
+        fill_lines(&mut cx.memo.lines, cx.cache, &lcx, t, page * ncols);
         cx.memo.has_frame = true;
     }
     let lines = std::mem::take(&mut cx.memo.lines);
@@ -206,7 +288,7 @@ pub(crate) fn show(
         c,
         cx,
         list_r,
-        &cols,
+        &blocks,
         &lines,
         t,
         side,
@@ -261,7 +343,7 @@ fn header(
     c: &mut dyn Canvas,
     cx: &mut ListCx<'_>,
     r: Rect,
-    cols: &Columns,
+    blocks: &[Columns],
     t: &Tab,
     side: Side,
     active: bool,
@@ -276,58 +358,93 @@ fn header(
         (true, true) => " ˅",
         (false, _) => "",
     };
-    let titles: [(&str, SortKey, (f32, f32), Align2); 3] = [
-        ("ui-col-name", SortKey::Name, cols.name, Align2::LEFT_CENTER),
-        (
-            "ui-col-size",
-            SortKey::Size,
-            cols.size,
-            Align2::RIGHT_CENTER,
-        ),
-        (
-            "ui-col-mtime",
-            SortKey::Mtime,
-            cols.mtime.unwrap_or((0.0, 0.0)),
-            Align2::LEFT_CENTER,
-        ),
-    ];
-    for (key, sort, (x0, x1), align) in titles {
-        if x1 <= x0 {
-            continue;
-        }
-        let title = format!("{}{}", cx.i18n.get(key), arrow(sort));
-        let pos = if align == Align2::RIGHT_CENTER {
-            pos2(x1, y)
-        } else {
-            pos2(x0, y)
-        };
-        c.text(
-            pos,
-            align,
-            &Tx::user(title),
-            Font::Caption,
-            size,
-            Role::TextSecondary,
-        );
-        let cell = Rect::from_min_max(pos2(x0, r.top()), pos2(x1, r.bottom()));
-        let resp = cx.ui.interact(
-            cell,
-            cx.ui.scope_id().with(("col", side_arg(side), key)),
-            Sense::click(),
-        );
-        if resp.clicked() {
-            if !active {
-                out.push(Command::new("panel.focus").arg("side", side_arg(side)));
+    // Brief — один заголовок «Имя» над первой колонкой, Medium — над каждой (S2 §2.1–2.2);
+    // стрелка сортировки — только у первой.
+    let titled = if mode == ViewMode::Brief {
+        1
+    } else {
+        blocks.len()
+    };
+    for (b, cols) in blocks.iter().take(titled).enumerate() {
+        let titles: [(&str, SortKey, (f32, f32), Align2); 3] = [
+            ("ui-col-name", SortKey::Name, cols.name, Align2::LEFT_CENTER),
+            (
+                "ui-col-size",
+                SortKey::Size,
+                cols.size,
+                Align2::RIGHT_CENTER,
+            ),
+            (
+                "ui-col-mtime",
+                SortKey::Mtime,
+                cols.mtime.unwrap_or((0.0, 0.0)),
+                Align2::LEFT_CENTER,
+            ),
+        ];
+        for (key, sort, (x0, x1), align) in titles {
+            if x1 <= x0 {
+                continue;
             }
-            let k = match sort {
-                SortKey::Name => "name",
-                SortKey::Size => "size",
-                _ => "mtime",
+            let title = if b == 0 {
+                format!("{}{}", cx.i18n.get(key), arrow(sort))
+            } else {
+                cx.i18n.get(key)
             };
-            out.push(Command::new("panel.sort").arg("key", k));
+            let pos = if align == Align2::RIGHT_CENTER {
+                pos2(x1, y)
+            } else {
+                pos2(x0, y)
+            };
+            c.text(
+                pos,
+                align,
+                &Tx::user(title),
+                Font::Caption,
+                size,
+                Role::TextSecondary,
+            );
+            let cell = Rect::from_min_max(pos2(x0, r.top()), pos2(x1, r.bottom()));
+            let resp = cx.ui.interact(
+                cell,
+                cx.ui.scope_id().with(("col", side_arg(side), b, key)),
+                Sense::click(),
+            );
+            if resp.clicked() {
+                if !active {
+                    out.push(Command::new("panel.focus").arg("side", side_arg(side)));
+                }
+                let k = match sort {
+                    SortKey::Name => "name",
+                    SortKey::Size => "size",
+                    _ => "mtime",
+                };
+                out.push(Command::new("panel.sort").arg("key", k));
+            }
         }
     }
-    // Разделители: левая граница «Размера» и «Изменён» — тянутся, двойной клик — сброс.
+    // Ручки ширины — только в одноколоночных видах (Full, Wide).
+    if let [cols] = blocks {
+        resize_handles(c, cx, r, cols, t, side, mode);
+    }
+}
+
+/// Разделители заголовка: левая граница «Размера» и «Изменён» тянется, двойной клик —
+/// ширины по умолчанию.
+#[allow(
+    clippy::too_many_arguments,
+    clippy::many_single_char_names,
+    reason = "раскладка заголовка; геометрия: c, r, t, x, y"
+)]
+fn resize_handles(
+    c: &mut dyn Canvas,
+    cx: &mut ListCx<'_>,
+    r: Rect,
+    cols: &Columns,
+    t: &Tab,
+    side: Side,
+    mode: ViewMode,
+) {
+    let y = r.center().y;
     let handles = [
         (cols.size.0, 0usize),
         (cols.mtime.map_or(f32::NAN, |m| m.0), 1),
@@ -375,7 +492,7 @@ fn rows(
     c: &mut dyn Canvas,
     cx: &mut ListCx<'_>,
     list: Rect,
-    cols: &Columns,
+    blocks: &[Columns],
     lines: &[Line],
     t: &Tab,
     side: Side,
@@ -395,12 +512,17 @@ fn rows(
     } else {
         Sense::hover()
     };
+    let per_col = rows_fit(list.height(), row_h).max(1) as usize;
+    col_dividers(c, tk, list, blocks);
     for (i, line) in lines.iter().enumerate() {
-        #[allow(clippy::cast_precision_loss, reason = "строк на странице — сотни")]
-        let top = list.top() + row_h * i as f32;
-        let row = Rect::from_min_size(pos2(list.left(), top), vec2(list.width(), row_h));
-        if row.bottom() > list.bottom() + 0.5 {
+        let Some(cols) = blocks.get(i / per_col) else {
             break;
+        };
+        #[allow(clippy::cast_precision_loss, reason = "строк на странице — сотни")]
+        let top = list.top() + row_h * (i % per_col) as f32;
+        let row = Rect::from_min_max(pos2(cols.block.0, top), pos2(cols.block.1, top + row_h));
+        if row.bottom() > list.bottom() + 0.5 {
+            continue;
         }
         let mid = row.center().y;
         let mut color = cx
@@ -478,6 +600,20 @@ fn rows(
         if resp.double_clicked() {
             out.push(Command::new("panel.enter"));
         }
+    }
+}
+
+/// Разделители колонок многоколоночных видов (Brief, Medium).
+fn col_dividers(c: &mut dyn Canvas, tk: &Tokens, list: Rect, blocks: &[Columns]) {
+    for b in blocks.iter().skip(1) {
+        c.rect(
+            Rect::from_min_size(
+                pos2(b.block.0, list.top()),
+                vec2(tk.m(Metric::StrokeThin), list.height()),
+            ),
+            Role::StrokeDivider,
+            egui::CornerRadius::ZERO,
+        );
     }
 }
 
@@ -565,7 +701,7 @@ fn wheel(
     acc: &mut f32,
     t: &Tab,
     side: Side,
-    page: u32,
+    (page, cols): (u32, u32),
     out: &mut Vec<Command>,
 ) {
     let over = ui
@@ -602,7 +738,7 @@ fn wheel(
             Command::new("panel.viewport")
                 .arg("side", side_arg(side))
                 .arg("rows", i64::from(page))
-                .arg("cols", 1)
+                .arg("cols", i64::from(cols))
                 .arg("top", top),
         );
     }
