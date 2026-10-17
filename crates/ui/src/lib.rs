@@ -25,6 +25,7 @@ pub mod layout;
 mod panel;
 pub mod state;
 pub mod sys;
+mod tabs;
 pub mod text;
 mod titlebar;
 pub mod tokens;
@@ -81,6 +82,8 @@ pub struct UrfinUi {
     frames: u64,
     /// Ширины колонок табов (`FileList`).
     widths: file_list::Widths,
+    /// Наборы табов в заголовке: прокрутка и перетаскивание (S2-13).
+    tabs: [tabs::TabsMemo; 2],
     /// Разметка ячеек списка (S2 §6.2), общая для обеих панелей.
     rows: cache::RowCache,
     /// Эпоха стиля: тема, акцент, шрифты, масштаб, DPI — сброс `RowCache`.
@@ -146,6 +149,7 @@ impl UrfinUi {
             chrome: None,
             frames: 0,
             widths: file_list::Widths::default(),
+            tabs: Default::default(),
             rows: cache::RowCache::new(),
             style_epoch: 0,
             last_ppp: 0.0,
@@ -291,12 +295,13 @@ impl UrfinUi {
             &prompt,
         );
         let mut child = |r: egui::Rect| root.new_child(egui::UiBuilder::new().max_rect(r));
-        let title = titlebar::TitleBar {
+        let mut title = titlebar::TitleBar {
             i18n: &i18n,
             tokens: t,
             fonts: &self.fonts,
             chrome: self.chrome.as_ref(),
             columns: regions.panels,
+            memo: &mut self.tabs,
         };
         title.show(&mut child(regions.titlebar), s, out);
         self.paint_keybar(&mut child(regions.keybar), &i18n, out);

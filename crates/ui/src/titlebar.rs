@@ -1,6 +1,6 @@
 //! Заголовок окна 40 px (S2 §2.1, S2-06): табы каждой панели над её карточкой, справа —
 //! кнопки caption 46×40 (Windows, своя рамка). Пустая зона — `HTCAPTION` для ОС.
-//! Табы пока простые (подпись, клик); крестик, `+` и перетаскивание — S2-13.
+//! Табы — виджет [`tabs`] (S2-13).
 
 use std::sync::atomic::Ordering;
 
@@ -11,7 +11,7 @@ use urfin_i18n::I18n;
 use crate::chrome::{ChromeHandle, PxRect, TitleLayout};
 use crate::fonts::{Font, FontSet};
 use crate::icons;
-use crate::panel::side_arg;
+use crate::tabs;
 use crate::text::{self, Tx};
 use crate::tokens::{Metric, Role, Tokens};
 
@@ -27,10 +27,12 @@ pub(crate) struct TitleBar<'a> {
     pub chrome: Option<&'a ChromeHandle>,
     /// Карточки панелей (из раскладки): табы — над ними.
     pub columns: [Option<Rect>; 2],
+    /// Состояние наборов табов (прокрутка, перетаскивание).
+    pub memo: &'a mut [tabs::TabsMemo; 2],
 }
 
 impl TitleBar<'_> {
-    pub(crate) fn show(&self, ui: &mut egui::Ui, s: &AppState, out: &mut Vec<Command>) {
+    pub(crate) fn show(&mut self, ui: &mut egui::Ui, s: &AppState, out: &mut Vec<Command>) {
         let t = self.tokens;
         let bar = ui.max_rect();
         let gap = t.m(Metric::GapPanels);
@@ -77,9 +79,8 @@ impl TitleBar<'_> {
         }
     }
 
-    #[allow(clippy::many_single_char_names, reason = "геометрия: t, p, s, x, w, f")]
     fn tabs(
-        &self,
+        &mut self,
         ui: &mut egui::Ui,
         s: &AppState,
         side: Side,
@@ -87,75 +88,19 @@ impl TitleBar<'_> {
         out: &mut Vec<Command>,
         interactive: &mut Vec<Rect>,
     ) {
-        let t = self.tokens;
-        let p = s.panel(side);
-        let font = self.fonts.id(Font::Ui, t.m(Metric::TypeBody));
-        let strong = self.fonts.id(Font::Strong, t.m(Metric::TypeBody));
-        let top = area.top() + (t.m(Metric::HTitlebar) - t.m(Metric::HTab));
-        let pad = t.m(Metric::SpaceM);
-        let mut x = area.left();
-        let painter = ui.painter_at(area);
-        for (i, tab) in p.tabs.iter().enumerate() {
-            let current = i == p.active;
-            let title = tab.title();
-            let f = if current { &strong } else { &font };
-            let text_w = ui.ctx().fonts_mut(|fs| {
-                fs.layout_no_wrap(title.to_string(), f.clone(), Color32::WHITE)
-                    .size()
-                    .x
-            });
-            let w = (text_w + 2.0 * pad).min(240.0).min(area.right() - x);
-            if w <= pad {
-                break;
-            }
-            let rect = Rect::from_min_size(egui::pos2(x, top), egui::vec2(w, t.m(Metric::HTab)));
-            let resp = ui.interact(
-                rect,
-                ui.scope_id().with(("tab", side_arg(side), i)),
-                Sense::CLICK,
-            );
-            if current {
-                let r = t.radius(Metric::RadiusOverlay).nw;
-                painter.rect_filled(
-                    rect,
-                    egui::CornerRadius {
-                        nw: r,
-                        ne: r,
-                        sw: 0,
-                        se: 0,
-                    },
-                    t.c(Role::LayerPanel),
-                );
-            } else if resp.hovered() {
-                painter.rect_filled(
-                    rect.shrink2(egui::vec2(0.0, 4.0)),
-                    t.radius(Metric::RadiusControl),
-                    t.c(Role::FillSubtleHover),
-                );
-            }
-            text::paint_clipped(
-                &painter,
-                self.i18n,
-                egui::pos2(rect.left() + pad, rect.center().y),
-                w - 2.0 * pad,
-                &Tx::user(title.as_ref()),
-                f.clone(),
-                t.c(if current {
-                    Role::TextPrimary
-                } else {
-                    Role::TextSecondary
-                }),
-            );
-            if resp.clicked() {
-                out.push(
-                    Command::new("tab.goto")
-                        .arg("n", i64::try_from(i + 1).unwrap_or(1))
-                        .arg("side", side_arg(side)),
-                );
-            }
-            interactive.push(rect);
-            x += w + t.m(Metric::SpaceXxs);
-        }
+        let mut c = crate::canvas::EguiCanvas {
+            painter: ui.painter_at(area),
+            tokens: self.tokens,
+            fonts: self.fonts,
+            i18n: self.i18n,
+        };
+        let mut cx = tabs::TabsCx {
+            ui,
+            tokens: self.tokens,
+            fonts: self.fonts,
+            memo: &mut self.memo[side.idx()],
+        };
+        tabs::show(&mut c, &mut cx, s.panel(side), side, area, out, interactive);
     }
 
     fn buttons(

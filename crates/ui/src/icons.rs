@@ -29,8 +29,11 @@ pub const PARENT: char = '\u{E74A}';
 pub const CLOUD: char = '\u{E753}';
 
 pub const CHEVRON_RIGHT: char = '\u{E76C}';
+pub const CHEVRON_LEFT: char = '\u{E76B}';
 pub const CHEVRON_DOWN: char = '\u{E70D}';
 pub const SEARCH: char = '\u{E721}';
+/// `+` нового таба.
+pub const ADD: char = '\u{E710}';
 pub const CANCEL: char = '\u{E711}';
 pub const PAUSE: char = '\u{E769}';
 pub const PLAY: char = '\u{E768}';
@@ -52,7 +55,7 @@ pub const CHROME_RESTORE: char = '\u{E923}';
 pub const CHROME_CLOSE: char = '\u{E8BB}';
 
 /// Все используемые глифы: классы, оверлеи, UI.
-pub const ALL: [char; 33] = [
+pub const ALL: [char; 35] = [
     FOLDER,
     '\u{E7C3}',
     '\u{E8A5}',
@@ -67,8 +70,10 @@ pub const ALL: [char; 33] = [
     PARENT,
     CLOUD,
     CHEVRON_RIGHT,
+    CHEVRON_LEFT,
     CHEVRON_DOWN,
     SEARCH,
+    ADD,
     CANCEL,
     PAUSE,
     PLAY,
