@@ -29,6 +29,15 @@ pub(crate) struct TitleBar<'a> {
     pub columns: [Option<Rect>; 2],
     /// Состояние наборов табов (прокрутка, перетаскивание).
     pub memo: &'a mut [tabs::TabsMemo; 2],
+    /// Меню F9 открыто — меню-бар вместо табов (S2 §2.6).
+    pub menu: Option<MenuBar<'a>>,
+}
+
+/// Меню-бар в заголовке.
+pub(crate) struct MenuBar<'a> {
+    pub menus: &'a [crate::menu::MenuDef],
+    pub open: &'a str,
+    pub memo: &'a mut crate::menu::MenuMemo,
 }
 
 impl TitleBar<'_> {
@@ -44,7 +53,41 @@ impl TitleBar<'_> {
         let mut interactive = Vec::new();
         // Табы — над своими карточками, не заходя на кнопки caption.
         let limit = bar.right() - buttons_w - gap;
-        for (side, card) in [Side::Left, Side::Right].into_iter().zip(self.columns) {
+        if let Some(m) = self.menu.as_mut() {
+            let left = self
+                .columns
+                .iter()
+                .flatten()
+                .map(egui::Rect::left)
+                .fold(limit, f32::min);
+            let area =
+                Rect::from_min_max(egui::pos2(left, bar.top()), egui::pos2(limit, bar.bottom()));
+            let mut c = crate::canvas::EguiCanvas {
+                painter: ui.painter_at(area),
+                tokens: self.tokens,
+                fonts: self.fonts,
+                i18n: self.i18n,
+            };
+            crate::menu::bar(
+                &mut c,
+                ui,
+                self.i18n,
+                self.tokens,
+                self.fonts,
+                m.menus,
+                m.open,
+                m.memo,
+                area,
+                out,
+                &mut interactive,
+            );
+        }
+        let show_tabs = self.menu.is_none();
+        for (side, card) in [Side::Left, Side::Right]
+            .into_iter()
+            .zip(self.columns)
+            .filter(|_| show_tabs)
+        {
             if let Some(card) = card {
                 let area = Rect::from_min_max(
                     egui::pos2(card.left(), bar.top()),

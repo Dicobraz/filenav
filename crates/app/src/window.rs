@@ -104,6 +104,7 @@ fn hard_key(key: egui::Key, m: egui::Modifiers) -> Option<Command> {
     }
     Some(match key {
         // F-клавиши пресета Far, у которых уже есть действие (S3 §3); F9 — с меню S2-14.
+        K::F9 => Command::new("ui.menu"),
         K::F10 => Command::new("app.quit"),
         K::Enter => Command::new("panel.enter"),
         K::Backspace => Command::new("panel.up"),
@@ -200,9 +201,10 @@ pub fn run(launch: Launch) -> anyhow::Result<()> {
     }
     // Mica (Win11, прозрачность включена) решается до окна: от неё зависит swapchain.
     let mica = urfin_ui::sys::mica_wanted(&ui_cfg.backdrop);
+    let config_dir = launch.boot.paths.config_dir.clone();
     let pending: Pending = Rc::new(RefCell::new(Some(Start {
         from: Origin::Launch(Box::new(launch)),
-        probe: spawn_probe(&ui_cfg)?,
+        probe: spawn_probe(&ui_cfg, &config_dir)?,
         ui_cfg: ui_cfg.clone(),
         warnings: plan_warning.into_iter().collect(),
     })));
@@ -231,7 +233,7 @@ pub fn run(launch: Launch) -> anyhow::Result<()> {
                 tracing::warn!(?gpu, next = ?queue[0], "restarting the window after device loss");
                 *pending.borrow_mut() = Some(Start {
                     from: Origin::Resume(Box::new(resume)),
-                    probe: spawn_probe(&ui_cfg)?,
+                    probe: spawn_probe(&ui_cfg, &config_dir)?,
                     ui_cfg: ui_cfg.clone(),
                     warnings: Vec::new(),
                 });
@@ -258,21 +260,31 @@ pub fn run(launch: Launch) -> anyhow::Result<()> {
     ))
 }
 
-/// Probe ОС (тема, акцент, файлы шрифтов) и чтение шрифтов — параллельно созданию
-/// окна и `Core::new`.
-fn spawn_probe(cfg: &urfin_ui::config::UiCfg) -> std::io::Result<Probe> {
+/// Probe ОС (тема, акцент, файлы шрифтов), чтение шрифтов и `menu.toml` каталога
+/// конфига — параллельно созданию окна и `Core::new`.
+fn spawn_probe(
+    cfg: &urfin_ui::config::UiCfg,
+    config_dir: &std::path::Path,
+) -> std::io::Result<Probe> {
     let cfg = cfg.clone();
+    let menu = config_dir.join("menu.toml");
     std::thread::Builder::new()
         .name("font-probe".into())
         .spawn(move || {
             let mut probe = urfin_ui::sys::probe_system();
             let (fonts, warnings) = urfin_ui::fonts::load(&probe.fonts, &cfg);
             probe.warnings.extend(warnings);
-            (probe, fonts)
+            // Своё меню F9 (S2-14): нет файла — вшитое.
+            let menu = std::fs::read_to_string(&menu).ok();
+            (probe, fonts, menu)
         })
 }
 
-type Probe = std::thread::JoinHandle<(urfin_ui::sys::SysProbe, urfin_ui::fonts::LoadedFonts)>;
+type Probe = std::thread::JoinHandle<(
+    urfin_ui::sys::SysProbe,
+    urfin_ui::fonts::LoadedFonts,
+    Option<String>,
+)>;
 type Pending = Rc<RefCell<Option<Start>>>;
 /// Сюда `App` кладёт своё состояние при потере устройства (см. [`run`]).
 type Restart = Rc<RefCell<Option<Resume>>>;
@@ -433,7 +445,7 @@ fn create_app(
         );
         gpu::watch_device(&rs.device, &cc.egui_ctx, Arc::clone(&lost));
     }
-    let (probe, loaded) = probe.join().unwrap_or_else(|_| {
+    let (probe, loaded, menu) = probe.join().unwrap_or_else(|_| {
         tracing::error!("system probe panicked; using defaults");
         Default::default()
     });
@@ -441,6 +453,9 @@ fn create_app(
     let fonts = urfin_ui::fonts::install(&cc.egui_ctx, &loaded);
     let theme = probe.look.theme.unwrap_or_else(|| cc.egui_ctx.theme());
     let mut ui = UrfinUi::new(core.registry(), &probe, &ui_cfg, fonts);
+    if let Some(text) = menu {
+        ui.set_menu(&text);
+    }
     for w in warnings {
         ui.toast(format!("ui.renderer: {w}"));
     }
@@ -766,6 +781,7 @@ mod tests {
             key(egui::Key::Num4, ctrl, true),
             key(egui::Key::ArrowRight, none, true),
             key(egui::Key::ArrowLeft, none, true),
+            key(egui::Key::F9, none, true),
         ]);
         assert_eq!(left.len(), 0);
         assert_eq!(
@@ -776,6 +792,7 @@ mod tests {
                 "panel.view_mode mode=wide",
                 "panel.cursor.right",
                 "panel.cursor.left",
+                "ui.menu",
             ]
         );
     }

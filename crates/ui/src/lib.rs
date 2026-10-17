@@ -22,6 +22,7 @@ pub mod highlight;
 pub mod icons;
 pub mod keybar;
 pub mod layout;
+pub mod menu;
 mod panel;
 pub mod state;
 pub mod sys;
@@ -34,7 +35,7 @@ use std::collections::VecDeque;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use egui::{Align2, Sense, TextStyle};
+use egui::{Align2, Sense};
 use urfin_core::{
     AppState, Command, CommandRegistry, ConfigWarning, Core, Level, Side, UiEvent, Value,
 };
@@ -66,6 +67,8 @@ pub struct UrfinUi {
     toasts: VecDeque<(String, Instant)>,
     cards: [CardMemo; 2],
     keybar: keybar::Keybar,
+    /// Подсказки клавиш: заглушка Far до keymap S3 (S3-04).
+    hints: Box<dyn keybar::KeyHints>,
     registered: Vec<&'static str>,
     /// Тема, акцент и контрастность ОС (probe, затем `sys::watch`).
     look: sys::Look,
@@ -98,6 +101,9 @@ pub struct UrfinUi {
     applied: Option<(ThemeMode, u16, sys::Look)>,
     /// Своя рамка окна (Windows); `None` — системная.
     chrome: Option<chrome::ChromeHandle>,
+    /// Меню F9 (S2-14): из `menu.toml`, текущий пункт.
+    menus: Vec<menu::MenuDef>,
+    menu_memo: menu::MenuMemo,
 }
 
 impl UrfinUi {
@@ -125,18 +131,25 @@ impl UrfinUi {
                 ThemeMode::System
             }
         };
+        let registered = keybar::registered(registry);
+        let (menus, menu_warnings) = menu::parse(menu::MENU_TOML, &registered)
+            .expect("built-in menu.toml parses (menu_tests)");
         let far = Instant::now() + TOAST_TTL;
         let toasts = probe
             .warnings
             .iter()
             .chain(&warnings)
             .map(|w| (format!("{}: {}", w.key, w.msg), far))
+            .chain(menu_warnings.into_iter().map(|w| (w, far)))
             .collect();
         Self {
+            menus,
+            menu_memo: menu::MenuMemo::default(),
             toasts,
             cards: [CardMemo::default(), CardMemo::default()],
             keybar: keybar::Keybar::default(),
-            registered: keybar::registered(registry),
+            hints: Box::new(keybar::FarStub),
+            registered,
             look: probe.look,
             look_rx: None,
             cfg: cfg.clone(),
@@ -163,6 +176,19 @@ impl UrfinUi {
                 ),
             ),
             applied: None,
+        }
+    }
+
+    /// Меню из `menu.toml` каталога конфига вместо вшитого; ошибки — тостами, при
+    /// ошибке разбора остаётся вшитое.
+    pub fn set_menu(&mut self, text: &str) {
+        let far = Instant::now() + TOAST_TTL;
+        match menu::parse(text, &self.registered) {
+            Ok((menus, warnings)) => {
+                self.menus = menus;
+                self.toasts.extend(warnings.into_iter().map(|w| (w, far)));
+            }
+            Err(e) => self.toasts.push_back((format!("menu.toml: {e}"), far)),
         }
     }
 
@@ -235,6 +261,7 @@ impl UrfinUi {
     }
 
     /// Кадр (ADR-0011): `root` — корневой `Ui` окна от eframe.
+    #[allow(clippy::too_many_lines, reason = "кадр: слои окна по порядку")]
     pub fn show(
         &mut self,
         root: &mut egui::Ui,
@@ -262,7 +289,8 @@ impl UrfinUi {
         self.tokens.set_theme(ctx.theme());
         self.take_toasts(&ctx, ev);
         let epoch = urfin_i18n::epoch();
-        self.keybar.refresh(&i18n, epoch, &self.registered);
+        self.keybar
+            .refresh(&i18n, epoch, &self.registered, self.hints.as_ref());
         if self.fmt.0 != epoch {
             let iso = self.cfg.date_format.eq_ignore_ascii_case("iso");
             self.fmt = (
@@ -302,6 +330,11 @@ impl UrfinUi {
             chrome: self.chrome.as_ref(),
             columns: regions.panels,
             memo: &mut self.tabs,
+            menu: menu::open_id(st).map(|open| titlebar::MenuBar {
+                menus: &self.menus,
+                open,
+                memo: &mut self.menu_memo,
+            }),
         };
         title.show(&mut child(regions.titlebar), s, out);
         self.paint_keybar(&mut child(regions.keybar), &i18n, out);
@@ -337,6 +370,7 @@ impl UrfinUi {
                 out.push(Command::new("ui.split").arg("reset", true));
             }
         }
+        self.menu_flyout(&ctx, &i18n, st, regions.titlebar, out);
         self.paint_toasts(&ctx, &i18n);
         self.rows.end_frame();
         self.atlas_fill = atlas_fill(&ctx);
@@ -457,60 +491,84 @@ impl UrfinUi {
         }
     }
 
-    fn paint_keybar(&self, ui: &mut egui::Ui, i18n: &I18n, out: &mut Vec<Command>) {
-        let t = &self.tokens;
-        let n = 12.0;
-        let strip = ui.max_rect();
-        let w = strip.width() / n;
-        let font = TextStyle::Small.resolve(ui.style());
-        let chip = panel::radius(t, Metric::RadiusControl);
-        for item in &self.keybar.items {
-            let x = strip.left() + w * f32::from(item.n - 1);
-            let rect = egui::Rect::from_min_size(
-                egui::pos2(x, strip.top()),
-                egui::vec2(w, strip.height()),
+    /// Выпадающий список меню F9 и щит под ним: клик мимо закрывает меню и не уходит в
+    /// панель (S2 §2.6). ← → — соседнее меню.
+    fn menu_flyout(
+        &mut self,
+        ctx: &egui::Context,
+        i18n: &I18n,
+        st: &UiState,
+        titlebar: egui::Rect,
+        out: &mut Vec<Command>,
+    ) {
+        let Some(open) = menu::open_id(st) else {
+            return;
+        };
+        let Some(def) = self.menus.iter().find(|m| m.id == open) else {
+            return;
+        };
+        let (left, right) = ctx.input(|i| {
+            (
+                i.key_pressed(egui::Key::ArrowLeft),
+                i.key_pressed(egui::Key::ArrowRight),
             )
-            .shrink2(egui::vec2(t.m(Metric::SpaceXxs), 0.0));
-            let sense = if item.enabled {
-                Sense::CLICK
-            } else {
-                Sense::hover()
-            };
-            let resp = ui.interact(rect, ui.scope_id().with(("fkey", item.n)), sense);
-            let painter = ui.painter_at(rect);
-            let fill = if item.enabled && resp.hovered() {
-                t.c(Role::FillSubtleHover)
-            } else {
-                t.c(Role::FillControl)
-            };
-            painter.rect_filled(rect, chip, fill);
-            let num = text::paint(
-                &painter,
-                i18n,
-                rect.left_center() + egui::vec2(t.m(Metric::SpaceS), 0.0),
-                Align2::LEFT_CENTER,
-                &Tx::user(item.n.to_string()),
-                font.clone(),
-                t.c(Role::TextSecondary),
-            );
-            let color = if item.enabled {
-                t.c(Role::TextPrimary)
-            } else {
-                t.c(Role::TextDisabled)
-            };
-            text::paint(
-                &painter,
-                i18n,
-                egui::pos2(num.right() + t.m(Metric::SpaceXs), rect.center().y),
-                Align2::LEFT_CENTER,
-                &Tx::user(item.label.as_str()),
-                font.clone(),
-                color,
-            );
-            if resp.clicked() {
-                out.push(Command::new(item.cmd));
+        });
+        for (pressed, dir) in [(left, -1), (right, 1)] {
+            if pressed && let Some(next) = menu::neighbor(&self.menus, open, dir) {
+                out.push(Command::new("ui.menu").arg("menu", next.as_str()));
             }
         }
+        let screen = ctx.content_rect();
+        let shield = screen.with_min_y(titlebar.bottom());
+        egui::Area::new(egui::Id::unique("menu-shield"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(shield.min)
+            .show(ctx, |ui| {
+                let r = ui.allocate_rect(shield, Sense::click());
+                if r.clicked() || r.secondary_clicked() || r.middle_clicked() {
+                    out.push(Command::new("ui.cancel"));
+                }
+            });
+        let at = self
+            .menu_memo
+            .anchors
+            .iter()
+            .find(|(id, _)| id == open)
+            .map_or(titlebar.left_bottom(), |(_, p)| *p);
+        egui::Area::new(egui::Id::unique("menu-flyout"))
+            .order(egui::Order::Tooltip)
+            .fixed_pos(at)
+            .show(ctx, |ui| {
+                let mut c = canvas::EguiCanvas {
+                    painter: ui.painter().clone(),
+                    tokens: &self.tokens,
+                    fonts: &self.fonts,
+                    i18n,
+                };
+                let r = menu::flyout(
+                    &mut c,
+                    ui,
+                    i18n,
+                    &self.tokens,
+                    self.hints.as_ref(),
+                    def,
+                    &mut self.menu_memo,
+                    at,
+                    out,
+                );
+                ui.allocate_rect(r, Sense::hover());
+            });
+    }
+
+    fn paint_keybar(&self, ui: &mut egui::Ui, i18n: &I18n, out: &mut Vec<Command>) {
+        let mods = keybar::Mods::from_egui(ui.input(|i| i.modifiers));
+        let mut c = canvas::EguiCanvas {
+            painter: ui.painter().clone(),
+            tokens: &self.tokens,
+            fonts: &self.fonts,
+            i18n,
+        };
+        keybar::show(&mut c, ui, &self.keybar, mods, &self.tokens, out);
     }
 
     /// Уведомление от приложения (например, откат рендера на WARP, S0 №50): текст

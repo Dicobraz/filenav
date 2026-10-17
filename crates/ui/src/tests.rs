@@ -110,39 +110,156 @@ fn footer_texts() {
 #[test]
 fn keybar_labels_and_fallback() {
     let i18n = en();
-    assert_eq!(keybar::label(&i18n, "ops.copy"), "Copy");
+    assert_eq!(keybar::label(&i18n, "keybar-ops-copy", "ops.copy"), "Copy");
     // Нет keybar-ui-qsearch — подпись из cmd-ui-qsearch.
-    assert_eq!(keybar::label(&i18n, "ui.qsearch"), "Quick search");
-    assert_eq!(keybar::label(&i18n, "no.such"), "no.such");
-    let mut kb = keybar::Keybar::default();
-    kb.refresh(&i18n, 0, &["app.quit"]);
-    let f10 = kb.items.iter().find(|i| i.n == 10).unwrap();
     assert_eq!(
-        (f10.cmd, f10.label.as_str(), f10.enabled),
-        ("app.quit", "Quit", true)
+        keybar::label(&i18n, "keybar-ui-qsearch", "ui.qsearch"),
+        "Quick search"
     );
-    assert!(kb.items.iter().filter(|i| i.n != 10).all(|i| !i.enabled));
-    kb.refresh(&i18n, 1, &["app.quit", "ui.menu"]);
+    assert_eq!(keybar::label(&i18n, "keybar-no-such", "no.such"), "no.such");
+    let mut kb = keybar::Keybar::default();
+    kb.refresh(&i18n, 0, &["app.quit", "ui.menu"], &keybar::FarStub);
+    let row = kb.items(keybar::Mods::None);
+    let f10 = row.iter().find(|i| i.n == 10).unwrap();
+    assert_eq!(
+        (f10.cmd.to_string(), f10.label.as_str(), f10.enabled),
+        ("app.quit".to_owned(), "Quit", true)
+    );
     assert!(
-        !kb.items.iter().find(|i| i.n == 9).unwrap().enabled,
-        "меню — S2-14"
+        row.iter().find(|i| i.n == 9).unwrap().enabled,
+        "меню F9 есть"
+    );
+    assert!(row.iter().filter(|i| i.n < 9).all(|i| !i.enabled));
+    let ctrl = kb.items(keybar::Mods::Ctrl);
+    let f3 = ctrl.iter().find(|i| i.n == 3).unwrap();
+    assert_eq!(
+        (f3.cmd.to_string(), f3.label.as_str()),
+        ("panel.sort key=name".to_owned(), "Name")
     );
 }
 
-/// Каждая F-клавиша заглушки имеет подпись в en и ru (`keybar-*` или `cmd-*`).
+/// Каждая F1…F10 заглушки во всех наборах модификаторов имеет подпись в en и ru.
 #[test]
 fn keybar_stub_keys_exist() {
+    use keybar::KeyHints as _;
     let catalog = urfin_i18n::Catalog::embedded();
     for tag in ["en", "ru"] {
         let i18n = catalog.build(&tag.parse().unwrap()).0;
-        for id in keybar::FAR_STUB.iter().flatten() {
-            let part = keybar::key_part(id);
-            assert!(
-                i18n.has(&format!("keybar-{part}")) || i18n.has(&format!("cmd-{part}")),
-                "{tag}: no keybar/cmd key for {id}"
-            );
+        for mods in [
+            keybar::Mods::None,
+            keybar::Mods::Shift,
+            keybar::Mods::Ctrl,
+            keybar::Mods::Alt,
+        ] {
+            for k in keybar::FarStub.fkeys(mods).iter().take(10).flatten() {
+                let part = keybar::key_part(k.cmd.id.as_str());
+                assert!(
+                    i18n.has(&k.label_key) || i18n.has(&format!("cmd-{part}")),
+                    "{tag}: no label for {}",
+                    k.cmd
+                );
+            }
         }
     }
+}
+
+/// Тексты, нарисованные кадром (для проверок без Canvas).
+fn frame_texts(
+    ctx: &egui::Context,
+    ui: &mut UrfinUi,
+    c: &Core,
+    input: egui::RawInput,
+) -> (Vec<String>, Vec<Command>) {
+    let mut out = Vec::new();
+    let mut full = ctx.run_ui(input, |root| ui.show(root, c.state(), &[], &mut out));
+    full.textures_delta.clear();
+    let mut texts = Vec::new();
+    for cs in &full.shapes {
+        collect_texts(&cs.shape, &mut texts);
+    }
+    (texts, out)
+}
+
+fn collect_texts(shape: &egui::Shape, out: &mut Vec<String>) {
+    match shape {
+        egui::Shape::Text(t) => out.push(t.galley.text().to_owned()),
+        egui::Shape::Vec(v) => v.iter().for_each(|s| collect_texts(s, out)),
+        _ => {}
+    }
+}
+
+fn screen(events: Vec<egui::Event>, modifiers: egui::Modifiers) -> egui::RawInput {
+    egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1200.0, 760.0),
+        )),
+        events: std::iter::once(egui::Event::ModifiersChanged(modifiers))
+            .chain(events)
+            .collect(),
+        ..Default::default()
+    }
+}
+
+/// Зажатый Shift меняет подписи keybar в том же кадре (S2-14).
+#[test]
+fn shift_switches_keybar_labels_in_one_frame() {
+    let c = core();
+    let mut ui = new_ui(&c);
+    let ctx = egui::Context::default();
+    let set = |c: &mut Vec<String>| c.retain(|t| t.len() < 40);
+    let (mut plain, _) = frame_texts(&ctx, &mut ui, &c, screen(Vec::new(), egui::Modifiers::NONE));
+    set(&mut plain);
+    let (shifted, _) = frame_texts(
+        &ctx,
+        &mut ui,
+        &c,
+        screen(Vec::new(), egui::Modifiers::SHIFT),
+    );
+    let i18n = urfin_i18n::current();
+    let pack = i18n.get("keybar-arc-add");
+    let help = i18n.get("keybar-ui-help");
+    assert!(plain.contains(&help) && !plain.contains(&pack));
+    assert!(shifted.contains(&pack), "{shifted:?}");
+}
+
+/// Меню F9 открыто: клик по панели закрывает меню и не уходит в панель (S2-14).
+#[test]
+fn click_outside_menu_closes_and_stays_out_of_panel() {
+    let mut c = core();
+    run(&mut c, "ui.menu");
+    assert_eq!(ui_state(&c).menu.as_deref(), Some("left"));
+    let mut ui = new_ui(&c);
+    let ctx = egui::Context::default();
+    frame_texts(&ctx, &mut ui, &c, screen(Vec::new(), egui::Modifiers::NONE));
+    // Точка в правой карточке, далеко от выпадающего списка левого меню.
+    let at = egui::pos2(900.0, 400.0);
+    let press = |pressed| egui::Event::PointerButton {
+        pos: at,
+        button: egui::PointerButton::Primary,
+        pressed,
+        modifiers: egui::Modifiers::NONE,
+    };
+    frame_texts(
+        &ctx,
+        &mut ui,
+        &c,
+        screen(vec![egui::Event::PointerMoved(at)], egui::Modifiers::NONE),
+    );
+    let events = vec![press(true), press(false)];
+    let (_, out) = frame_texts(&ctx, &mut ui, &c, screen(events, egui::Modifiers::NONE));
+    let ids: Vec<String> = out.iter().map(|c| c.id.as_str().to_owned()).collect();
+    assert!(ids.contains(&"ui.cancel".to_owned()), "{ids:?}");
+    assert!(
+        !ids.iter()
+            .any(|i| i.starts_with("panel.") || i.starts_with("sel.")),
+        "{ids:?}"
+    );
+}
+
+/// Id зарегистрированных команд core и ui (для тестов меню).
+pub(crate) fn registry_ids() -> Vec<&'static str> {
+    keybar::registered(core().registry())
 }
 
 struct NoWake;
