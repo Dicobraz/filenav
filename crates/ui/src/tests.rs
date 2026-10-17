@@ -257,9 +257,9 @@ fn click_outside_menu_closes_and_stays_out_of_panel() {
     );
 }
 
-/// Id зарегистрированных команд core и ui (для тестов меню).
-pub(crate) fn registry_ids() -> Vec<&'static str> {
-    keybar::registered(core().registry())
+/// Реестр команд core и ui, как в приложении (тесты меню и реестра).
+pub(crate) fn registry() -> urfin_core::CommandRegistry {
+    menu::copy_registry(core().registry())
 }
 
 struct NoWake;
@@ -718,4 +718,28 @@ fn subdirs_menu_lists_dirs_only() {
     assert_eq!(ui_state(&c).menu_side, Some(Side::Left));
     run(&mut c, "ui.cancel");
     assert_eq!(ui_state(&c).subdirs, None);
+}
+
+/// `docs/COMMANDS.md` совпадает с реестром команд (core + ui) и вшитым меню.
+/// Обновить: `URFIN_UPDATE_DOCS=1 cargo nextest run -p urfin-ui commands_doc`.
+#[test]
+fn commands_doc_is_current() {
+    let reg = registry();
+    let catalog = urfin_i18n::Catalog::embedded();
+    let en = catalog.build(&"en".parse().unwrap()).0;
+    let ru = catalog.build(&"ru".parse().unwrap()).0;
+    let (menus, _) = menu::parse(menu::MENU_TOML, &reg).unwrap();
+    let doc = commands_doc::render(&reg, &en, &ru, &menus);
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/COMMANDS.md");
+    if std::env::var_os("URFIN_UPDATE_DOCS").is_some() {
+        std::fs::write(&path, &doc).unwrap();
+        return;
+    }
+    let on_disk = std::fs::read_to_string(&path)
+        .unwrap_or_default()
+        .replace("\r\n", "\n");
+    assert!(
+        on_disk == doc,
+        "docs/COMMANDS.md устарел: URFIN_UPDATE_DOCS=1 cargo nextest run -p urfin-ui commands_doc"
+    );
 }

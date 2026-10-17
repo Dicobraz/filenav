@@ -3,12 +3,13 @@ use urfin_core::Command;
 
 use super::*;
 use crate::canvas::RecordCanvas;
+use crate::fonts::FontSet;
 use crate::keybar::FarStub;
 use crate::tokens::Tokens;
 
-/// Id команд core и ui, как в приложении.
-fn registered() -> Vec<&'static str> {
-    crate::tests::registry_ids()
+/// Реестр команд core и ui, как в приложении.
+fn registered() -> urfin_core::CommandRegistry {
+    crate::tests::registry()
 }
 
 fn i18n() -> urfin_i18n::I18n {
@@ -39,6 +40,44 @@ fn builtin_menu_has_only_registered_commands() {
     }
 }
 
+/// Во вшитом меню буквы выбора не повторяются ни в одном языке.
+#[test]
+fn builtin_menu_letters_are_unique() {
+    let (menus, _) = parse(MENU_TOML, &registered()).unwrap();
+    let catalog = urfin_i18n::Catalog::embedded();
+    for tag in ["en", "ru"] {
+        let i18n = catalog.build(&tag.parse().unwrap()).0;
+        assert_eq!(
+            letter_conflicts(&menus, &i18n),
+            Vec::<String>::new(),
+            "{tag}"
+        );
+    }
+}
+
+/// Повторяющаяся буква (своё меню) — пункты по кругу, без выполнения.
+#[test]
+fn shared_letter_cycles() {
+    let text = r#"
+[[menu]]
+id = "x"
+title = "menu-files"
+items = [
+    { cmd = "sel.all", label = "menu-sort-name" },
+    { cmd = "sel.none", label = "menu-sort-name" },
+]
+"#;
+    let menus = parse(text, &registered()).unwrap().0;
+    assert_eq!(letter_conflicts(&menus, &i18n()).len(), 1);
+    let mut fx = Fx::new();
+    fx.menus = menus;
+    fx.frame("x", Vec::new());
+    assert_eq!(fx.memo.sel, Some(0));
+    let (_, out) = fx.frame("x", vec![egui::Event::Text("и".into())]);
+    assert_eq!(out.len(), 0);
+    assert_eq!(fx.memo.sel, Some(1));
+}
+
 /// Неизвестный id — предупреждение, пункт скрыт; разделители по краям и подряд — нет.
 #[test]
 fn unknown_command_is_hidden_with_warning() {
@@ -56,13 +95,32 @@ items = [
     { sep = true },
 ]
 "#;
-    let (menus, warnings) = parse(text, &["sel.all", "sel.none"]).unwrap();
+    let (menus, warnings) = parse(text, &registered()).unwrap();
     assert_eq!(warnings.len(), 1);
     assert!(warnings[0].contains("no.such"));
     let items = &menus[0].items;
     assert_eq!(items.len(), 3, "{items:?}");
     assert!(matches!(items[1], Item::Sep));
-    assert!(parse("[[menu]]\nid = 1", &[]).is_err());
+    assert!(parse("[[menu]]\nid = 1", &registered()).is_err());
+}
+
+/// Аргументы проверяются по реестру: лишний, не того типа, без обязательного.
+#[test]
+fn bad_arguments_hide_the_item() {
+    let text = r#"
+[[menu]]
+id = "x"
+title = "menu-files"
+items = [
+    { cmd = "panel.sort bogus=1" },
+    { cmd = "ui.zoom delta=big" },
+    { cmd = "panel.view_mode" },
+    { cmd = "panel.sort key=size" },
+]
+"#;
+    let (menus, warnings) = parse(text, &registered()).unwrap();
+    assert_eq!(warnings.len(), 3, "{warnings:?}");
+    assert_eq!(menus[0].items.len(), 1);
 }
 
 #[test]
@@ -112,6 +170,7 @@ impl Fx {
                 root,
                 &self.i18n,
                 &self.tokens,
+                &FontSet::default(),
                 &FarStub,
                 &def,
                 &mut self.memo,

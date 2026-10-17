@@ -10,7 +10,7 @@
 use compact_str::CompactString;
 use egui::{Align2, Pos2, Rect, Sense, pos2, vec2};
 use serde::Deserialize;
-use urfin_core::{Command, Side};
+use urfin_core::{Command, CommandRegistry, Side};
 use urfin_i18n::I18n;
 
 use crate::canvas::Canvas;
@@ -69,9 +69,13 @@ struct RawItem {
     sep: bool,
 }
 
-/// Разбор `menu.toml`. Пункт с незарегистрированной или неразборной командой скрыт,
+/// Разбор `menu.toml`. Команда пункта проверяется по реестру (docs/COMMANDS.md): id
+/// известен, аргументы описаны и нужного типа, обязательные есть. Иначе пункт скрыт,
 /// предупреждение — во втором значении (S2-14).
-pub fn parse(text: &str, registered: &[&str]) -> Result<(Vec<MenuDef>, Vec<String>), String> {
+pub fn parse(
+    text: &str,
+    registry: &CommandRegistry,
+) -> Result<(Vec<MenuDef>, Vec<String>), String> {
     let file: File = toml::from_str(text).map_err(|e| e.to_string())?;
     let mut warnings = Vec::new();
     let menus = file
@@ -103,8 +107,8 @@ pub fn parse(text: &str, registered: &[&str]) -> Result<(Vec<MenuDef>, Vec<Strin
                         continue;
                     }
                 };
-                if !registered.contains(&cmd.id.as_str()) {
-                    warnings.push(format!("menu {}: unknown command {}", m.id, cmd.id));
+                if let Err(e) = registry.validate(&cmd) {
+                    warnings.push(format!("menu {}: {text}: {e}", m.id));
                     continue;
                 }
                 let label = raw
@@ -127,6 +131,17 @@ pub fn parse(text: &str, registered: &[&str]) -> Result<(Vec<MenuDef>, Vec<Strin
         })
         .collect();
     Ok((menus, warnings))
+}
+
+/// Копия реестра (описания команд статические): UI держит её для проверки
+/// `menu.toml`, загруженного после старта.
+pub fn copy_registry(r: &CommandRegistry) -> CommandRegistry {
+    let mut copy = CommandRegistry::new();
+    for m in r.iter() {
+        // Id уже проверены при первой регистрации.
+        let _ = copy.register(std::slice::from_ref(m));
+    }
+    copy
 }
 
 /// Меню F9 открыто: id меню (`ui.menu menu=`), не меню breadcrumb.
@@ -152,16 +167,70 @@ fn label(i18n: &I18n, key: &str) -> String {
     i18n.get(key)
 }
 
-/// Буква выбора: атрибут `.menu-key`, иначе первая буква подписи.
+/// Буква выбора: атрибут `.menu-key`, если эта буква есть в подписи (атрибут из
+/// запасного языка — латиница у русской подписи — не годится), иначе первая буква.
 fn letter(i18n: &I18n, key: &str) -> Option<char> {
+    let lower = |c: char| c.to_lowercase().next().unwrap_or(c);
+    let text: String = label(i18n, key).chars().map(lower).collect();
     let attr = i18n
         .has(key)
         .then(|| i18n.attr(key, "menu-key"))
-        .filter(|a| !a.starts_with('⟨'));
-    attr.as_deref()
-        .and_then(|a| a.chars().next())
-        .or_else(|| label(i18n, key).chars().find(|c| c.is_alphanumeric()))
-        .map(|c| c.to_lowercase().next().unwrap_or(c))
+        .and_then(|a| a.chars().next().map(lower))
+        .filter(|c| text.contains(*c));
+    attr.or_else(|| text.chars().find(|c| c.is_alphanumeric()))
+}
+
+/// Одинаковые буквы выбора внутри меню (текущий язык): предупреждения. Такие пункты
+/// выбираются по кругу, но это неудобно — буквы стоит развести (`.menu-key`).
+pub fn letter_conflicts(menus: &[MenuDef], i18n: &I18n) -> Vec<String> {
+    let mut out = Vec::new();
+    for m in menus {
+        let mut seen: Vec<(char, Vec<String>)> = Vec::new();
+        for item in &m.items {
+            let Item::Cmd { label: key, .. } = item else {
+                continue;
+            };
+            let Some(ch) = letter(i18n, key) else {
+                continue;
+            };
+            let name = label(i18n, key);
+            match seen.iter_mut().find(|(c, _)| *c == ch) {
+                Some((_, names)) => names.push(name),
+                None => seen.push((ch, vec![name])),
+            }
+        }
+        for (ch, names) in seen.into_iter().filter(|(_, n)| n.len() > 1) {
+            out.push(format!(
+                "menu {}: letter '{ch}' is shared by {}",
+                m.id,
+                names.join(", ")
+            ));
+        }
+    }
+    out
+}
+
+/// Подчёркивание буквы выбора (как мнемоника Windows): `x` начала и конца буквы от
+/// левого края подписи и `y` линии от центра строки. Первое вхождение буквы.
+fn underline(
+    ctx: &egui::Context,
+    fonts: &FontSet,
+    size: f32,
+    text: &str,
+    letter: Option<char>,
+) -> Option<(f32, f32, f32)> {
+    let ch = letter?;
+    let lower = |c: char| c.to_lowercase().next().unwrap_or(c);
+    let idx = text.chars().position(|c| lower(c) == ch)?;
+    let font = fonts.id(Font::Ui, size);
+    let g = ctx.fonts_mut(|f| f.layout_no_wrap(text.to_owned(), font, egui::Color32::WHITE));
+    let at = |i: usize| g.pos_from_cursor(egui::text::CCursor::new(i));
+    let (a, b) = (at(idx), at(idx + 1));
+    Some((
+        a.left(),
+        b.left().max(a.left() + 2.0),
+        g.size().y / 2.0 - 1.0,
+    ))
 }
 
 /// Команды пункта: `ui.cancel`, для меню панели — `panel.focus`, сама команда.
@@ -264,12 +333,17 @@ pub(crate) fn bar(
 }
 
 /// Выпадающий список меню `def` от точки `at`: возвращает его прямоугольник.
-#[allow(clippy::too_many_arguments, reason = "список, подсказки и ввод")]
+#[allow(
+    clippy::too_many_arguments,
+    clippy::too_many_lines,
+    reason = "список, подсказки и ввод — пункты по порядку"
+)]
 pub(crate) fn flyout(
     c: &mut dyn Canvas,
     ui: &mut egui::Ui,
     i18n: &I18n,
     tokens: &Tokens,
+    fonts: &FontSet,
     hints: &dyn KeyHints,
     def: &MenuDef,
     memo: &mut MenuMemo,
@@ -357,14 +431,24 @@ pub(crate) fn flyout(
                     )
                     .width()
                 });
+                let text = label(i18n, key);
+                let left = row.left() + pad + 16.0;
                 c.text_clipped(
-                    pos2(row.left() + pad + 16.0, row.center().y),
+                    pos2(left, row.center().y),
                     row.width() - 2.0 * pad - 16.0 - hint_w - 8.0,
-                    &Tx::user(label(i18n, key)),
+                    &Tx::user(text.as_str()),
                     Font::Ui,
                     size,
                     Role::TextPrimary,
                 );
+                if let Some(u) = underline(ui.ctx(), fonts, size, &text, letter(i18n, key)) {
+                    let base = row.center().y + u.2;
+                    c.rect(
+                        Rect::from_min_max(pos2(left + u.0, base), pos2(left + u.1, base + 1.0)),
+                        Role::TextPrimary,
+                        egui::CornerRadius::ZERO,
+                    );
+                }
                 if resp.clicked() {
                     execute(def, cmd, out);
                 }
@@ -401,12 +485,29 @@ fn keys(ui: &egui::Ui, i18n: &I18n, def: &MenuDef, memo: &mut MenuMemo, out: &mu
         return;
     }
     if let Some(ch) = typed.map(|c| c.to_lowercase().next().unwrap_or(c)) {
-        let hit = def.items.iter().find_map(|item| match item {
-            Item::Cmd { cmd, label } if letter(i18n, label) == Some(ch) => Some(cmd),
-            _ => None,
-        });
-        if let Some(cmd) = hit {
-            execute(def, cmd, out);
+        let hits: Vec<usize> = def
+            .items
+            .iter()
+            .enumerate()
+            .filter(|(_, item)| matches!(item, Item::Cmd { label, .. } if letter(i18n, label) == Some(ch)))
+            .map(|(i, _)| i)
+            .collect();
+        match hits.as_slice() {
+            [] => {}
+            // Одна буква — сразу выполнить.
+            [i] => {
+                if let Some(Item::Cmd { cmd, .. }) = def.items.get(*i) {
+                    execute(def, cmd, out);
+                }
+            }
+            // Буква повторяется — по кругу между её пунктами, Enter выполняет (как в Windows).
+            many => {
+                let next = many
+                    .iter()
+                    .find(|&&i| memo.sel.is_some_and(|s| i > s))
+                    .unwrap_or(&many[0]);
+                memo.sel = Some(*next);
+            }
         }
     }
 }

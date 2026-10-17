@@ -11,6 +11,7 @@ pub mod breadcrumb;
 pub mod cache;
 pub mod canvas;
 pub mod chrome;
+pub mod commands_doc;
 pub mod config;
 pub(crate) mod file_list;
 pub mod fmt_cell;
@@ -70,6 +71,8 @@ pub struct UrfinUi {
     /// Подсказки клавиш: заглушка Far до keymap S3 (S3-04).
     hints: Box<dyn keybar::KeyHints>,
     registered: Vec<&'static str>,
+    /// Реестр команд (копия) — проверка `menu.toml` из каталога конфига.
+    commands: CommandRegistry,
     /// Тема, акцент и контрастность ОС (probe, затем `sys::watch`).
     look: sys::Look,
     look_rx: Option<mpsc::Receiver<sys::Look>>,
@@ -132,8 +135,8 @@ impl UrfinUi {
             }
         };
         let registered = keybar::registered(registry);
-        let (menus, menu_warnings) = menu::parse(menu::MENU_TOML, &registered)
-            .expect("built-in menu.toml parses (menu_tests)");
+        let (menus, menu_warnings) =
+            menu::parse(menu::MENU_TOML, registry).expect("built-in menu.toml parses (menu_tests)");
         let far = Instant::now() + TOAST_TTL;
         let toasts = probe
             .warnings
@@ -141,6 +144,11 @@ impl UrfinUi {
             .chain(&warnings)
             .map(|w| (format!("{}: {}", w.key, w.msg), far))
             .chain(menu_warnings.into_iter().map(|w| (w, far)))
+            .chain(
+                menu::letter_conflicts(&menus, &urfin_i18n::current())
+                    .into_iter()
+                    .map(|w| (w, far)),
+            )
             .collect();
         Self {
             menus,
@@ -150,6 +158,7 @@ impl UrfinUi {
             keybar: keybar::Keybar::default(),
             hints: Box::new(keybar::FarStub),
             registered,
+            commands: menu::copy_registry(registry),
             look: probe.look,
             look_rx: None,
             cfg: cfg.clone(),
@@ -183,10 +192,12 @@ impl UrfinUi {
     /// ошибке разбора остаётся вшитое.
     pub fn set_menu(&mut self, text: &str) {
         let far = Instant::now() + TOAST_TTL;
-        match menu::parse(text, &self.registered) {
+        match menu::parse(text, &self.commands) {
             Ok((menus, warnings)) => {
+                let letters = menu::letter_conflicts(&menus, &urfin_i18n::current());
                 self.menus = menus;
-                self.toasts.extend(warnings.into_iter().map(|w| (w, far)));
+                self.toasts
+                    .extend(warnings.into_iter().chain(letters).map(|w| (w, far)));
             }
             Err(e) => self.toasts.push_back((format!("menu.toml: {e}"), far)),
         }
@@ -550,6 +561,7 @@ impl UrfinUi {
                     ui,
                     i18n,
                     &self.tokens,
+                    &self.fonts,
                     self.hints.as_ref(),
                     def,
                     &mut self.menu_memo,
