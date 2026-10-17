@@ -6,14 +6,13 @@ use std::time::Duration;
 use std::fmt::Write as _;
 use std::sync::Arc;
 
-use egui::{CornerRadius, FontId, Galley};
+use egui::{FontId, Galley};
 use urfin_core::{ListingStatus, Row, Side, Tab};
 use urfin_i18n::{FluentArgs, I18n};
 
 use crate::cache::{CellKey, CellSpec, RowCache, fingerprint};
 use crate::fmt_cell::{ColKind, FmtCfg, cell_text};
 use crate::highlight::Highlighter;
-use crate::tokens::{Metric, Tokens};
 
 /// Пока новый каталог ничего не прислал, панель показывает прежний кадр — не
 /// дольше этого (S2: `Loading` > 150 мс — индикатор загрузки).
@@ -315,8 +314,4 @@ pub(crate) fn footer(i18n: &I18n, t: &Tab) -> String {
 #[allow(clippy::cast_sign_loss, reason = "значение зажато в 1..=10 000")]
 pub(crate) fn rows_fit(height: f32, row_h: f32) -> u32 {
     (height / row_h).floor().clamp(1.0, 10_000.0) as u32
-}
-
-pub(crate) fn radius(t: &Tokens, m: Metric) -> CornerRadius {
-    t.radius(m)
 }

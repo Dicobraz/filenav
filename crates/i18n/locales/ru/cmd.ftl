@@ -71,3 +71,7 @@ cmd-ui-split = Раздел панелей
 cmd-ui-lang = Язык
 cmd-ui-columns = Колонки
 cmd-ui-panels-toggle_all = Скрыть или показать панели
+cmd-ui-palette = Палитра команд
+cmd-ui-screens = Экраны
+cmd-ui-menu-sort = Меню сортировки
+cmd-ui-about = О программе

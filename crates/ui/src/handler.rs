@@ -85,6 +85,8 @@ static COMMANDS: &[CommandMeta] = &[
     meta("ui.columns", "Columns", &[arg("set", ValueKind::Str, true)]),
     // Имя — из S3 §3 (Ctrl+O), чтобы keymap не расходился с S2.
     meta("ui.panels.toggle_all", "Hide or show panels", &[]),
+    // «О программе» (S0-decisions №49): имя Úrfionn и пасхалка — тостом, пока нет окна.
+    meta("ui.about", "About", &[]),
 ];
 
 /// Шаг `ui.zoom` и пределы, %.
@@ -227,6 +229,16 @@ impl Handler for UiHandler {
                 let st = ui_state(cx);
                 st.panels_hidden = !st.panels_hidden;
             }
+            "ui.about" => {
+                let i18n = urfin_i18n::current();
+                let text = format!(
+                    "{} {} — {}",
+                    i18n.get("ui-about-name"),
+                    env!("CARGO_PKG_VERSION"),
+                    i18n.get("ui-about-aka")
+                );
+                cx.toast(Level::Info, text);
+            }
             "ui.columns" => {
                 ui_state(cx).columns = Some(a.str("set").unwrap_or_default().into());
             }
@@ -269,7 +281,12 @@ impl UiHandler {
         }
         self.cancel_task();
         let crumbs = menu == "crumbs";
-        let menu = menu.into();
+        // F9 без аргумента — меню активной панели (как Far).
+        let menu = match menu {
+            "" if cx.state.active == Side::Left => "left".into(),
+            "" => "right".into(),
+            m => m.into(),
+        };
         open(cx, OverlayKind::Menu, |st| {
             st.menu = Some(menu);
             st.menu_side = crumbs.then_some(side);
