@@ -22,6 +22,9 @@ const MAX_REQUEST: u64 = 64 * 1024;
 /// Сколько второй экземпляр ждёт канал первого (тот может ещё стартовать).
 const CONNECT_WAIT: Duration = Duration::from_secs(2);
 
+/// Флаги со значением: значение — не путь.
+const VALUE_FLAGS: &[&str] = &["--selftest"];
+
 /// Что второй запуск передаёт первому.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct Request {
@@ -34,12 +37,17 @@ pub struct Request {
 impl Request {
     /// Из аргументов процесса (без имени exe).
     pub fn from_args(args: &[String]) -> Request {
+        let mut paths = Vec::new();
+        let mut it = args.iter();
+        while let Some(a) = it.next() {
+            if VALUE_FLAGS.contains(&a.as_str()) {
+                it.next();
+            } else if !a.starts_with("--") {
+                paths.push(a.clone());
+            }
+        }
         Request {
-            argv: args
-                .iter()
-                .filter(|a| !a.starts_with("--"))
-                .cloned()
-                .collect(),
+            argv: paths,
             cwd: std::env::current_dir().unwrap_or_default(),
         }
     }
@@ -331,8 +339,13 @@ mod tests {
             c[3],
             Command::new("panel.go").arg("path", Location::local(abs))
         );
-        let flags = Request::from_args(&["--new-instance".into(), "x".into()]);
-        assert_eq!(flags.argv, ["x"]);
+        let flags = Request::from_args(&[
+            "--new-instance".into(),
+            "x".into(),
+            "--selftest".into(),
+            "out".into(),
+        ]);
+        assert_eq!(flags.argv, ["x"], "значение --selftest — не путь");
     }
 
     #[test]

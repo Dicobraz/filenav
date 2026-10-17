@@ -140,9 +140,18 @@ fn wgpu_options(backends: wgpu::Backends) -> eframe::egui_wgpu::WgpuConfiguratio
         memory_hints: wgpu::MemoryHints::MemoryUsage,
         ..Default::default()
     });
+    let default = WgpuConfiguration::default();
+    let on_status = default.on_surface_status.clone();
     WgpuConfiguration {
         wgpu_setup: WgpuSetup::CreateNew(setup),
-        ..Default::default()
+        // Статусы поверхности (resize, occluded, lost) — в самопроверку; действие —
+        // как у egui-wgpu.
+        on_surface_status: Arc::new(move |status| {
+            let name = format!("{status:?}");
+            crate::selftest::note_surface(name.split(['(', ' ']).next().unwrap_or(&name));
+            on_status(status)
+        }),
+        ..default
     }
 }
 
@@ -174,6 +183,10 @@ fn pick_adapter(
         .ok_or_else(|| "no graphics adapter can draw to the window".to_owned())?;
     let i = best.get_info();
     tracing::info!(backend = ?i.backend, device = %i.name, kind = ?i.device_type, driver = %i.driver_info, "graphics adapter");
+    crate::selftest::note_adapter(format!(
+        "{:?} {} ({:?}, driver {})",
+        i.backend, i.name, i.device_type, i.driver_info
+    ));
     Ok(best)
 }
 
@@ -186,6 +199,8 @@ pub struct Launch {
     pub ipc: Option<crate::ipc::Inbox>,
     /// Пути из своей командной строки: новые табы после восстановления сессии.
     pub open: Vec<Command>,
+    /// `--selftest <dir>`: сценарий самопроверки и отчёт в `dir`.
+    pub selftest: Option<std::path::PathBuf>,
 }
 
 pub fn run(launch: Launch) -> anyhow::Result<()> {
@@ -248,6 +263,7 @@ fn run_with(backends: wgpu::Backends, pending: &Pending) -> eframe::Result {
                 mut startup,
                 ipc,
                 open,
+                selftest,
             } = pending.borrow_mut().take().expect("launch is taken once");
             let services = crate::demo_services();
             startup.window = window_started.elapsed();
@@ -293,6 +309,7 @@ fn run_with(backends: wgpu::Backends, pending: &Pending) -> eframe::Result {
                 shown: false,
                 ipc,
                 activate: 0,
+                selftest: selftest.map(crate::selftest::SelfTest::new),
             }))
         }),
     )
@@ -311,6 +328,7 @@ struct App {
     ipc: Option<crate::ipc::Inbox>,
     /// Сколько кадров ещё выводить окно вперёд после запроса второго запуска.
     activate: u8,
+    selftest: Option<crate::selftest::SelfTest>,
 }
 
 impl App {
@@ -354,6 +372,9 @@ impl eframe::App for App {
                 }
                 self.activate = 2;
             }
+        }
+        if let Some(st) = &mut self.selftest {
+            st.logic(ctx, core, self.shown);
         }
         if self.activate > 0 && self.shown {
             // winit не фокусирует свёрнутое окно: сначала развернуть, фокус —
@@ -411,7 +432,11 @@ impl eframe::App for App {
             tracing::trace!(target: "frame", rev = s.rev, ?tabs, causes = ?ui.ctx().repaint_causes(), "frame");
         }
         let ev = core.take_ui_events();
+        let t_ui = Instant::now();
         self.ui.show(ui, core.state(), &ev, &mut self.out);
+        if let Some(st) = &mut self.selftest {
+            st.frame(ui, core.state(), t_ui.elapsed().as_secs_f64() * 1000.0);
+        }
         let rev = core.state().rev;
         for c in self.out.drain(..) {
             core.dispatch(c);
