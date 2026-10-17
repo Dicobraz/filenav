@@ -22,6 +22,10 @@ proptest.workspace = true
 tempfile.workspace = true
 
 [[bench]]
+name = "icons"
+harness = false
+
+[[bench]]
 name = "sort"
 harness = false
 
