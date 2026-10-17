@@ -1,23 +1,23 @@
 #!/bin/zsh
-# FileNav: автономная самопроверка на macOS (без участия пользователя).
+# Urfin: автономная самопроверка на macOS (без участия пользователя).
 #
-#   zsh selftest.sh [путь к filenav]       # по умолчанию — filenav рядом со скриптом
+#   zsh selftest.sh [путь к urfin]       # по умолчанию — urfin рядом со скриптом
 #
-# ~2 минуты; окно FileNav само открывается, разворачивается, уходит в полный
+# ~2 минуты; окно Urfin само открывается, разворачивается, уходит в полный
 # экран и закрывается — клавиатуру и мышь не трогать. Итог — один архив
-# ~/Desktop/filenav-selftest-<дата>.tgz: его и прислать. Ничего не ставит, ничего
+# ~/Desktop/urfin-selftest-<дата>.tgz: его и прислать. Ничего не ставит, ничего
 # не отправляет в сеть, профиль пользователя не трогает (portable-каталог в /tmp).
 
 set -u
 zmodload zsh/datetime
 
 HERE=${0:A:h}
-SRC=${1:-$HERE/filenav}
+SRC=${1:-$HERE/urfin}
 STAMP=$(date +%Y%m%d-%H%M%S)
-WORK=$(mktemp -d /tmp/filenav-selftest.XXXXXX)
+WORK=$(mktemp -d /tmp/urfin-selftest.XXXXXX)
 OUT=$WORK/results
 mkdir -p $OUT
-APP=$WORK/filenav
+APP=$WORK/urfin
 
 log() { print -r -- "[$(date +%H:%M:%S)] $*" | tee -a $OUT/run.log }
 
@@ -38,11 +38,11 @@ run_t() {
 ms() { printf '%.1f' $(( (EPOCHREALTIME - $1) * 1000 )) }
 
 if [[ ! -f $SRC ]]; then
-  print -u2 "filenav не найден: $SRC"; exit 1
+  print -u2 "urfin не найден: $SRC"; exit 1
 fi
 cp "$SRC" $APP && chmod +x $APP
 xattr -d com.apple.quarantine $APP 2>/dev/null
-touch $WORK/filenav.portable          # всё пишется в $WORK/data
+touch $WORK/urfin.portable          # всё пишется в $WORK/data
 log "work dir: $WORK"
 
 # 1. Система: ОС, железо, GPU и дисплеи (Retina, частота), архитектура бинаря.
@@ -90,7 +90,7 @@ run_t 10 $APP $WORK/sub > $OUT/second.out 2>&1; rc=$?
 log "second start: exit=$rc $(ms $t) ms (должен сразу выйти, путь — новым табом в первом окне)"
 sleep 1
 front_after=$(lsappinfo info -only name $(lsappinfo front) 2>/dev/null)
-log "front app: before=[$front_before] after=[$front_after] (после второго запуска впереди должно быть окно FileNav)"
+log "front app: before=[$front_before] after=[$front_after] (после второго запуска впереди должно быть окно Urfin)"
 log "primary alive after second start: $(kill -0 $primary 2>/dev/null && print yes || print no)"
 
 kill -INT $primary 2>/dev/null
@@ -100,7 +100,7 @@ kill -0 $primary 2>/dev/null && { kill -9 $primary; log "primary: killed"; } || 
 # 6. Логи, crash-файлы, сессия; архив на рабочий стол.
 cp -R $WORK/data/logs $OUT/logs 2>/dev/null
 cp $WORK/data/state/session.toml $OUT/ 2>/dev/null
-ARCHIVE=~/Desktop/filenav-selftest-$STAMP.tgz
+ARCHIVE=~/Desktop/urfin-selftest-$STAMP.tgz
 tar czf $ARCHIVE -C $WORK results
 log "archive: $ARCHIVE"
 print "\nГотово. Пришлите файл: $ARCHIVE"

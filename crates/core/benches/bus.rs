@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use criterion::{Criterion, criterion_group, criterion_main};
-use filenav_core::{
+use urfin_core::{
     ArrangeReq, Attrs, Boot, CmdError, Command, CommandMeta, Core, Cx, Entry, EntryKind, Gen,
     Handler, Listing, ListingService, ListingStatus, ListingUpdate, LoadReq, Location, Msg,
     Runtime, RuntimeConfig, Selection, Services, Waker, listing_msg, msg,

@@ -1,6 +1,6 @@
 [package]
-name = "filenav-testdata"
-description = "FileNav test data generators (dev only)"
+name = "urfin-testdata"
+description = "Urfin test data generators (dev only)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

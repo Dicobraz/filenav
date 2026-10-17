@@ -8,7 +8,7 @@ use std::borrow::Cow;
 
 use egui::text::{LayoutJob, TextFormat, TextWrapping};
 use egui::{Align2, Color32, FontId, Painter, Pos2, Rect, Response, RichText, Ui};
-use filenav_i18n::{FluentArgs, I18n};
+use urfin_i18n::{FluentArgs, I18n};
 
 /// Текст для показа.
 #[derive(Debug)]

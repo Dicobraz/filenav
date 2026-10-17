@@ -2,7 +2,7 @@
 //! job-бара, cmdline. Виджеты (табы, строки, кнопки) рисуются поверх в своих регионах.
 //! Порядок — слои S0 v5 №3: терминал → панели → cmdline → оверлеи.
 
-use filenav_core::{AppState, Level, PromptDetail, Side};
+use urfin_core::{AppState, Level, PromptDetail, Side};
 
 use crate::canvas::Canvas;
 use crate::fonts::Font;

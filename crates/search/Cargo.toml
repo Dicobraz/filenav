@@ -1,6 +1,6 @@
 [package]
-name = "filenav-search"
-description = "FileNav search"
+name = "urfin-search"
+description = "Urfin search"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

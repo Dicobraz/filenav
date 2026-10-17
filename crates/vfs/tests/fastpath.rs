@@ -9,8 +9,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, SystemTime};
 
-use filenav_core::{CancelToken, Entry, EntryKind, Location};
-use filenav_vfs::{ListMode, ListOpts, LocalFs, Vfs};
+use urfin_core::{CancelToken, Entry, EntryKind, Location};
+use urfin_vfs::{ListMode, ListOpts, LocalFs, Vfs};
 
 fn list(dir: &Path, mode: ListMode) -> Vec<Entry> {
     let fs = LocalFs::with_mode(mode);
@@ -114,7 +114,7 @@ fn fast_paths_match_std_byte_for_byte() {
     assert_eq!(get("trailing. ").size, 3);
     assert!(
         root.iter()
-            .any(|e| e.attrs.has(filenav_core::Attrs::ESCAPED_NAME))
+            .any(|e| e.attrs.has(urfin_core::Attrs::ESCAPED_NAME))
     );
 }
 
@@ -125,7 +125,7 @@ fn auto_mode_uses_fast_path_and_maps_errors() {
     let fs = LocalFs::with_mode(ListMode::Nt);
     assert!(matches!(
         fs.list(&Location::local(&missing), &ListOpts::default()),
-        Err(filenav_vfs::VfsError::NotFound(_))
+        Err(urfin_vfs::VfsError::NotFound(_))
     ));
     let file = tmp.path().join("f");
     std::fs::write(&file, b"").unwrap();
@@ -133,6 +133,6 @@ fn auto_mode_uses_fast_path_and_maps_errors() {
     let auto = LocalFs::with_mode(ListMode::Auto);
     assert!(matches!(
         auto.list(&Location::local(&file), &ListOpts::default()),
-        Err(filenav_vfs::VfsError::NotDir(_))
+        Err(urfin_vfs::VfsError::NotDir(_))
     ));
 }

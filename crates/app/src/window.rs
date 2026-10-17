@@ -10,15 +10,15 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use eframe::egui;
-use filenav_core::{Boot, Command, Core, Focus, OverlayKind, Session, WindowGeom};
-use filenav_ui::FileNavUi;
+use urfin_core::{Boot, Command, Core, Focus, OverlayKind, Session, WindowGeom};
+use urfin_ui::UrfinUi;
 
 use crate::Startup;
 
 /// Будит UI из других потоков (S1-13).
 struct EguiWaker(egui::Context);
 
-impl filenav_core::Waker for EguiWaker {
+impl urfin_core::Waker for EguiWaker {
     fn wake(&self) {
         self.0.request_repaint();
     }
@@ -165,7 +165,7 @@ fn wgpu_options(backends: wgpu::Backends, mica: bool) -> eframe::egui_wgpu::Wgpu
     }
     setup.native_adapter_selector = Some(Arc::new(pick_adapter));
     setup.device_descriptor = Arc::new(|_| wgpu::DeviceDescriptor {
-        label: Some("filenav"),
+        label: Some("urfin"),
         required_limits: wgpu::Limits {
             // Текстура на весь экран — до 8K.
             max_texture_dimension_2d: 8192,
@@ -242,10 +242,7 @@ pub struct Launch {
 pub fn run(launch: Launch) -> anyhow::Result<()> {
     // `WGPU_BACKEND` (переменная wgpu) заменяет очередь — для диагностики.
     let order = wgpu::Backends::from_env().map_or_else(|| BACKENDS.to_vec(), |b| vec![b]);
-    let (ui_cfg, ui_cfg_warning) = launch
-        .boot
-        .config
-        .section::<filenav_ui::config::UiCfg>("ui");
+    let (ui_cfg, ui_cfg_warning) = launch.boot.config.section::<urfin_ui::config::UiCfg>("ui");
     if let Some(w) = ui_cfg_warning {
         tracing::warn!(key = %w.key, msg = %w.msg, "[ui] section ignored");
     }
@@ -255,13 +252,13 @@ pub fn run(launch: Launch) -> anyhow::Result<()> {
     let probe = std::thread::Builder::new()
         .name("font-probe".into())
         .spawn(move || {
-            let mut probe = filenav_ui::sys::probe_system();
-            let (fonts, warnings) = filenav_ui::fonts::load(&probe.fonts, &cfg);
+            let mut probe = urfin_ui::sys::probe_system();
+            let (fonts, warnings) = urfin_ui::fonts::load(&probe.fonts, &cfg);
             probe.warnings.extend(warnings);
             (probe, fonts)
         })?;
     // Mica (Win11, прозрачность включена) решается до окна: от неё зависит swapchain.
-    let mica = filenav_ui::sys::mica_wanted(&ui_cfg.backdrop);
+    let mica = urfin_ui::sys::mica_wanted(&ui_cfg.backdrop);
     let pending = Rc::new(RefCell::new(Some((launch, probe, ui_cfg))));
     let mut last = None;
     for backends in order {
@@ -281,8 +278,8 @@ pub fn run(launch: Launch) -> anyhow::Result<()> {
     ))
 }
 
-type Probe = std::thread::JoinHandle<(filenav_ui::sys::SysProbe, filenav_ui::fonts::LoadedFonts)>;
-type Pending = Rc<RefCell<Option<(Launch, Probe, filenav_ui::config::UiCfg)>>>;
+type Probe = std::thread::JoinHandle<(urfin_ui::sys::SysProbe, urfin_ui::fonts::LoadedFonts)>;
+type Pending = Rc<RefCell<Option<(Launch, Probe, urfin_ui::config::UiCfg)>>>;
 
 fn run_with(backends: wgpu::Backends, pending: &Pending, mica: bool) -> eframe::Result {
     // Прозрачный swapchain для Mica — только DX12 (запасной Vulkan — сплошной фон).
@@ -292,9 +289,9 @@ fn run_with(backends: wgpu::Backends, pending: &Pending, mica: bool) -> eframe::
         .as_ref()
         .and_then(|(l, _, _)| l.boot.session.as_ref().and_then(|s| s.window));
     let mut viewport = egui::ViewportBuilder::default()
-        .with_title("FileNav")
+        .with_title("Urfin")
         .with_visible(false)
-        .with_min_inner_size(filenav_ui::layout::MIN_WINDOW)
+        .with_min_inner_size(urfin_ui::layout::MIN_WINDOW)
         .with_transparent(mica)
         .with_inner_size(geom.map_or([1200.0, 760.0], |g| [g.w, g.h]));
     // «Развёрнуто» — не здесь: winit показал бы окно при создании, до первого
@@ -315,7 +312,7 @@ fn run_with(backends: wgpu::Backends, pending: &Pending, mica: bool) -> eframe::
     let window_started = Instant::now();
     let pending = Rc::clone(pending);
     eframe::run_native(
-        "FileNav",
+        "Urfin",
         options,
         Box::new(move |cc| {
             let (
@@ -338,7 +335,7 @@ fn run_with(backends: wgpu::Backends, pending: &Pending, mica: bool) -> eframe::
                 let _s = tracing::info_span!("startup.core").entered();
                 let t = Instant::now();
                 let mut core = Core::new(boot, services, Arc::new(EguiWaker(ctx)));
-                filenav_ui::register(&mut core);
+                urfin_ui::register(&mut core);
                 startup.core = t.elapsed();
                 core
             };
@@ -354,9 +351,9 @@ fn run_with(backends: wgpu::Backends, pending: &Pending, mica: bool) -> eframe::
                 Default::default()
             });
             // Шрифты — до первого кадра: он рисуется уже ими.
-            let fonts = filenav_ui::fonts::install(&cc.egui_ctx, &loaded);
+            let fonts = urfin_ui::fonts::install(&cc.egui_ctx, &loaded);
             let theme = probe.look.theme.unwrap_or_else(|| cc.egui_ctx.theme());
-            let mut ui = FileNavUi::new(core.registry(), &probe, &ui_cfg, fonts);
+            let mut ui = UrfinUi::new(core.registry(), &probe, &ui_cfg, fonts);
             ui.watch_system(&cc.egui_ctx);
             // Окно показывается скрытым от экрана: первые кадры рисуются уже в
             // итоговом размере, на экран выходит только готовый (S1-13).
@@ -364,18 +361,14 @@ fn run_with(backends: wgpu::Backends, pending: &Pending, mica: bool) -> eframe::
             let bg = ui
                 .tokens()
                 .palette(theme)
-                .get(filenav_ui::tokens::Role::BgBase);
+                .get(urfin_ui::tokens::Role::BgBase);
             // При Mica под визуалом DirectComposition видна поверхность окна: чёрные
             // пиксели в продлённой рамке DWM прозрачны, цветная кисть закрыла бы Mica.
             let bg = if mica { egui::Color32::BLACK } else { bg };
             crate::sys::set_background(cc, [bg.r(), bg.g(), bg.b()]);
             crate::sys::no_transitions(cc);
             // Своя рамка (заголовок с табами, Snap Layouts) — пока окно скрыто.
-            ui.set_chrome(filenav_ui::sys::install_window_chrome(
-                cc,
-                &cc.egui_ctx,
-                mica,
-            ));
+            ui.set_chrome(urfin_ui::sys::install_window_chrome(cc, &cc.egui_ctx, mica));
             cc.egui_ctx
                 .send_viewport_cmd(egui::ViewportCommand::Maximized(maximized));
             cc.egui_ctx
@@ -400,7 +393,7 @@ fn run_with(backends: wgpu::Backends, pending: &Pending, mica: bool) -> eframe::
 
 struct App {
     core: Option<Core>,
-    ui: FileNavUi,
+    ui: UrfinUi,
     out: Vec<Command>,
     startup: Startup,
     first_frame_done: bool,
@@ -505,8 +498,8 @@ impl eframe::App for App {
                 .map(|p| {
                     let t = p.tab();
                     let st = match t.listing.status {
-                        filenav_core::ListingStatus::Loading { .. } => "loading",
-                        filenav_core::ListingStatus::Complete => "complete",
+                        urfin_core::ListingStatus::Loading { .. } => "loading",
+                        urfin_core::ListingStatus::Complete => "complete",
                         _ => "other",
                     };
                     format!("{st}:{}:{}", t.rows(), t.listing.order.len())
@@ -537,7 +530,7 @@ impl eframe::App for App {
         let loading = core.state().panels.iter().any(|p| {
             matches!(
                 p.tab().listing.status,
-                filenav_core::ListingStatus::Loading { .. }
+                urfin_core::ListingStatus::Loading { .. }
             )
         });
         // Первый кадр — тот, что увидит пользователь: с загруженными табами.

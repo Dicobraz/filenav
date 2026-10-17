@@ -36,10 +36,10 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo nextest run --workspace --locked
 cargo test --doc --workspace --locked
-cargo build --release -p filenav-app --locked
+cargo build --release -p urfin-app --locked
 cargo clippy --workspace --lib --bins --locked --target x86_64-unknown-linux-gnu -- -D warnings
 cargo deny check
-cargo run -p filenav-app
+cargo run -p urfin-app
 ```
 
 ## 4. Поток работы

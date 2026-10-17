@@ -11,7 +11,7 @@
 | Тулчейн | rustc 1.99.0, профиль release/bench: fat LTO, `codegen-units = 1`, `opt-level = 3` |
 | Рендер | wgpu, DX12 (ADR-0012) |
 
-## Core: criterion (`cargo bench -p filenav-core --bench bus`)
+## Core: criterion (`cargo bench -p urfin-core --bench bus`)
 
 Два прогона подряд на одной сборке; разброс между ними ~15% (турбобуст и температура ноутбука). Для сравнения A/B брать прогоны одной сессии на спокойной машине (питание от сети, без фоновой нагрузки).
 
@@ -25,7 +25,7 @@
 
 До S1-14 C.4 через команду было 1,9 мс: `names()` росла переаллокациями, `invert` проверял длину битсета на каждом элементе. C.3 — самый узкий: основное время — рост `entries` (100k × 48 байт с переаллокациями) и `order`.
 
-## Приложение (`filenav.exe`, release)
+## Приложение (`urfin.exe`, release)
 
 | ID | Что | Значение | Бюджет | |
 |---|---|---|---|---|
@@ -33,12 +33,12 @@
 | | из них `startup.window` (окно + устройство D3D12) | медиана 162 мс (118–247) | | |
 | S.1a | Своё: `startup.paths/config/tracing/session/core` | 2,1 / 0,2 / 1,5 / 1,5 / 2,1 мс, сумма ≈ 7,4 мс | < 20 мс | ✓ |
 | S.2 | CPU в простое, 30 с, 3 прогона | 0 мс | 0% | ✓ |
-| S.3 | Своя память FileNav (счётчик аллокатора) | — (счётчик `count-alloc` — S9) | < 50 МБ | оценка: процесс − пустое окно ≈ 9 МБ |
+| S.3 | Своя память Urfin (счётчик аллокатора) | — (счётчик `count-alloc` — S9) | < 50 МБ | оценка: процесс − пустое окно ≈ 9 МБ |
 | S.3a | RAM процесса, private, после старта, 3 прогона | 161–163 МБ (WS 151 МБ) | ≤ 200 МБ | ✓ |
-| S.4 | Размер `filenav.exe` | 13,43 МиБ | < 15 МиБ | ✓ |
+| S.4 | Размер `urfin.exe` | 13,43 МиБ | < 15 МиБ | ✓ |
 | S.5 | Single-instance: второй запуск от старта до выхода (S1-15) | 54–64 мс; сама передача 0,1–0,4 мс | < 100 мс | ✓ |
 
-Время и память процесса упираются в графический стек, не в код FileNav (ADR-0012): пустое окно eframe на этом стенде — glow 113 мс / 53 МБ, wgpu Vulkan 126 мс / 80 МБ, wgpu DX12 172 мс / 152 МБ. Поэтому бюджеты разделены на «процесс» (S.1, S.3a) и «своё» (S.1a, S.3) — решение владельца 2026-10-16 (S0-decisions, S9 §2).
+Время и память процесса упираются в графический стек, не в код Urfin (ADR-0012): пустое окно eframe на этом стенде — glow 113 мс / 53 МБ, wgpu Vulkan 126 мс / 80 МБ, wgpu DX12 172 мс / 152 МБ. Поэтому бюджеты разделены на «процесс» (S.1, S.3a) и «своё» (S.1a, S.3) — решение владельца 2026-10-16 (S0-decisions, S9 §2).
 
 ## Пороги регрессий (S0 v5, «Зависимости и политика»)
 
@@ -50,9 +50,9 @@
 ## Как повторить
 
 ```
-cargo bench -p filenav-core --bench bus
-cargo build --release -p filenav-app
-target\release\filenav.exe --bench-startup
+cargo bench -p urfin-core --bench bus
+cargo build --release -p urfin-app
+target\release\urfin.exe --bench-startup
 ```
 
-RAM и CPU в простое — `Get-Process filenav` (`PrivateMemorySize64`, `TotalProcessorTime`) через 5 с после старта и за 30 с простоя, portable-копия (`filenav.portable` рядом с exe).
+RAM и CPU в простое — `Get-Process urfin` (`PrivateMemorySize64`, `TotalProcessorTime`) через 5 с после старта и за 30 с простоя, portable-копия (`urfin.portable` рядом с exe).

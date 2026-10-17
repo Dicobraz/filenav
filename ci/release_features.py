@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Запрет диагностических features в release-графе filenav-app (S0 v5 №11).
+"""Запрет диагностических features в release-графе urfin-app (S0 v5 №11).
 
-Падает, если в разрешённом графе `filenav-app` (normal + build зависимости,
+Падает, если в разрешённом графе `urfin-app` (normal + build зависимости,
 без dev) у любого пакета включена feature `profile`, `dhat-heap` или
 `count-alloc`. Ищет по именам в выводе `cargo tree`, а не в `Cargo.toml`,
 поэтому работает и до появления самих features (S9-08, S9-10).
@@ -21,7 +21,7 @@ def main() -> int:
     out = subprocess.run(
         [
             "cargo", "tree", "--locked",
-            "-p", "filenav-app",
+            "-p", "urfin-app",
             "-e", "normal,build",
             "--prefix", "none",
             "--no-dedupe",
@@ -43,7 +43,7 @@ def main() -> int:
         for pkg, feats in sorted(bad.items()):
             print(f"::error::{pkg}: forbidden release features enabled: {', '.join(sorted(feats))}")
         return 1
-    print(f"OK: none of {', '.join(sorted(FORBIDDEN))} in the filenav-app release graph")
+    print(f"OK: none of {', '.join(sorted(FORBIDDEN))} in the urfin-app release graph")
     return 0
 
 

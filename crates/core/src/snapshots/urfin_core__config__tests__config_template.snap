@@ -2,7 +2,7 @@
 source: crates/core/src/config.rs
 expression: DEFAULT_TEMPLATE
 ---
-# FileNav settings. The app only reads this file; edit it and run
+# Urfin settings. The app only reads this file; edit it and run
 # "Reload configuration" (app.reload_config) or restart.
 # Unknown sections are kept for other components ([ui], [keymap], [vfs], [ops], [term], [viewer]).
 
@@ -39,7 +39,7 @@ cpu_threads = 0
 msg_capacity = 1024
 
 [log]
-# error | warn | info | debug | trace. The FILENAV_LOG environment variable wins.
+# error | warn | info | debug | trace. The URFIN_LOG environment variable wins.
 level = "info"
 # Daily log files to keep.
 keep_files = 7

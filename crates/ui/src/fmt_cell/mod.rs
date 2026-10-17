@@ -5,9 +5,9 @@
 use std::fmt::{self, Write as _};
 
 use crate::sys::{LocalTime, Zone};
-use filenav_core::{Attrs, Entry, EntryKind};
-use filenav_i18n::{FluentArgs, I18n};
-use filenav_vfs::icons::{IconClass, icon_class};
+use urfin_core::{Attrs, Entry, EntryKind};
+use urfin_i18n::{FluentArgs, I18n};
+use urfin_vfs::icons::{IconClass, icon_class};
 
 /// Строка фиксированной ёмкости на стеке (как `arrayvec::ArrayString`). Не влезло —
 /// обрезается по границе символа многоточием.
@@ -148,7 +148,7 @@ impl Template {
     }
 }
 
-/// Всё языковое для ячеек; строится при смене языка (`filenav_i18n::epoch`) и зоны.
+/// Всё языковое для ячеек; строится при смене языка (`urfin_i18n::epoch`) и зоны.
 #[derive(Clone, Debug)]
 pub struct FmtCfg {
     decimal: char,
@@ -170,7 +170,7 @@ const ISO: &str = "%Y-%m-%d %H:%M";
 impl FmtCfg {
     /// `iso` — `[ui] date_format = "iso"`, иначе — по языку.
     pub fn new(i18n: &I18n, iso: bool, zone: Zone) -> Self {
-        let units = filenav_i18n::fmt::UNIT_KEYS.map(|k| i18n.get(k));
+        let units = urfin_i18n::fmt::UNIT_KEYS.map(|k| i18n.get(k));
         Self {
             decimal: i18n.num_fmt().decimal,
             units,
@@ -189,10 +189,10 @@ impl FmtCfg {
         }
     }
 
-    /// Размер как [`filenav_i18n::fmt::bytes`], без кучи.
+    /// Размер как [`urfin_i18n::fmt::bytes`], без кучи.
     pub fn write_size(&self, out: &mut impl fmt::Write, n: u64) {
         let units = [0, 1, 2, 3, 4, 5, 6].map(|i| self.units[i].as_str());
-        let _ = filenav_i18n::fmt::write_bytes(out, n, self.decimal, &units);
+        let _ = urfin_i18n::fmt::write_bytes(out, n, self.decimal, &units);
     }
 
     /// Дата по шаблону в поясе ОС; `i64::MIN` и вне диапазона — ничего.

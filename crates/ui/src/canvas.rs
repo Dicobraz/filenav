@@ -12,7 +12,7 @@ use std::fmt::Write as _;
 use std::sync::Arc;
 
 use egui::{Align2, CornerRadius, Galley, Painter, Pos2, Rect, Stroke, StrokeKind};
-use filenav_i18n::I18n;
+use urfin_i18n::I18n;
 
 use crate::fonts::{Font, FontSet};
 use crate::text::Tx;

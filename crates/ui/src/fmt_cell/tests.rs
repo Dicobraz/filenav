@@ -1,11 +1,11 @@
 use crate::sys::Zone;
-use filenav_core::{Attrs, Entry, EntryKind};
 use proptest::prelude::*;
+use urfin_core::{Attrs, Entry, EntryKind};
 
 use super::*;
 
 fn cfg(tag: &str) -> FmtCfg {
-    let i18n = filenav_i18n::Catalog::embedded()
+    let i18n = urfin_i18n::Catalog::embedded()
         .build(&tag.parse().unwrap())
         .0;
     FmtCfg::new(&i18n, false, Zone::utc())
@@ -91,7 +91,7 @@ fn english_and_iso() {
     assert_eq!(text(ColKind::Type, &e, &c), "LOCK File");
     assert_eq!(text(ColKind::Mtime, &e, &c), "10/14/26 9:12 AM");
     assert_eq!(text(ColKind::Type, &file("a.zip", 1), &c), "zip Archive");
-    let i18n = filenav_i18n::Catalog::embedded()
+    let i18n = urfin_i18n::Catalog::embedded()
         .build(&"en".parse().unwrap())
         .0;
     let iso = FmtCfg::new(&i18n, true, Zone::utc());
@@ -129,14 +129,14 @@ fn cell_text_truncates_on_char_boundary() {
 
 #[test]
 fn size_matches_i18n_bytes() {
-    let i18n = filenav_i18n::Catalog::embedded()
+    let i18n = urfin_i18n::Catalog::embedded()
         .build(&"ru".parse().unwrap())
         .0;
     let c = FmtCfg::new(&i18n, false, Zone::utc());
     for n in [0, 1, 1023, 1024, 48_213, 1 << 30, u64::MAX] {
         assert_eq!(
             text(ColKind::Size, &file("f", n), &c),
-            filenav_i18n::fmt::bytes_with(&i18n, n)
+            urfin_i18n::fmt::bytes_with(&i18n, n)
         );
     }
 }
@@ -173,9 +173,9 @@ proptest! {
 
     #[test]
     fn size_cell_equals_bytes(n: u64) {
-        let i18n = filenav_i18n::Catalog::embedded().build(&"en".parse().unwrap()).0;
+        let i18n = urfin_i18n::Catalog::embedded().build(&"en".parse().unwrap()).0;
         let c = FmtCfg::new(&i18n, false, Zone::utc());
-        prop_assert_eq!(text(ColKind::Size, &file("f", n), &c), filenav_i18n::fmt::bytes_with(&i18n, n));
+        prop_assert_eq!(text(ColKind::Size, &file("f", n), &c), urfin_i18n::fmt::bytes_with(&i18n, n));
     }
 }
 
@@ -199,7 +199,7 @@ fn pattern_subset_and_fallback() {
     assert!(fmt("%Q").is_err());
     assert!(fmt("%").is_err());
     // Пользовательский шаблон с неизвестным спецификатором — ISO.
-    let i18n = filenav_i18n::Catalog::embedded()
+    let i18n = urfin_i18n::Catalog::embedded()
         .build(&"en".parse().unwrap())
         .0;
     let mut c = FmtCfg::new(&i18n, false, Zone::utc());

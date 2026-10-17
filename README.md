@@ -1,4 +1,4 @@
-# FileNav
+# Urfin
 
 Быстрый двухпанельный файловый менеджер: функции и раскладка DN/Far, визуальный язык Windows Fluent.
 Rust, egui/eframe (wgpu, ADR-0012). Активная платформа — Windows; код кроссплатформенный, macOS и Linux собираются в CI.
@@ -13,7 +13,7 @@ Rust, egui/eframe (wgpu, ADR-0012). Активная платформа — Wind
 cargo build --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo nextest run --workspace
-cargo run -p filenav-app
+cargo run -p urfin-app
 ```
 
 ## Документы

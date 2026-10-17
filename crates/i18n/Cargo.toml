@@ -1,6 +1,6 @@
 [package]
-name = "filenav-i18n"
-description = "FileNav localization (Fluent, EN+RU)"
+name = "urfin-i18n"
+description = "Urfin localization (Fluent, EN+RU)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

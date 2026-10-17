@@ -1,10 +1,10 @@
-//! FileNav — бинарь `filenav`.
+//! Urfin — бинарь `urfin`.
 //!
 //! Старт (S1 §2.9, S1-13): каталоги → конфиг → логи → обработчик паник → один
 //! экземпляр (S1-15) → сессия → Core → окно eframe. Листинг — `FakeListing` с
 //! генерируемым деревом до S4.
 //!
-//! Аргументы без `--` — пути: каждый открывается новым табом; если FileNav уже
+//! Аргументы без `--` — пути: каждый открывается новым табом; если Urfin уже
 //! запущен, пути уходят ему, а этот процесс выходит. `--new-instance` —
 //! отдельный экземпляр. `--smoke` — без окна: Core, 1000 команд, shutdown, выход 0 (CI);
 //! `--bench-startup` — окно, JSON с длительностями этапов старта после первого
@@ -31,12 +31,12 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Context;
-use filenav_core::fake::{FakeListing, FakeTree};
-use filenav_core::{
+use urfin_core::fake::{FakeListing, FakeTree};
+use urfin_core::{
     Boot, Command, Config, ConfigWarning, Core, Level, Location, Paths, Services, Session, UiEvent,
     Waker,
 };
-use filenav_vfs::{VfsCfg, VfsListing, VfsRegistry};
+use urfin_vfs::{VfsCfg, VfsListing, VfsRegistry};
 
 /// Версия приложения из `Cargo.toml`.
 fn version() -> &'static str {
@@ -47,9 +47,9 @@ fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            let text = format!("FileNav {} failed to start: {e:#}", version());
+            let text = format!("Urfin {} failed to start: {e:#}", version());
             eprintln!("{text}");
-            tracing::error!(target: "filenav::startup", "{e:#}");
+            tracing::error!(target: "urfin::startup", "{e:#}");
             sys::event_log(sys::EventId::StartupFailed, &text);
             ExitCode::FAILURE
         }
@@ -114,7 +114,7 @@ fn run() -> anyhow::Result<()> {
     {
         let _s = tracing::info_span!("startup.i18n").entered();
         // Предупреждения (битый .ftl, неизвестный язык) i18n пишет в лог сам.
-        filenav_i18n::init(&config.general.language, Some(&paths.config_dir));
+        urfin_i18n::init(&config.general.language, Some(&paths.config_dir));
     }
     tracing::info!(version = version(), ?args, "starting");
 
@@ -153,7 +153,7 @@ fn run() -> anyhow::Result<()> {
 
     let crashed = boot::take_crash_marker(&paths);
     if flag("--smoke") {
-        println!("filenav {}", version());
+        println!("urfin {}", version());
         return smoke(paths, config, warnings, crashed);
     }
 
@@ -330,20 +330,20 @@ fn smoke(
     let root = demo_root();
     let mut boot = Boot::new(root.clone(), root);
     boot.paths = Paths {
-        state_dir: std::env::temp_dir().join("filenav-smoke-state"),
+        state_dir: std::env::temp_dir().join("urfin-smoke-state"),
         ..paths
     };
     boot.config = config;
     boot.warnings = warnings;
     boot.crashed_last_time = crashed;
     let mut core = Core::new(boot, demo_services(), Arc::new(NoWake));
-    filenav_ui::register(&mut core);
-    // Кадры FileNavUi без окна: каркас UI рисуется на каждом шаге прогона.
-    let mut ui = filenav_ui::FileNavUi::new(
+    urfin_ui::register(&mut core);
+    // Кадры UrfinUi без окна: каркас UI рисуется на каждом шаге прогона.
+    let mut ui = urfin_ui::UrfinUi::new(
         core.registry(),
-        &filenav_ui::sys::probe_system(),
-        &filenav_ui::config::UiCfg::default(),
-        filenav_ui::fonts::FontSet::default(),
+        &urfin_ui::sys::probe_system(),
+        &urfin_ui::config::UiCfg::default(),
+        urfin_ui::fonts::FontSet::default(),
     );
     let ctx = eframe::egui::Context::default();
     let pump = |core: &mut Core| {

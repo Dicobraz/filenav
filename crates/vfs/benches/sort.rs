@@ -3,8 +3,8 @@
 use std::hint::black_box;
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
-use filenav_core::{ArrangeSpec, Attrs, Entry, EntryKind, SortKey, SortSpec};
-use filenav_vfs::sort::{ArrangeOpts, arrange, natural_cmp, prefix_key};
+use urfin_core::{ArrangeSpec, Attrs, Entry, EntryKind, SortKey, SortSpec};
+use urfin_vfs::sort::{ArrangeOpts, arrange, natural_cmp, prefix_key};
 
 /// Имена как в реальных каталогах: общий префикс, расширения, номера.
 fn names(n: u32) -> Vec<String> {

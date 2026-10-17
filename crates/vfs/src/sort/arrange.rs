@@ -3,8 +3,8 @@
 
 use std::cmp::Ordering;
 
-use filenav_core::{ArrangeSpec, Attrs, Entry, SortKey};
 use rayon::prelude::*;
+use urfin_core::{ArrangeSpec, Attrs, Entry, SortKey};
 
 use super::keys::{Names, SortRec, mtime_key};
 use super::natural::{cmp_with, prefix_key};
@@ -169,8 +169,8 @@ pub fn reverse_within_groups(order: &mut [u32], is_top_group: impl Fn(u32) -> bo
 #[cfg(test)]
 mod tests {
     use super::*;
-    use filenav_core::{EntryKind, Mask, SortSpec};
     use proptest::prelude::*;
+    use urfin_core::{EntryKind, Mask, SortSpec};
 
     fn entry(name: &str, dir: bool, size: u64, mtime: i64, hidden: bool) -> Entry {
         let mut a = 0;

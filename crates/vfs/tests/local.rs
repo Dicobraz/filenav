@@ -4,8 +4,8 @@ use std::fs;
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
-use filenav_core::{Attrs, CancelToken, Entry, EntryKind, Location};
-use filenav_vfs::{ListOpts, LocalFs, Vfs, VfsError, VfsRegistry};
+use urfin_core::{Attrs, CancelToken, Entry, EntryKind, Location};
+use urfin_vfs::{ListOpts, LocalFs, Vfs, VfsError, VfsRegistry};
 
 fn list_all(dir: &Path, opts: &ListOpts) -> Result<Vec<Entry>, VfsError> {
     let fs = LocalFs::new();
@@ -254,7 +254,7 @@ fn non_utf8_name_roundtrips_through_fs() {
     let e = &v[0];
     assert!(e.attrs.has(Attrs::ESCAPED_NAME), "{e:?}");
     let dir = Location::local(tmp.path());
-    assert_eq!(filenav_vfs::name::join_os(&dir, e), tmp.path().join(&raw));
+    assert_eq!(urfin_vfs::name::join_os(&dir, e), tmp.path().join(&raw));
     let again = LocalFs::new().stat_entry(&dir, &e.name, e.attrs).unwrap();
     assert_eq!((again.size, again.name.as_str()), (2, e.name.as_str()));
     assert!(again.attrs.has(Attrs::ESCAPED_NAME));

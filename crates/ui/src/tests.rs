@@ -1,8 +1,8 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use filenav_core::fake::FakeListing;
-use filenav_core::{
+use urfin_core::fake::FakeListing;
+use urfin_core::{
     Attrs, Boot, Command, Core, Entry, EntryKind, Focus, Gen, Listing, ListingStatus, Location,
     OverlayKind, Services, Tab, TabId, UiEvent, Waker,
 };
@@ -29,7 +29,7 @@ fn tab(names: &[&str]) -> Tab {
 }
 
 fn en() -> I18n {
-    filenav_i18n::Catalog::embedded()
+    urfin_i18n::Catalog::embedded()
         .build(&"en".parse().unwrap())
         .0
 }
@@ -131,7 +131,7 @@ fn keybar_labels_and_fallback() {
 /// Каждая F-клавиша заглушки имеет подпись в en и ru (`keybar-*` или `cmd-*`).
 #[test]
 fn keybar_stub_keys_exist() {
-    let catalog = filenav_i18n::Catalog::embedded();
+    let catalog = urfin_i18n::Catalog::embedded();
     for tag in ["en", "ru"] {
         let i18n = catalog.build(&tag.parse().unwrap()).0;
         for id in keybar::FAR_STUB.iter().flatten() {
@@ -152,7 +152,7 @@ impl Waker for NoWake {
 }
 
 fn core() -> Core {
-    let root = Location::local(std::env::temp_dir().join("filenav-ui-test"));
+    let root = Location::local(std::env::temp_dir().join("urfin-ui-test"));
     let fake = FakeListing::new(64);
     fake.set_dir(
         root.clone(),
@@ -291,7 +291,7 @@ fn prompt_hide_without_prompt_is_noop() {
     run(&mut c, "ui.prompt.hide id=7");
     assert_eq!(
         ui_state(&c).prompt_hidden.as_slice(),
-        [filenav_core::PromptId(7)]
+        [urfin_core::PromptId(7)]
     );
     run(&mut c, "ui.prompt.show id=7");
     assert_eq!(ui_state(&c).prompt_hidden.as_slice(), []);
@@ -303,7 +303,7 @@ fn show_headless_frame() {
     let mut c = core();
     run(&mut c, "app.no_such");
     let ev = c.take_ui_events();
-    let mut ui = FileNavUi::new(
+    let mut ui = UrfinUi::new(
         c.registry(),
         &sys::SysProbe::default(),
         &UiCfg::default(),
@@ -341,7 +341,7 @@ fn show_headless_frame() {
 #[test]
 fn commands_i18n() {
     let c = core();
-    let catalog = filenav_i18n::Catalog::embedded();
+    let catalog = urfin_i18n::Catalog::embedded();
     let mut missing = Vec::new();
     for tag in ["en", "ru"] {
         let i18n = catalog.build(&tag.parse().unwrap()).0;
@@ -360,7 +360,7 @@ fn commands_i18n() {
 
 fn headless_frame(
     ctx: &egui::Context,
-    ui: &mut FileNavUi,
+    ui: &mut UrfinUi,
     c: &Core,
     events: Vec<egui::Event>,
     out: &mut Vec<Command>,
@@ -377,8 +377,8 @@ fn headless_frame(
     full.textures_delta.clear();
 }
 
-fn new_ui(c: &Core) -> FileNavUi {
-    FileNavUi::new(
+fn new_ui(c: &Core) -> UrfinUi {
+    UrfinUi::new(
         c.registry(),
         &sys::SysProbe::default(),
         &UiCfg::default(),

@@ -1,6 +1,6 @@
 [package]
-name = "filenav-keymap"
-description = "FileNav keymap and presets"
+name = "urfin-keymap"
+description = "Urfin keymap and presets"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

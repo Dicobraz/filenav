@@ -1,6 +1,6 @@
 [package]
-name = "filenav-arc"
-description = "FileNav archives as VFS"
+name = "urfin-arc"
+description = "Urfin archives as VFS"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

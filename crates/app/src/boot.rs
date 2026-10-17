@@ -11,7 +11,6 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
-use filenav_core::{LogCfg, Paths};
 use tracing::field::{Field, Visit};
 use tracing::{Event, Level, Subscriber};
 use tracing_appender::non_blocking::WorkerGuard;
@@ -20,24 +19,25 @@ use tracing_subscriber::EnvFilter;
 use tracing_subscriber::Layer;
 use tracing_subscriber::layer::{Context as LayerContext, SubscriberExt};
 use tracing_subscriber::util::SubscriberInitExt;
+use urfin_core::{LogCfg, Paths};
 
 use crate::sys::{EventId, event_log};
 
 /// Переменная окружения с фильтром `tracing`; важнее `[log] level` из конфига.
-pub const LOG_ENV: &str = "FILENAV_LOG";
+pub const LOG_ENV: &str = "URFIN_LOG";
 
 /// Маркер падения в `state_dir`; внутри — путь к crash-файлу.
 const CRASH_MARKER: &str = "crashed";
 
 /// Target события о панике: в журнал Windows оно уходит отдельно (`EventId::Crash`).
-const CRASH_TARGET: &str = "filenav::crash";
+const CRASH_TARGET: &str = "urfin::crash";
 
 /// Не больше стольких ошибок в журнал Windows за минуту.
 const EVENT_LOG_PER_MINUTE: u32 = 20;
 
-/// Логи: `log_dir/filenav.YYYY-MM-DD.log` (ротация раз в сутки, не больше
+/// Логи: `log_dir/urfin.YYYY-MM-DD.log` (ротация раз в сутки, не больше
 /// `keep_files` файлов, неблокирующая запись) и stderr в debug-сборках.
-/// Фильтр — `FILENAV_LOG`, иначе `cfg.level`; неверный фильтр не мешает старту
+/// Фильтр — `URFIN_LOG`, иначе `cfg.level`; неверный фильтр не мешает старту
 /// (S1 §1: ошибка конфигурации не блокирует) — предупреждение в лог. Guard
 /// держать до выхода: он дописывает буфер.
 pub fn init_tracing(paths: &Paths, cfg: &LogCfg) -> anyhow::Result<WorkerGuard> {
@@ -53,7 +53,7 @@ pub fn init_tracing(paths: &Paths, cfg: &LogCfg) -> anyhow::Result<WorkerGuard> 
     };
     let appender = RollingFileAppender::builder()
         .rotation(Rotation::DAILY)
-        .filename_prefix("filenav")
+        .filename_prefix("urfin")
         .filename_suffix("log")
         .max_log_files(usize::from(cfg.keep_files.max(1)))
         .build(&paths.log_dir)
@@ -110,7 +110,7 @@ pub fn install_panic_hook(paths: &Paths) {
         event_log(
             EventId::Crash,
             &format!(
-                "FileNav {} crashed: {}\nLocation: {}\nDetails: {details}",
+                "Urfin {} crashed: {}\nLocation: {}\nDetails: {details}",
                 env!("CARGO_PKG_VERSION"),
                 panic_message(info),
                 info.location()
@@ -130,7 +130,7 @@ fn write_crash(paths: &Paths, info: &PanicHookInfo<'_>) -> std::io::Result<PathB
     let file = paths.log_dir.join(format!("crash-{ms}.txt"));
     let thread = std::thread::current();
     let text = format!(
-        "FileNav {version} crashed\n\
+        "Urfin {version} crashed\n\
          os: {os} {arch}\n\
          thread: {thread}\n\
          message: {message}\n\

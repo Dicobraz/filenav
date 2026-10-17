@@ -12,14 +12,14 @@
 | 5 | Аргумент `side` принимает `left\|right\|active\|passive` | S3-3 | S1-04 |
 | 6 | `ViewMode::Custom(u8)` — наборы колонок, M2+ | S2-4 | S1-06 (enum), S2 |
 | 7 | `MsgSink::poke()` и `Runtime::waker()` — разбудить UI без Msg (терминал читает общее состояние напрямую) | S6-1 | S1-05 |
-| 8 | Новый листовой крейт **`filenav-i18n`** (Fluent, вшитые en/ru, fallback en). Зависят: core, vfs, ops, ui, term. Тосты/промпты из любых крейтов — только через ключи | S2-3 | S1-01 (заглушка), S2 |
+| 8 | Новый листовой крейт **`urfin-i18n`** (Fluent, вшитые en/ru, fallback en). Зависят: core, vfs, ops, ui, term. Тосты/промпты из любых крейтов — только через ключи | S2-3 | S1-01 (заглушка), S2 |
 | 9 | Цепочка Enter по файлу: `panel.enter` → `file.open`; резолв: S8 (архив как VFS) → пользовательские ассоциации `[file.assoc]` → `term.open` (ассоциации ОС). Аргументы `file.open { alt?, internal?, elevated? }` | S6-3, S3-8/9 | S1-08, S5, S6 |
 | 10 | App: `raw_input_hook` отдан keymap; `event_loop_builder` — хук сообщений Windows (`KeyNotes`, numpad/Ctrl+Ins/Shift+Del) и отключение стандартного меню macOS; версия winit — строго та, что тянет eframe 0.36 (без дубля) | S3-6 | S1-13 |
 
 ## UI / слои (S2, S6)
 | # | Изменение | Откуда |
 |---|---|---|
-| 11 | Слои окна снизу вверх: терминал → панели → cmdline (1–3 строки) → оверлеи. Видимость панелей не меняет размер PTY. Модуль `filenav-ui::term` — владелец S6 | S6-2 |
+| 11 | Слои окна снизу вверх: терминал → панели → cmdline (1–3 строки) → оверлеи. Видимость панелей не меняет размер PTY. Модуль `urfin-ui::term` — владелец S6 | S6-2 |
 | 12 | **Один вшитый моноширинный шрифт для панелей и терминала** — выбор S2 (JetBrains Mono / Terminus, OFL). Cascadia Mono не берём. Параметры `ui.font_mono`, `ui.font_mono_size`; терминал рисует рамки/Powerline процедурно | S6-4 vs S2 — конфликт снят |
 | 13 | Ввод при фокусе на панели: печатный текст → `cmdline.insert`; IME включён только в Cmdline/Terminal; в панелях нет фокусируемых egui-виджетов; `zoom_with_keyboard = false`; `Focus::Terminal` → не поглощённое keymap уходит в `term.key/term.input`; имена клавиш — `egui::Key::name()` | S3-4/5, S6-5 |
 | 14 | Подписи keybar: Fluent `keybar-<id>`, fallback `cmd-<id>`. Поле в `CommandMeta` не добавляем | S3-10 |

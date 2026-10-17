@@ -1,7 +1,7 @@
 //! Глифы иконок (S2 §1.6): кодовые точки Segoe Fluent Icons; в Segoe MDL2 Assets
 //! (Win10) те же точки для всего набора — проверено тестом `has_glyph`.
 
-use filenav_vfs::icons::IconClass;
+use urfin_vfs::icons::IconClass;
 
 /// Глиф класса элемента.
 pub fn glyph(class: IconClass) -> char {

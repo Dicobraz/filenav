@@ -80,7 +80,7 @@ impl Boot {
     /// собирает `Boot` из `Paths::detect()`, `Config::load` и `Session::load`.
     pub fn new(left: Location, right: Location) -> Self {
         Boot {
-            paths: Paths::in_dir(std::env::temp_dir().join("filenav-ephemeral")),
+            paths: Paths::in_dir(std::env::temp_dir().join("urfin-ephemeral")),
             config: Config::default(),
             warnings: Vec::new(),
             session: None,

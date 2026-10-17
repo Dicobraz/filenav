@@ -13,7 +13,7 @@ pub mod style;
 use std::fmt::Write as _;
 
 use egui::{Color32, Theme};
-use filenav_core::ConfigWarning;
+use urfin_core::ConfigWarning;
 
 use crate::accent::AccentPalette;
 use crate::config::{Density, UiCfg};

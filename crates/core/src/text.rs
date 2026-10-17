@@ -1,12 +1,12 @@
-//! Тексты core для UI: Fluent-ключи `core-*` (S2 §7) из `filenav-i18n`, язык — активный.
+//! Тексты core для UI: Fluent-ключи `core-*` (S2 §7) из `urfin-i18n`, язык — активный.
 
 /// Текст по ключу с подстановкой строковых аргументов `{ $name }`.
 pub(crate) fn tr(key: &'static str, args: &[(&str, &str)]) -> String {
-    let mut fluent = filenav_i18n::FluentArgs::new();
+    let mut fluent = urfin_i18n::FluentArgs::new();
     for (name, value) in args {
         fluent.set(*name, *value);
     }
-    filenav_i18n::current().fmt(key, &fluent)
+    urfin_i18n::current().fmt(key, &fluent)
 }
 
 #[cfg(test)]

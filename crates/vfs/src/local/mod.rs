@@ -25,9 +25,9 @@ pub enum ListMode {
 }
 
 impl ListMode {
-    /// `FILENAV_VFS_LIST=nt|find|std` — принудительно (диагностика, тесты).
+    /// `URFIN_VFS_LIST=nt|find|std` — принудительно (диагностика, тесты).
     pub fn from_env() -> ListMode {
-        match std::env::var("FILENAV_VFS_LIST").as_deref() {
+        match std::env::var("URFIN_VFS_LIST").as_deref() {
             Ok("nt") => ListMode::Nt,
             Ok("find") => ListMode::Find,
             Ok("std") => ListMode::Std,
@@ -42,7 +42,7 @@ pub struct LocalFs {
 }
 
 impl LocalFs {
-    /// Способ листинга — из `FILENAV_VFS_LIST`, иначе `Auto`.
+    /// Способ листинга — из `URFIN_VFS_LIST`, иначе `Auto`.
     pub fn new() -> Self {
         LocalFs {
             mode: ListMode::from_env(),

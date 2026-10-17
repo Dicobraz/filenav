@@ -1,7 +1,7 @@
 //! Handler namespace `ui` (S2 §3): меняет только [`UiState`] и фокус, без I/O.
 //! Оверлеи пока не рисуются — их виджеты появятся в S2-12…S2-17.
 
-use filenav_core::{
+use urfin_core::{
     ArgSpec, Args, CmdError, Command, CommandMeta, Cx, Focus, Handler, Level, OverlayKind,
     PromptId, Row, Side, UiEvent, ValueKind,
 };
@@ -210,7 +210,7 @@ fn set_focus(cx: &mut Cx<'_>, focus: Focus) {
 }
 
 fn side_arg(cx: &Cx<'_>, a: &Args) -> Side {
-    use filenav_core::SideRef as S;
+    use urfin_core::SideRef as S;
     let active = cx.state.active;
     match a.side("side") {
         None | Some(S::Active) => active,
@@ -242,11 +242,11 @@ fn split(st: &mut UiState, reset: Option<bool>, delta: Option<i64>) {
 
 /// Язык на лету: `epoch` растёт, кэши текста сбрасываются (S2 §7).
 fn lang(cx: &mut Cx<'_>, lang: &str) {
-    for w in filenav_i18n::set_language(lang) {
-        if let filenav_i18n::I18nWarning::UnknownLanguage { requested, .. } = w {
-            let mut args = filenav_i18n::FluentArgs::new();
+    for w in urfin_i18n::set_language(lang) {
+        if let urfin_i18n::I18nWarning::UnknownLanguage { requested, .. } = w {
+            let mut args = urfin_i18n::FluentArgs::new();
             args.set("lang", requested);
-            let text = filenav_i18n::current().fmt("ui-lang-unavailable", &args);
+            let text = urfin_i18n::current().fmt("ui-lang-unavailable", &args);
             cx.toast(Level::Warn, text);
         }
     }

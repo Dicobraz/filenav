@@ -25,3 +25,7 @@ ui-col-mtime = Modified
 ui-folder-empty = This folder is empty
 ui-retry = Retry
 ui-loading-count = Loading… { $count }
+
+## About / splash (R-01). The screens are not built yet: TODO S2-14 (F9 menu).
+ui-about-name = Úrfionn
+ui-about-aka = a.k.a. Oorfene Deuce

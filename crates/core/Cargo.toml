@@ -1,6 +1,6 @@
 [package]
-name = "filenav-core"
-description = "FileNav core: state, command bus, runtime"
+name = "urfin-core"
+description = "Urfin core: state, command bus, runtime"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -16,7 +16,7 @@ fake = []
 compact_str.workspace = true
 crossbeam-channel.workspace = true
 dirs.workspace = true
-filenav-i18n.workspace = true
+urfin-i18n.workspace = true
 rayon.workspace = true
 rustc-hash.workspace = true
 serde.workspace = true

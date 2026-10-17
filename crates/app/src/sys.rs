@@ -51,7 +51,7 @@ pub fn set_background(window: &impl HasWindowHandle, rgb: [u8; 3]) {
     let _ = (window, rgb);
 }
 
-/// Коды событий FileNav в журнале Windows.
+/// Коды событий Urfin в журнале Windows.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum EventId {
     /// Паника: crash-файл записан.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FileNav: тестовые ФС на loop-образах. Использование: fslab.sh up|down|status
+# Urfin: тестовые ФС на loop-образах. Использование: fslab.sh up|down|status
 set -euo pipefail
 
 LAB="${FSLAB_DIR:-$HOME/fslab}"

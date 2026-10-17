@@ -1,6 +1,6 @@
 [package]
-name = "filenav-ui"
-description = "FileNav egui frontend"
+name = "urfin-ui"
+description = "Urfin egui frontend"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,9 +11,9 @@ repository.workspace = true
 [dependencies]
 compact_str.workspace = true
 egui.workspace = true
-filenav-core.workspace = true
-filenav-i18n.workspace = true
-filenav-vfs.workspace = true
+urfin-core.workspace = true
+urfin-i18n.workspace = true
+urfin-vfs.workspace = true
 rustc-hash.workspace = true
 serde.workspace = true
 raw-window-handle.workspace = true
@@ -48,7 +48,7 @@ criterion.workspace = true
 insta.workspace = true
 toml.workspace = true
 tempfile.workspace = true
-filenav-core = { workspace = true, features = ["fake"] }
+urfin-core = { workspace = true, features = ["fake"] }
 
 [lints]
 workspace = true

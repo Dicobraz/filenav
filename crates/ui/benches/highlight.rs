@@ -4,9 +4,9 @@
 use std::hint::black_box;
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
-use filenav_core::{Attrs, Entry, EntryKind};
-use filenav_ui::config::ColorRule;
-use filenav_ui::highlight::Highlighter;
+use urfin_core::{Attrs, Entry, EntryKind};
+use urfin_ui::config::ColorRule;
+use urfin_ui::highlight::Highlighter;
 
 fn entries() -> Vec<Entry> {
     (0..1024)

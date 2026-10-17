@@ -5,7 +5,7 @@
 //! - `no_raw_strings`: сырые литералы в `toast(`, `Banner {text}`, `PromptSpec {title, body}`,
 //!   `Choice {label}`.
 //!
-//! `commands_i18n` (ключ `cmd-<id>` у каждой команды реестра) — в `filenav-ui`, где
+//! `commands_i18n` (ключ `cmd-<id>` у каждой команды реестра) — в `urfin-ui`, где
 //! собирается реестр.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -150,7 +150,7 @@ fn parity_catches_removed_key_and_changed_vars() {
 
 #[test]
 fn every_locale_file_is_embedded() {
-    let embedded: BTreeSet<(String, String)> = filenav_i18n::EMBEDDED
+    let embedded: BTreeSet<(String, String)> = urfin_i18n::EMBEDDED
         .iter()
         .map(|(lang, file, _)| ((*lang).to_owned(), (*file).to_owned()))
         .collect();
@@ -316,7 +316,7 @@ fn is_key(s: &str) -> bool {
 
 #[test]
 fn keys_used_exist_in_en() {
-    let en = filenav_i18n::Catalog::embedded()
+    let en = urfin_i18n::Catalog::embedded()
         .build(&"en".parse().unwrap())
         .0;
     let mut missing = Vec::new();

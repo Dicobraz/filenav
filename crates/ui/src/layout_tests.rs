@@ -1,7 +1,7 @@
 #![allow(clippy::float_cmp, reason = "размеры на сетке 4 px — точные")]
 
 use egui::{Rect, pos2, vec2};
-use filenav_core::{
+use urfin_core::{
     AppState, Attrs, Banner, Entry, EntryKind, Level, Location, Panel, PromptDetail, PromptSpec,
     Side, Tab, TabId,
 };
@@ -11,7 +11,7 @@ use crate::canvas::RecordCanvas;
 use crate::tokens::Tokens;
 
 fn state() -> AppState {
-    let loc = Location::local(std::env::temp_dir().join("filenav-layout"));
+    let loc = Location::local(std::env::temp_dir().join("urfin-layout"));
     AppState::new(
         Panel::new(Tab::new(TabId(1), loc.clone())),
         Panel::new(Tab::new(TabId(2), loc)),
@@ -23,11 +23,11 @@ fn screen(w: f32, h: f32) -> Rect {
 }
 
 fn record(r: &Regions, s: &AppState, ui: &UiState) -> String {
-    let i18n = filenav_i18n::Catalog::embedded()
+    let i18n = urfin_i18n::Catalog::embedded()
         .build(&"ru".parse().unwrap())
         .0;
     let mut c = RecordCanvas::new(&i18n);
-    crate::frame::paint(&mut c, r, &Tokens::default(), s, ui, r"C:\work\filenav>");
+    crate::frame::paint(&mut c, r, &Tokens::default(), s, ui, r"C:\work\urfin>");
     c.to_yaml()
 }
 
@@ -118,7 +118,7 @@ fn conflict_banner_takes_120_and_jobs_32_each() {
         kind: EntryKind::File,
     };
     let spec = PromptSpec {
-        anchor: filenav_core::Anchor::JobBar,
+        anchor: urfin_core::Anchor::JobBar,
         title: "t".into(),
         body: "b".into(),
         choices: smallvec::SmallVec::default(),

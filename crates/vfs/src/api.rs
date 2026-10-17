@@ -7,10 +7,10 @@ use std::sync::Arc;
 use compact_str::CompactString;
 use rustc_hash::FxHashMap;
 
-pub use filenav_core::{Attrs, CancelToken, Entry, EntryKind};
+pub use urfin_core::{Attrs, CancelToken, Entry, EntryKind};
 
 /// Адрес в VFS — тот же `Location`, что у всего приложения (S4 §0).
-pub type VfsPath = filenav_core::Location;
+pub type VfsPath = urfin_core::Location;
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]

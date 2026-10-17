@@ -67,7 +67,7 @@ jobs:
       run:
         shell: bash
     env:
-      BIN: target/release/filenav${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+      BIN: target/release/urfin${{ matrix.os == 'windows-latest' && '.exe' || '' }}
     steps:
       - uses: actions/checkout@v7.0.1
       # Ставит тулчейн из rust-toolchain.toml (rustup ≥1.28 не делает этого в `rustup show`).
@@ -93,7 +93,7 @@ jobs:
 
       - name: No diagnostic features in release (profile, dhat-heap, count-alloc)
         run: $PY ci/release_features.py
-      - run: cargo build --release -p filenav-app --locked
+      - run: cargo build --release -p urfin-app --locked
       # Бюджет 15 МиБ меряется на Windows (S0-decisions); Linux/macOS — только
       # сводка и предупреждение, без блокировки (нюансы — docs/macos-notes.md).
       - name: Binary size ≤ 15 MB
@@ -104,7 +104,7 @@ jobs:
 
       - uses: actions/upload-artifact@v7.0.2
         with:
-          name: filenav-${{ runner.os }}
+          name: urfin-${{ runner.os }}
           path: ${{ env.BIN }}
 
       # Набор самопроверки для Mac (окно на Mac руками не проверяется):
@@ -114,15 +114,15 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           rustup target add x86_64-apple-darwin
-          cargo build --release -p filenav-app --locked --target x86_64-apple-darwin
+          cargo build --release -p urfin-app --locked --target x86_64-apple-darwin
           mkdir -p kit
-          lipo -create -output kit/filenav "$BIN" target/x86_64-apple-darwin/release/filenav
-          lipo -info kit/filenav
+          lipo -create -output kit/urfin "$BIN" target/x86_64-apple-darwin/release/urfin
+          lipo -info kit/urfin
           cp scripts/mac/selftest.sh scripts/mac/README.txt kit/
       - uses: actions/upload-artifact@v7.0.2
         if: runner.os == 'macOS'
         with:
-          name: filenav-macos-selftest
+          name: urfin-macos-selftest
           path: kit/
       # Пробный прогон набора на раннере (ВМ, паравиртуальный GPU): набор рабочий
       # до того, как его запустит владелец. Результат — отдельным артефактом.
@@ -131,11 +131,11 @@ jobs:
         run: |
           zsh -n kit/selftest.sh
           mkdir -p ~/Desktop
-          zsh kit/selftest.sh kit/filenav
+          zsh kit/selftest.sh kit/urfin
       - uses: actions/upload-artifact@v7.0.2
         if: runner.os == 'macOS'
         with:
-          name: filenav-macos-selftest-ci-results
-          path: ~/Desktop/filenav-selftest-*.tgz
+          name: urfin-macos-selftest-ci-results
+          path: ~/Desktop/urfin-selftest-*.tgz
           retention-days: 7
           if-no-files-found: error

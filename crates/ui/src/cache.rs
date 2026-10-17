@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use egui::text::{LayoutJob, TextFormat, TextWrapping};
 use egui::{Color32, FontId, Galley};
-use filenav_core::{Entry, Gen, TabId};
 use rustc_hash::{FxHashMap, FxHasher};
+use urfin_core::{Entry, Gen, TabId};
 
 use crate::fmt_cell::Cell;
 

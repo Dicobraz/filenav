@@ -7,8 +7,8 @@ use std::fmt::Write as _;
 use std::sync::Arc;
 
 use egui::{CornerRadius, FontId, Galley};
-use filenav_core::{ListingStatus, Row, Side, Tab};
-use filenav_i18n::{FluentArgs, I18n};
+use urfin_core::{ListingStatus, Row, Side, Tab};
+use urfin_i18n::{FluentArgs, I18n};
 
 use crate::cache::{CellKey, CellSpec, RowCache, fingerprint};
 use crate::fmt_cell::{ColKind, FmtCfg, cell_text};
@@ -60,15 +60,15 @@ pub(crate) struct CardMemo {
     pub has_frame: bool,
     /// Дробный остаток прокрутки колесом (в строках).
     pub wheel_acc: f32,
-    path_key: Option<(filenav_core::TabId, filenav_core::Location)>,
+    path_key: Option<(urfin_core::TabId, urfin_core::Location)>,
     footer_key: Option<FooterKey>,
 }
 
 /// Входы подвала.
 #[derive(Debug, Clone, PartialEq)]
 struct FooterKey {
-    tab: filenav_core::TabId,
-    generation: filenav_core::Gen,
+    tab: urfin_core::TabId,
+    generation: urfin_core::Gen,
     status: u8,
     dirs: u32,
     files: u32,
@@ -102,7 +102,7 @@ impl CardMemo {
             files: s.files,
             bytes: s.bytes,
             sel: (t.selection.len(), t.selection.bytes()),
-            epoch: filenav_i18n::epoch(),
+            epoch: urfin_i18n::epoch(),
         };
         if self.footer_key.as_ref() != Some(&key) {
             self.footer = footer(i18n, t);
@@ -203,7 +203,7 @@ pub(crate) fn fill_lines(
                     if dir {
                         let _ = c.write_char('/');
                     }
-                    let icon = crate::icons::glyph(filenav_vfs::icons::icon_class(
+                    let icon = crate::icons::glyph(urfin_vfs::icons::icon_class(
                         &entry.name,
                         entry.kind,
                         entry.attrs,
@@ -257,8 +257,8 @@ pub(crate) fn fill_lines(
                     selected: t.selection.contains(idx),
                     group,
                     icon: char::from_u32(u32::from(icon)).unwrap_or(' '),
-                    icon_tone: if entry.attrs.has(filenav_core::Attrs::HIDDEN)
-                        || entry.attrs.has(filenav_core::Attrs::SYSTEM)
+                    icon_tone: if entry.attrs.has(urfin_core::Attrs::HIDDEN)
+                        || entry.attrs.has(urfin_core::Attrs::SYSTEM)
                     {
                         IconTone::Hidden
                     } else if dir {
@@ -298,13 +298,13 @@ pub(crate) fn footer(i18n: &I18n, t: &Tab) -> String {
             if t.selection.is_empty() {
                 let s = t.listing.stats;
                 args.set("count", u64::from(s.dirs) + u64::from(s.files));
-                args.set("bytes", filenav_i18n::fmt::bytes_with(i18n, s.bytes));
+                args.set("bytes", urfin_i18n::fmt::bytes_with(i18n, s.bytes));
                 i18n.fmt("ui-footer-items", &args)
             } else {
                 args.set("count", u64::from(t.selection.len()));
                 args.set(
                     "bytes",
-                    filenav_i18n::fmt::bytes_with(i18n, t.selection.bytes()),
+                    urfin_i18n::fmt::bytes_with(i18n, t.selection.bytes()),
                 );
                 i18n.fmt("ui-footer-selected", &args)
             }

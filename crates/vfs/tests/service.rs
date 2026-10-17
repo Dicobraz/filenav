@@ -7,11 +7,11 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use filenav_core::{
+use urfin_core::{
     Attrs, Boot, CancelToken, Command, Core, Entry, EntryKind, ListingStatus, Location, Row,
     Services, Waker,
 };
-use filenav_vfs::{
+use urfin_vfs::{
     Caps, ListOpts, ListStream, Metadata, Space, Vfs, VfsCfg, VfsError, VfsListing, VfsPath,
     VfsRead, VfsRegistry, WatchGuard, WatchTx,
 };

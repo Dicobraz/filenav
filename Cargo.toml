@@ -12,17 +12,17 @@ repository = "https://github.com/Dicobraz/filenav"
 
 [workspace.dependencies]
 # Крейты workspace. Рёбра между ними заводит задача, которая начинает их использовать.
-filenav-core = { path = "crates/core", version = "0.1.0" }
-filenav-vfs = { path = "crates/vfs", version = "0.1.0" }
-filenav-ops = { path = "crates/ops", version = "0.1.0" }
-filenav-term = { path = "crates/term", version = "0.1.0" }
-filenav-keymap = { path = "crates/keymap", version = "0.1.0" }
-filenav-view = { path = "crates/view", version = "0.1.0" }
-filenav-ui = { path = "crates/ui", version = "0.1.0" }
-filenav-i18n = { path = "crates/i18n", version = "0.1.0" }
-filenav-search = { path = "crates/search", version = "0.1.0" }
-filenav-arc = { path = "crates/arc", version = "0.1.0" }
-filenav-testdata = { path = "crates/testdata" }
+urfin-core = { path = "crates/core", version = "0.1.0" }
+urfin-vfs = { path = "crates/vfs", version = "0.1.0" }
+urfin-ops = { path = "crates/ops", version = "0.1.0" }
+urfin-term = { path = "crates/term", version = "0.1.0" }
+urfin-keymap = { path = "crates/keymap", version = "0.1.0" }
+urfin-view = { path = "crates/view", version = "0.1.0" }
+urfin-ui = { path = "crates/ui", version = "0.1.0" }
+urfin-i18n = { path = "crates/i18n", version = "0.1.0" }
+urfin-search = { path = "crates/search", version = "0.1.0" }
+urfin-arc = { path = "crates/arc", version = "0.1.0" }
+urfin-testdata = { path = "crates/testdata" }
 
 # Внешние зависимости (S1 §3).
 egui = { version = "0.36.2", default-features = false, features = ["default_fonts"] }
@@ -44,6 +44,8 @@ raw-window-handle = "0.6.2"
 egui-wgpu = { version = "0.36.2", default-features = false }
 wgpu = { version = "30.0.1", default-features = false, features = ["std", "wgsl"] }
 windows-sys = "0.61"
+# VERSIONINFO exe (R-01): без `toml` — поля задаёт build.rs.
+winresource = { version = "0.1.34", default-features = false }
 # Без `attributes` (#[instrument]): тянет syn 2 рядом с syn 3. Спаны — через `*_span!`.
 tracing = { version = "0.1.44", default-features = false, features = ["std"] }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
