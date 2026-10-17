@@ -8,5 +8,15 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 
+[dependencies]
+bitflags.workspace = true
+compact_str.workspace = true
+egui.workspace = true
+smallvec.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
 [lints]
 workspace = true

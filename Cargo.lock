@@ -3426,6 +3426,14 @@ dependencies = [
 [[package]]
 name = "urfin-keymap"
 version = "0.1.0"
+dependencies = [
+ "bitflags 2.13.2",
+ "compact_str",
+ "egui",
+ "proptest",
+ "smallvec",
+ "thiserror 2.0.21",
+]
 
 [[package]]
 name = "urfin-ops"
