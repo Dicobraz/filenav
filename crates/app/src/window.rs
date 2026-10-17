@@ -74,6 +74,17 @@ fn hard_key(key: egui::Key, m: egui::Modifiers) -> Option<Command> {
     if m.ctrl && !m.shift && !m.alt && key == K::O {
         return Some(Command::new("ui.panels.toggle_all"));
     }
+    // Ctrl+1..4 — вид панели, как в Far (S3 §3).
+    if m.ctrl && !m.shift && !m.alt {
+        let mode = match key {
+            K::Num1 => "brief",
+            K::Num2 => "medium",
+            K::Num3 => "full",
+            K::Num4 => "wide",
+            _ => return None,
+        };
+        return Some(Command::new("panel.view_mode").arg("mode", mode));
+    }
     if m.shift && !m.ctrl && !m.alt {
         // Shift+стрелки: пометка с движением (Far).
         return motion(key).map(|mo| Command::new("sel.move").arg("motion", mo));
@@ -97,6 +108,9 @@ fn hard_key(key: egui::Key, m: egui::Modifiers) -> Option<Command> {
         K::Enter => Command::new("panel.enter"),
         K::Backspace => Command::new("panel.up"),
         K::Tab => Command::new("panel.switch"),
+        // Колонка влево/вправо в Brief и Medium (S3 §3).
+        K::ArrowLeft => Command::new("panel.cursor.left"),
+        K::ArrowRight => Command::new("panel.cursor.right"),
         // Insert — как в Far; Space — для клавиатур без Insert.
         K::Insert | K::Space => Command::new("sel.toggle").arg("advance", true),
         _ => return None,
@@ -740,6 +754,30 @@ mod tests {
         let (rest, cmds) = run(vec![ev]);
         assert_eq!(rest.len(), 0);
         assert_eq!(cmds, ["ui.panels.toggle_all"]);
+    }
+
+    #[test]
+    fn view_mode_and_column_keys() {
+        let none = egui::Modifiers::NONE;
+        let ctrl = egui::Modifiers::CTRL;
+        let (left, cmds) = run(vec![
+            key(egui::Key::Num1, ctrl, true),
+            key(egui::Key::Num2, ctrl, true),
+            key(egui::Key::Num4, ctrl, true),
+            key(egui::Key::ArrowRight, none, true),
+            key(egui::Key::ArrowLeft, none, true),
+        ]);
+        assert_eq!(left.len(), 0);
+        assert_eq!(
+            cmds,
+            [
+                "panel.view_mode mode=brief",
+                "panel.view_mode mode=medium",
+                "panel.view_mode mode=wide",
+                "panel.cursor.right",
+                "panel.cursor.left",
+            ]
+        );
     }
 
     #[test]

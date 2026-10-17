@@ -91,6 +91,50 @@ fn mockup_tab() -> Tab {
     t
 }
 
+/// Правая панель мокапа §2.1 (Brief): `D: › backup`, 30 объектов, курсор на `2024`.
+fn backup_tab() -> Tab {
+    let d = |n: &str| entry(n, 0, 0, EntryKind::Dir, 60);
+    let f = |n: &str, s| entry(n, s, Attrs::ARCHIVE, EntryKind::File, 60);
+    let hidden = |n: &str, s| entry(n, s, Attrs::HIDDEN | Attrs::ARCHIVE, EntryKind::File, 60);
+    let mut entries: Vec<Entry> = [
+        "2024", "2025", "2026", "old", "photos", "projects", "scans", "vm",
+    ]
+    .into_iter()
+    .map(d)
+    .collect();
+    entries.extend([
+        f("archive.7z", 4_200_000_000),
+        f("backup-01.zip", 310_000_000),
+        f("backup-02.zip", 312_000_000),
+        f("backup-03.zip", 315_000_000),
+        f("backup-04.zip", 318_000_000),
+        f("backup-05.zip", 320_000_000),
+        f("db_dump.sql.gz", 88_000_000),
+        hidden("desktop.ini", 282),
+        f("urfin.log", 51_200),
+        f("home.tar.zst", 2_600_000_000),
+        f("keys.kdbx", 9_100),
+        f("notes.txt", 2_048),
+        f("passport.pdf", 1_400_000),
+        f("photos-2025.7z", 7_900_000_000),
+        f("readme.md", 640),
+        f("restore.ps1", 3_300),
+        f("snapshot.vhdx", 2_100_000_000),
+        f("todo.md", 512),
+        f("vacation.mp4", 1_800_000_000),
+        f("win11.iso", 6_100_000_000),
+        hidden("~$draft.docx", 162),
+    ]);
+    let n = u32::try_from(entries.len()).unwrap();
+    let mut t = Tab::new(TabId(2), Location::local(MOCK_DIR));
+    t.listing = Listing::with_entries(entries, (0..n).collect(), Gen(1));
+    t.listing.status = ListingStatus::Complete;
+    t.view_mode = ViewMode::Brief;
+    // Строка 0 — `..`, 1 — `2024`.
+    t.cursor.row = 1;
+    t
+}
+
 struct Fx {
     ctx: egui::Context,
     i18n: urfin_i18n::I18n,
@@ -175,6 +219,56 @@ fn snapshot_wide() {
     let (yaml, _) = fx.frame(&t, false, Vec::new());
     assert!(!yaml.contains("Изменён"));
     insta::assert_snapshot!(redact(&yaml));
+}
+
+/// Brief §2.1 (правая панель): колонки только с именем, не уже 160 px, по столбцам;
+/// заголовок «Имя» — один.
+#[test]
+fn snapshot_brief() {
+    let mut fx = Fx::new();
+    let t = backup_tab();
+    fx.frame(&t, false, Vec::new());
+    let (yaml, out) = fx.frame(&t, false, Vec::new());
+    assert!(!yaml.contains("Размер") && !yaml.contains("Изменён"));
+    assert_eq!(yaml.matches("Имя").count(), 1);
+    assert_eq!(out.len(), 0, "viewport only on the first frame");
+    insta::assert_snapshot!(redact(&yaml));
+}
+
+/// Medium §2.2: две колонки «имя + размер», заголовок над каждой, стрелка — у первой.
+#[test]
+fn snapshot_medium() {
+    let mut fx = Fx::new();
+    let mut t = mockup_tab();
+    t.view_mode = ViewMode::Medium;
+    fx.frame(&t, true, Vec::new());
+    let (yaml, _) = fx.frame(&t, true, Vec::new());
+    assert_eq!(yaml.matches("Размер").count(), 2);
+    assert_eq!(yaml.matches("Имя ˄").count(), 1);
+    assert!(!yaml.contains("Изменён"));
+    insta::assert_snapshot!(redact(&yaml));
+}
+
+/// `panel.viewport`: строки в колонке и колонки вида (Brief — по ширине, Medium — 2).
+#[test]
+fn viewport_reports_columns() {
+    let cols = |mode| {
+        let mut fx = Fx::new();
+        let mut t = mockup_tab();
+        t.view_mode = mode;
+        let (_, out) = fx.frame(&t, true, Vec::new());
+        let vp = out
+            .iter()
+            .find(|c| c.id.as_str() == "panel.viewport")
+            .expect("viewport");
+        (vp.args.int("rows").unwrap(), vp.args.int("cols").unwrap())
+    };
+    let (rows, full) = cols(ViewMode::Full);
+    assert_eq!(full, 1);
+    // Карточка 600 px: в Brief — 3 колонки по ≥ 160 px.
+    assert_eq!(cols(ViewMode::Brief), (rows, 3));
+    assert_eq!(cols(ViewMode::Medium), (rows, 2));
+    assert_eq!(cols(ViewMode::Wide), (rows, 1));
 }
 
 #[test]

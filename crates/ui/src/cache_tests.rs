@@ -118,6 +118,7 @@ impl Fixture {
                 font: egui::FontId::proportional(14.0),
                 name_w: 300.0,
                 digit_slot: Some(8.0),
+                size: true,
                 mtime: false,
             };
             n = allocations(|| fill_lines(&mut self.lines, &mut self.cache, &cx, t, page));
