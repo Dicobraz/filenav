@@ -135,9 +135,28 @@ fn over_fill(base: Color32, hover: Color32) -> Color32 {
     Color32::from_rgba_unmultiplied(mix(r, hr), mix(g, hg), mix(b, hb), a.max(ha))
 }
 
-/// Ставит стиль обеих тем в контекст.
-pub fn apply(ctx: &egui::Context, t: &Tokens) {
+/// Ставит стиль обеих тем в контекст; размеры текста — в семействах `fonts`.
+pub fn apply(ctx: &egui::Context, t: &Tokens, fonts: &crate::fonts::FontSet) {
+    use crate::fonts::Font;
     for theme in [Theme::Light, Theme::Dark] {
-        ctx.set_style_of(theme, style(t, theme));
+        let mut s = style(t, theme);
+        s.text_styles = [
+            (
+                TextStyle::Small,
+                fonts.id(Font::Caption, t.m(Metric::TypeCaption)),
+            ),
+            (TextStyle::Body, fonts.id(Font::Ui, t.m(Metric::TypeBody))),
+            (TextStyle::Button, fonts.id(Font::Ui, t.m(Metric::TypeBody))),
+            (
+                TextStyle::Heading,
+                fonts.id(Font::Subtitle, t.m(Metric::TypeSubtitle)),
+            ),
+            (
+                TextStyle::Monospace,
+                fonts.id(Font::Mono, t.m(Metric::TypeMono)),
+            ),
+        ]
+        .into();
+        ctx.set_style_of(theme, s);
     }
 }

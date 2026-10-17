@@ -13,6 +13,7 @@ compact_str.workspace = true
 egui.workspace = true
 filenav-core.workspace = true
 filenav-i18n.workspace = true
+filenav-vfs.workspace = true
 rustc-hash.workspace = true
 serde.workspace = true
 smallvec.workspace = true

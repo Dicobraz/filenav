@@ -49,10 +49,10 @@ pub struct UiCfg {
     pub accent: String,
     /// `auto | solid` (S2-06).
     pub backdrop: String,
-    /// `system | путь` (S2-04).
+    /// `system | путь`: Segoe UI Variable → Segoe UI.
     pub font_ui: String,
     pub font_ui_size: f32,
-    /// `jetbrains-mono | путь` (S2-04).
+    /// `system | путь`: на Windows — Cascadia Mono → Consolas (S0-decisions 2026-10-17).
     pub font_mono: String,
     pub font_mono_size: f32,
     pub fallback_fonts: Vec<String>,
@@ -76,7 +76,7 @@ impl Default for UiCfg {
             backdrop: "auto".into(),
             font_ui: "system".into(),
             font_ui_size: 14.0,
-            font_mono: "jetbrains-mono".into(),
+            font_mono: "system".into(),
             font_mono_size: 13.0,
             fallback_fonts: Vec::new(),
             icons: "fluent".into(),

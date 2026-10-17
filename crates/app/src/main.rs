@@ -343,6 +343,7 @@ fn smoke(
         core.registry(),
         &filenav_ui::sys::probe_system(),
         &filenav_ui::config::UiCfg::default(),
+        filenav_ui::fonts::FontSet::default(),
     );
     let ctx = eframe::egui::Context::default();
     let pump = |core: &mut Core| {

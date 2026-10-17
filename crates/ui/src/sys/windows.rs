@@ -201,6 +201,8 @@ pub(super) fn fonts() -> FontFiles {
     };
     let icons = font(&dir, "Segoe Fluent Icons (TrueType)", "SegoeIcons.ttf")
         .or_else(|| font(&dir, "Segoe MDL2 Assets (TrueType)", "segmdl2.ttf"));
+    let mono = font(&dir, "Cascadia Mono Regular (TrueType)", "CascadiaMono.ttf")
+        .or_else(|| font(&dir, "Consolas (TrueType)", "consola.ttf"));
     let symbols = font(&dir, "Segoe UI Symbol (TrueType)", "seguisym.ttf");
     let locale = locale();
     let cjk = match locale.split('-').next().unwrap_or_default() {
@@ -214,6 +216,7 @@ pub(super) fn fonts() -> FontFiles {
     FontFiles {
         ui,
         icons,
+        mono,
         symbols,
         cjk,
     }

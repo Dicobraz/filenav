@@ -300,11 +300,15 @@ const PREFIXES: [&str; 8] = [
     "ui-", "cmd-", "keybar-", "core-", "vfs-", "ops-", "err-", "fmt-",
 ];
 
+/// Литералы с префиксом ключа, но не ключи: имена семейств шрифтов (S2 §1.1).
+const NOT_KEYS: [&str; 3] = ["ui-strong", "ui-caption", "ui-subtitle"];
+
 /// Литерал — ключ Fluent: известный префикс и `[a-z0-9_-]`.
 fn is_key(s: &str) -> bool {
-    PREFIXES
-        .iter()
-        .any(|p| s.starts_with(p) && s.len() > p.len())
+    !NOT_KEYS.contains(&s)
+        && PREFIXES
+            .iter()
+            .any(|p| s.starts_with(p) && s.len() > p.len())
         && s.bytes()
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-' || c == b'_')
         && !s.ends_with('-')

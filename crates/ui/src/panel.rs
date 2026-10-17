@@ -3,10 +3,11 @@
 
 use std::time::Duration;
 
-use egui::{Align2, CornerRadius, Rect, Sense, Stroke, StrokeKind, TextStyle};
+use egui::{Align2, CornerRadius, Rect, Sense, Stroke, StrokeKind};
 use filenav_core::{Command, ListingStatus, Row, Side, Tab};
 use filenav_i18n::{FluentArgs, I18n};
 
+use crate::fonts::{Font, FontSet};
 use crate::highlight::Highlighter;
 use crate::text::{self, Tx};
 use crate::tokens::{Metric, Role, Tokens};
@@ -31,9 +32,19 @@ pub(crate) struct Line {
     pub selected: bool,
     /// Группа раскраски ([`Highlighter::classify`]), 0 — без цвета.
     pub group: u8,
+    /// Глиф иконки (S2 §1.6) и тон: каталог — `accent.text`, скрытый — `text.tertiary`.
+    pub icon: char,
+    pub icon_tone: IconTone,
     /// Команда курсора на эту строку (клик).
     pub click: Command,
     pub entry: bool,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub(crate) enum IconTone {
+    Normal,
+    Dir,
+    Hidden,
 }
 
 /// Состояние карточки между кадрами.
@@ -82,6 +93,8 @@ pub(crate) fn lines(i18n: &I18n, hl: &Highlighter, t: &Tab, page: u32) -> Vec<Li
                     cursor: false,
                     selected,
                     group: 0,
+                    icon: crate::icons::PARENT,
+                    icon_tone: IconTone::Normal,
                     click: Command::new("panel.cursor.home"),
                     entry: false,
                 },
@@ -101,6 +114,20 @@ pub(crate) fn lines(i18n: &I18n, hl: &Highlighter, t: &Tab, page: u32) -> Vec<Li
                         cursor: false,
                         selected,
                         group: hl.classify(entry),
+                        icon: crate::icons::glyph(filenav_vfs::icons::icon_class(
+                            &entry.name,
+                            entry.kind,
+                            entry.attrs,
+                        )),
+                        icon_tone: if entry.attrs.has(filenav_core::Attrs::HIDDEN)
+                            || entry.attrs.has(filenav_core::Attrs::SYSTEM)
+                        {
+                            IconTone::Hidden
+                        } else if dir {
+                            IconTone::Dir
+                        } else {
+                            IconTone::Normal
+                        },
                         click: Command::new("panel.cursor.to").arg("name", entry.name.as_str()),
                         entry: true,
                     }
@@ -157,6 +184,9 @@ pub(crate) struct Rows<'a> {
     pub i18n: &'a I18n,
     pub tokens: &'a Tokens,
     pub hl: &'a Highlighter,
+    pub fonts: &'a FontSet,
+    /// Колонка иконок (есть иконочный шрифт и `ui.icons != "none"`).
+    pub icons: bool,
     pub active: bool,
     /// Удержанный кадр (`false`) на мышь не отвечает.
     pub interactive: bool,
@@ -167,11 +197,28 @@ impl Rows<'_> {
     /// Строки рисуются вручную, без фокуса и подсветки при наведении (S0 v3 №13).
     /// Курсор — рамка 1 px `stroke.strong`, помеченные — `accent.subtle` и `accent.text`
     /// (S0-decisions №31).
+    #[allow(
+        clippy::too_many_lines,
+        reason = "временная отрисовка; заменит FileList (S2-10)"
+    )]
     pub(crate) fn paint(&self, ui: &mut egui::Ui, lines: &[Line], out: &mut Vec<Command>) {
         let t = self.tokens;
         let row_h = t.m(Metric::HRow);
         let pad = t.m(Metric::PadRowX);
-        let font = TextStyle::Body.resolve(ui.style());
+        let font = self.fonts.id(Font::Ui, t.m(Metric::TypeBody));
+        let icon_font = self.fonts.id(Font::Icons, t.m(Metric::WIcon));
+        let tabular = self.fonts.tabular_ok(Font::Ui);
+        let slot = if tabular {
+            0.0
+        } else {
+            FontSet::digit_slot(ui.ctx(), &font)
+        };
+        // Иконка 16 px в слоте 20 (S2 §1.2).
+        let icon_slot = if self.icons {
+            t.m(Metric::WIcon) + 4.0
+        } else {
+            0.0
+        };
         let ctrl = ui.input(|i| i.modifiers.command);
         let sense = if self.interactive {
             Sense::CLICK
@@ -203,23 +250,53 @@ impl Rows<'_> {
                 painter.rect_filled(rect, r, t.c(Role::FillCursorPassive));
             }
             let clip = ui.painter_at(rect);
-            let size_rect = text::paint(
+            let size_pos = rect.right_center() - egui::vec2(pad, 0.0);
+            let size_rect = if tabular {
+                text::paint(
+                    &clip,
+                    self.i18n,
+                    size_pos,
+                    Align2::RIGHT_CENTER,
+                    &Tx::user(line.size.as_str()),
+                    font.clone(),
+                    t.c(Role::TextSecondary),
+                )
+            } else {
+                text::paint_tabular(
+                    &clip,
+                    size_pos,
+                    &line.size,
+                    &font,
+                    t.c(Role::TextSecondary),
+                    slot,
+                )
+            };
+            let mut x = rect.left() + pad;
+            if self.icons {
+                let tone = match line.icon_tone {
+                    IconTone::Dir => t.c(Role::AccentText),
+                    IconTone::Hidden => t.c(Role::TextTertiary),
+                    IconTone::Normal => t.c(Role::TextSecondary),
+                };
+                let mut buf = [0u8; 4];
+                text::paint(
+                    &clip,
+                    self.i18n,
+                    egui::pos2(x + icon_slot / 2.0, rect.center().y),
+                    Align2::CENTER_CENTER,
+                    &Tx::user(&*line.icon.encode_utf8(&mut buf)),
+                    icon_font.clone(),
+                    tone,
+                );
+                x += icon_slot + t.m(Metric::SpaceS);
+            }
+            // Имя не залезает на размер: лишнее — многоточием.
+            let max_w = size_rect.left() - t.m(Metric::SpaceS) - x;
+            text::paint_clipped(
                 &clip,
                 self.i18n,
-                rect.right_center() - egui::vec2(pad, 0.0),
-                Align2::RIGHT_CENTER,
-                &Tx::user(line.size.as_str()),
-                font.clone(),
-                t.c(Role::TextSecondary),
-            );
-            // Имя не залезает на размер.
-            let name_clip =
-                clip.with_clip_rect(rect.with_max_x(size_rect.left() - t.m(Metric::SpaceS)));
-            text::paint(
-                &name_clip,
-                self.i18n,
-                rect.left_center() + egui::vec2(pad, 0.0),
-                Align2::LEFT_CENTER,
+                egui::pos2(x, rect.center().y),
+                max_w,
                 &Tx::user(line.name.as_str()),
                 font.clone(),
                 color,

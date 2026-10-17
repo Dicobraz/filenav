@@ -278,7 +278,12 @@ fn show_headless_frame() {
     let mut c = core();
     run(&mut c, "app.no_such");
     let ev = c.take_ui_events();
-    let mut ui = FileNavUi::new(c.registry(), &sys::SysProbe::default(), &UiCfg::default());
+    let mut ui = FileNavUi::new(
+        c.registry(),
+        &sys::SysProbe::default(),
+        &UiCfg::default(),
+        fonts::FontSet::default(),
+    );
     let ctx = egui::Context::default();
     let mut out = Vec::new();
     for frame in 0..2 {
