@@ -13,5 +13,5 @@ expression: "record(&r, &s, &ui)"
 - stroke: [644, 40, 628, 656] stroke.card
 - region: [636, 40, 8, 656] "splitter"
 - region: [8, 704, 1264, 32] "cmdline"
-- text: [20, 713.5, 104, 13] text.secondary "C:\\work\\filenav>"
+- text: [20, 713.5, 91, 13] text.secondary "C:\\work\\urfin>"
 - region: [8, 736, 1264, 24] "keybar"

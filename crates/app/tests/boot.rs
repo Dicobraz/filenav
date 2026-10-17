@@ -1,5 +1,5 @@
 //! Интеграционные тесты старта: бинарь копируется во временный каталог рядом с
-//! маркером `filenav.portable`, поэтому всё пишется в `<tmp>/data`, а профиль
+//! маркером `urfin.portable`, поэтому всё пишется в `<tmp>/data`, а профиль
 //! пользователя не трогается.
 
 use std::fs;
@@ -15,10 +15,10 @@ struct App {
 impl App {
     fn new() -> App {
         let tmp = tempfile::tempdir().unwrap();
-        let src = PathBuf::from(env!("CARGO_BIN_EXE_filenav"));
+        let src = PathBuf::from(env!("CARGO_BIN_EXE_urfin"));
         let exe = tmp.path().join(src.file_name().unwrap());
         fs::copy(&src, &exe).unwrap();
-        fs::write(tmp.path().join("filenav.portable"), "").unwrap();
+        fs::write(tmp.path().join("urfin.portable"), "").unwrap();
         let data = tmp.path().join("data");
         App {
             _tmp: tmp,
@@ -29,7 +29,7 @@ impl App {
 
     fn run(&self, args: &[&str], env: &[(&str, &str)]) -> Output {
         let mut c = Command::new(&self.exe);
-        c.args(args).env_remove("FILENAV_LOG");
+        c.args(args).env_remove("URFIN_LOG");
         for (k, v) in env {
             c.env(k, v);
         }
@@ -41,7 +41,7 @@ impl App {
     }
 
     fn log_text(&self) -> String {
-        files(&self.logs(), "filenav.")
+        files(&self.logs(), "urfin.")
             .iter()
             .map(|f| fs::read_to_string(f).unwrap())
             .collect()
@@ -84,7 +84,7 @@ fn smoke_creates_portable_layout_and_default_config() {
         !app.data.join("state").join("session.toml").exists(),
         "smoke does not touch the user's session"
     );
-    assert_eq!(files(&app.logs(), "filenav.").len(), 1);
+    assert_eq!(files(&app.logs(), "urfin.").len(), 1);
     assert!(!stdout(&o).contains("banner:"));
 }
 
@@ -109,7 +109,7 @@ fn crash_test_writes_crash_file_and_next_start_shows_banner() {
     let o = app.run(&["--smoke"], &[]);
     assert!(o.status.success(), "{o:?}");
     let out = stdout(&o);
-    assert!(out.contains("banner: FileNav closed unexpectedly"), "{out}");
+    assert!(out.contains("banner: Urfin closed unexpectedly"), "{out}");
     assert!(out.contains("crash-"), "{out}");
     assert!(!marker.exists(), "marker is removed after it is shown");
 
@@ -139,10 +139,10 @@ fn panic_outside_ui_thread_is_not_a_crash() {
 #[test]
 fn bad_env_filter_does_not_block_start() {
     let app = App::new();
-    let o = app.run(&["--smoke"], &[("FILENAV_LOG", "filenav=loud")]);
+    let o = app.run(&["--smoke"], &[("URFIN_LOG", "urfin=loud")]);
     assert!(o.status.success(), "{o:?}");
     let log = app.log_text();
-    assert!(log.contains("FILENAV_LOG ignored"), "{log}");
+    assert!(log.contains("URFIN_LOG ignored"), "{log}");
 }
 
 #[test]
@@ -155,7 +155,7 @@ fn env_filter_beats_config_level() {
     let app = App::new();
     app.write_config("[log]\nlevel = \"error\"\n");
     assert!(
-        app.run(&["--smoke"], &[("FILENAV_LOG", "debug")])
+        app.run(&["--smoke"], &[("URFIN_LOG", "debug")])
             .status
             .success()
     );
@@ -170,11 +170,11 @@ fn log_files_are_pruned_to_keep_files() {
     app.write_config("[log]\nkeep_files = 2\n");
     fs::create_dir_all(app.logs()).unwrap();
     for d in 1..=6 {
-        fs::write(app.logs().join(format!("filenav.2026-01-0{d}.log")), "old").unwrap();
+        fs::write(app.logs().join(format!("urfin.2026-01-0{d}.log")), "old").unwrap();
     }
     fs::write(app.logs().join("crash-1.txt"), "keep me").unwrap();
     assert!(app.run(&["--smoke"], &[]).status.success());
-    let logs = files(&app.logs(), "filenav.");
+    let logs = files(&app.logs(), "urfin.");
     assert!(logs.len() <= 2, "{logs:?}");
     assert!(
         app.logs().join("crash-1.txt").is_file(),
@@ -182,14 +182,14 @@ fn log_files_are_pruned_to_keep_files() {
     );
 }
 
-/// Строки событий FileNav из журнала «Приложение» (новые первыми).
+/// Строки событий Urfin из журнала «Приложение» (новые первыми).
 #[cfg(windows)]
 fn event_log_texts() -> String {
     let o = Command::new("powershell")
         .args([
             "-NoProfile",
             "-Command",
-            "Get-EventLog -LogName Application -Source FileNav -Newest 30 \
+            "Get-EventLog -LogName Application -Source Urfin -Newest 30 \
              -ErrorAction SilentlyContinue | ForEach-Object { \
              \"$($_.InstanceId) $(($_.ReplacementStrings -join ' ') -replace '\\r?\\n', ' ')\" }",
         ])
@@ -241,7 +241,7 @@ fn second_start_hands_paths_to_the_first() {
     let server = || -> (Child, Lines<BufReader<ChildStdout>>) {
         let mut child = Command::new(&app.exe)
             .arg("--ipc-test-server")
-            .env_remove("FILENAV_LOG")
+            .env_remove("URFIN_LOG")
             .stdout(Stdio::piped())
             .spawn()
             .unwrap();
@@ -256,7 +256,7 @@ fn second_start_hands_paths_to_the_first() {
     let o = Command::new(&app.exe)
         .arg("sub")
         .current_dir(work.path())
-        .env_remove("FILENAV_LOG")
+        .env_remove("URFIN_LOG")
         .output()
         .unwrap();
     let took = t.elapsed();

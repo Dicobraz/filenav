@@ -1,4 +1,4 @@
-//! FileNav — VFS (S4): адрес `Location`, trait `Vfs`, реестр backend'ов,
+//! Urfin — VFS (S4): адрес `Location`, trait `Vfs`, реестр backend'ов,
 //! локальная ФС, листинг для core (`VfsListing`), сортировка, иконки. Watcher и
 //! кэш — S4-12…16.
 

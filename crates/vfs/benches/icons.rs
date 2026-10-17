@@ -3,8 +3,8 @@
 use std::hint::black_box;
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
-use filenav_core::{Attrs, EntryKind};
-use filenav_vfs::icons::icon_class;
+use urfin_core::{Attrs, EntryKind};
+use urfin_vfs::icons::icon_class;
 
 fn bench(c: &mut Criterion) {
     let names: Vec<String> = (0..1024)

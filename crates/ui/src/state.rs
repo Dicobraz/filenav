@@ -3,8 +3,8 @@
 //! (S2-18, S2-10).
 
 use compact_str::CompactString;
-use filenav_core::{OverlayKind, PromptId, Side, TabId};
 use smallvec::SmallVec;
+use urfin_core::{OverlayKind, PromptId, Side, TabId};
 
 /// Тема окна (`ui.theme`).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]

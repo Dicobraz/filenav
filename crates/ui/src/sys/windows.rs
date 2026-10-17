@@ -333,7 +333,7 @@ mod tests {
     /// Подписка на изменения — на своём ключе, настройки ОС не трогаются.
     #[test]
     fn notices_registry_change() {
-        const KEY: &str = r"Software\FileNavTest\Watch";
+        const KEY: &str = r"Software\UrfinTest\Watch";
         let reg = |args: &[&str]| {
             std::process::Command::new("reg")
                 .args(args)
@@ -371,7 +371,7 @@ mod tests {
             "/f"
         ]));
         let got = rx.recv_timeout(Duration::from_secs(1));
-        reg(&["delete", r"HKCU\Software\FileNavTest", "/f"]);
+        reg(&["delete", r"HKCU\Software\UrfinTest", "/f"]);
         assert!(got.is_ok(), "no change notification within 1 s");
     }
 

@@ -1,6 +1,6 @@
 [package]
-name = "filenav-vfs"
-description = "FileNav VFS: listing, local backend, watcher, sorting"
+name = "urfin-vfs"
+description = "Urfin VFS: listing, local backend, watcher, sorting"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,7 +11,7 @@ repository.workspace = true
 [dependencies]
 compact_str.workspace = true
 crossbeam-channel.workspace = true
-filenav-core.workspace = true
+urfin-core.workspace = true
 rayon.workspace = true
 serde.workspace = true
 rustc-hash.workspace = true

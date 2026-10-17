@@ -13,18 +13,18 @@ macOS в пассиве (S0-decisions): на него не тратим врем
 
 ## Не проверено на реальном Mac (только компилируется / тесты CI)
 
-- **Пути** (`Paths`, S1-10): `~/Library/Application Support/FileNav` (config, state, logs), кэш — `~/Library/Caches/FileNav`. Ветка кода проверена только тестом CI с подменёнными каталогами.
+- **Пути** (`Paths`, S1-10): `~/Library/Application Support/Urfin` (config, state, logs), кэш — `~/Library/Caches/Urfin`. Ветка кода проверена только тестом CI с подменёнными каталогами.
 - **Регистр в масках** (`Mask`, S1-03): на macOS — без учёта регистра (как дефолтный APFS). Регистрозависимые тома APFS не учтены.
 - **Unicode-нормализация имён**: HFS+ хранит имена в NFD, APFS сохраняет как есть, но сравнивает с нормализацией. Сравнение имён в core (`pending_focus`, восстановление выделения по именам, `panel.cursor.to`) — побайтовое; имя из ввода в NFC может не совпасть с именем из ФС в NFD. При реактивации — решить на уровне S4 (нормализация при листинге) или сравнения в core.
 - **eframe**: в workspace фичи `x11`/`wayland`; меню macOS и `app::sys` (S1-13, S3) не реализованы — по S0-decisions это конец очереди.
 - **Рендер** (ADR-0012): на macOS wgpu с бэкендом Metal (вместо GL 4.1 при glow). `MemoryHints::MemoryUsage` и выбор встроенной графики общие; на macOS не замерялись. DWM cloak (старт без мигания, S1-13) — только Windows: на macOS окно показывается сразу, развёрнутое — с возможной перерисовкой.
 - **Один экземпляр** (S1-15): `flock` + unix socket проверены только тестом CI (`second_start_forwards_to_first_fast`, `stale_socket_is_cleaned`). На macOS открытие файлов из Finder/Dock приходит Apple Event'ом (`application:openURLs:`), а не вторым процессом — при реактивации нужен обработчик в winit/AppKit; активация окна (`Focus`) на macOS не проверялась.
-- **Системный probe** (S2-03, `filenav_ui::sys::other`): на macOS — заглушка. Тему ведёт winit (`ThemeChanged`), акцент — `#0078D4`, шрифты — встроенные egui. По S2 §1.5 при реактивации: `NSColor.controlAccentColor` (sRGB) с перечитыванием при `Focused(true)`, системный шрифт через `CTFontCreateUIFontForLanguage` → `kCTFontURLAttribute`; оттенки акцента уже считает `AccentPalette::from_base` (OKLCH).
+- **Системный probe** (S2-03, `urfin_ui::sys::other`): на macOS — заглушка. Тему ведёт winit (`ThemeChanged`), акцент — `#0078D4`, шрифты — встроенные egui. По S2 §1.5 при реактивации: `NSColor.controlAccentColor` (sRGB) с перечитыванием при `Focused(true)`, системный шрифт через `CTFontCreateUIFontForLanguage` → `kCTFontURLAttribute`; оттенки акцента уже считает `AccentPalette::from_base` (OKLCH).
 - **Рамка окна** (S2-06): на macOS (и Linux) системная рамка, свой заголовок не ставится (`install_window_chrome` → `None`), табы — строкой 40 px под заголовком ОС. По S2 §1.4 при реактивации: `with_fullsize_content_view(true)`, `with_titlebar_shown(false)`, отступ 78 px под «светофор».
 
 ## Прогноз по известным особенностям (до первого запуска на Mac, 2026-10-16)
 
-Проверяет набор `scripts/mac/selftest.sh` (артефакт CI `filenav-macos-selftest`); после отчёта — отметить, что подтвердилось.
+Проверяет набор `scripts/mac/selftest.sh` (артефакт CI `urfin-macos-selftest`); после отчёта — отметить, что подтвердилось.
 
 1. **Первый кадр с пустыми панелями.** eframe создаёт окно скрытым и сам показывает его после первого отрисованного кадра; наш старт под DWM cloak и «показать кадром с загруженными табами» — только Windows. Ожидание: в `selftest.json` `first_frame_tabs` = `loading:…`, на экране — пустые панели на 1 кадр. Лечение (при реактивации): до первого кадра дождаться первого чанка листинга (≤ 100 мс) или держать окно невидимым через `NSWindow.alphaValue = 0` до готового кадра.
 2. **Разворот = zoom с анимацией, полный экран — отдельный Space (~0,7 с анимации).** `DWMWA_TRANSITIONS_FORCEDISABLED` и фон класса окна — Windows; на macOS анимации системные. Ожидание: во время анимации кадры растягиваются (CAMetalLayer `contentsGravity`), чёрных кадров нет. Смотреть `windows` и `frames` фаз `maximize`/`fullscreen`.
@@ -32,7 +32,7 @@ macOS в пассиве (S0-decisions): на него не тратим врем
 4. **Retina.** `ppp` = 2 (или 1 на внешнем мониторе без HiDPI); шрифты egui по умолчанию — растровые атласы, на 2× резкие. Смотреть `shot-*.png`.
 5. **Простой.** CVDisplayLink не используется (eframe рисует по событию) — ожидание 0–2 кадра за 10 с в фазе `idle`, CPU ≈ 0.
 6. **Память.** Metal на Apple Silicon — общая память; `footprint` покажет фактический след. Ожидание меньше, чем DX12 на Intel (≈ 160 МБ).
-7. **Один экземпляр и передний план.** Второй запуск из Терминала отдаёт путь и выходит; `lsappinfo front` после него должен показать FileNav. Бинарь без `.app` — Dock может показать безымянную иконку `filenav`.
+7. **Один экземпляр и передний план.** Второй запуск из Терминала отдаёт путь и выходит; `lsappinfo front` после него должен показать Urfin. Бинарь без `.app` — Dock может показать безымянную иконку `urfin`.
 8. **Cmd+Q (не проверяется набором).** Меню winit по умолчанию завершает приложение через `NSApp terminate:` — возможно, без `on_exit` (сессия не сохранится). Проверить вручную при реактивации.
 
 ## Linux (tier 2)

@@ -6,7 +6,7 @@
 //! оверлеи. Область терминала не зависит от Ctrl+O — размер PTY не меняется.
 
 use egui::{Rect, pos2};
-use filenav_core::{AppState, PromptDetail, Side};
+use urfin_core::{AppState, PromptDetail, Side};
 
 use crate::state::UiState;
 use crate::tokens::{Metric, Tokens};

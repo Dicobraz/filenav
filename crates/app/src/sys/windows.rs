@@ -15,10 +15,10 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{GCLP_HBRBACKGROUND, SetClassLo
 use windows_sys::core::BOOL;
 
 /// Источник в журнале «Приложение». Регистрацию в реестре
-/// (`HKLM\SYSTEM\CurrentControlSet\Services\EventLog\Application\FileNav`) делает
+/// (`HKLM\SYSTEM\CurrentControlSet\Services\EventLog\Application\Urfin`) делает
 /// установщик (S9); без неё Просмотр событий показывает текст с припиской
 /// «описание не найдено».
-const EVENT_SOURCE: &str = "FileNav";
+const EVENT_SOURCE: &str = "Urfin";
 
 /// Предел длины одной строки `ReportEventW` (31 839 символов UTF-16).
 const MAX_CHARS: usize = 31_000;

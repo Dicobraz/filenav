@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 /// текущего каталога (`std::path::absolute`), symlink не разрешаются.
 pub fn normalize_local(p: &Path) -> PathBuf {
     let abs = std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf());
-    filenav_core::Location::local(abs).path
+    urfin_core::Location::local(abs).path
 }
 
 /// Verbatim-путь Windows для системных вызовов: `\\?\C:\…`, `\\?\UNC\srv\share\…`,

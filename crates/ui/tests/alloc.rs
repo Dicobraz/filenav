@@ -6,9 +6,9 @@
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell as StdCell;
 
-use filenav_core::{Attrs, Entry, EntryKind};
-use filenav_ui::fmt_cell::{Cell, ColKind, FmtCfg, cell_text};
-use filenav_ui::sys::Zone;
+use urfin_core::{Attrs, Entry, EntryKind};
+use urfin_ui::fmt_cell::{Cell, ColKind, FmtCfg, cell_text};
+use urfin_ui::sys::Zone;
 
 struct Counting;
 
@@ -83,7 +83,7 @@ fn cell_text_does_not_allocate() {
         })
         .collect();
     for tag in ["ru", "en"] {
-        let i18n = filenav_i18n::Catalog::embedded()
+        let i18n = urfin_i18n::Catalog::embedded()
             .build(&tag.parse().unwrap())
             .0;
         // Системная зона: как в окне.

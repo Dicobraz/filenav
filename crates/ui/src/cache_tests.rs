@@ -6,7 +6,7 @@
 use std::alloc::{GlobalAlloc, Layout as AllocLayout, System};
 use std::cell::Cell as StdCell;
 
-use filenav_core::{Attrs, Entry, EntryKind, Gen, Listing, Location, Tab, TabId};
+use urfin_core::{Attrs, Entry, EntryKind, Gen, Listing, Location, Tab, TabId};
 
 use super::*;
 use crate::fmt_cell::FmtCfg;
@@ -94,7 +94,7 @@ struct Fixture {
 
 impl Fixture {
     fn new() -> Self {
-        let i18n = filenav_i18n::Catalog::embedded()
+        let i18n = urfin_i18n::Catalog::embedded()
             .build(&"en".parse().unwrap())
             .0;
         Self {

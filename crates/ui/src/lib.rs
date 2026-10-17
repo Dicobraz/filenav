@@ -1,6 +1,6 @@
-//! FileNav — UI-фронтенд на egui (S2).
+//! Urfin — UI-фронтенд на egui (S2).
 //!
-//! [`FileNavUi`] — две карточки панелей, баннер, вопрос, тосты и keybar (каркас S2-02);
+//! [`UrfinUi`] — две карточки панелей, баннер, вопрос, тосты и keybar (каркас S2-02);
 //! вид — из токенов Fluent ([`tokens`], S2-05) по теме и акценту ОС ([`sys`], S2-03).
 //! Handler `ui` и [`UiState`] в `AppState.ext` — [`register`]. Ввод панели — в app
 //! (`raw_input_hook`, до keymap S3); здесь — мышь. Тексты — только через [`text`]
@@ -32,10 +32,10 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use egui::{Align2, Sense, TextStyle};
-use filenav_core::{
+use urfin_core::{
     AppState, Command, CommandRegistry, ConfigWarning, Core, Level, Side, UiEvent, Value,
 };
-use filenav_i18n::I18n;
+use urfin_i18n::I18n;
 
 pub use handler::UiHandler;
 pub use state::{Draft, ThemeMode, UiState};
@@ -59,7 +59,7 @@ pub fn register(core: &mut Core) {
 
 /// Фронтенд окна: только читает `AppState`, действия — командами.
 #[derive(Debug)]
-pub struct FileNavUi {
+pub struct UrfinUi {
     toasts: VecDeque<(String, Instant)>,
     cards: [CardMemo; 2],
     keybar: keybar::Keybar,
@@ -95,7 +95,7 @@ pub struct FileNavUi {
     chrome: Option<chrome::ChromeHandle>,
 }
 
-impl FileNavUi {
+impl UrfinUi {
     /// `registry` — команды всех handlers (keybar гасит незарегистрированные);
     /// `probe` — [`sys::probe_system`]; `cfg` — секция `[ui]`; `fonts` — [`fonts::install`]
     /// (без него — шрифты egui). Предупреждения probe и конфига показываются тостами.
@@ -149,9 +149,9 @@ impl FileNavUi {
             last_ppp: 0.0,
             atlas_fill: 0.0,
             fmt: (
-                filenav_i18n::epoch(),
+                urfin_i18n::epoch(),
                 fmt_cell::FmtCfg::new(
-                    &filenav_i18n::current(),
+                    &urfin_i18n::current(),
                     cfg.date_format.eq_ignore_ascii_case("iso"),
                     sys::Zone::system(),
                 ),
@@ -237,7 +237,7 @@ impl FileNavUi {
         out: &mut Vec<Command>,
     ) {
         let ctx = root.ctx().clone();
-        let i18n = filenav_i18n::current();
+        let i18n = urfin_i18n::current();
         let fallback = UiState::new();
         let st = s.ext.get::<UiState>().unwrap_or(&fallback);
         self.apply_look(&ctx, st);
@@ -252,11 +252,10 @@ impl FileNavUi {
         if fill + 1e-6 < self.atlas_fill {
             self.style_epoch += 1;
         }
-        self.rows
-            .sync_epochs(filenav_i18n::epoch(), self.style_epoch);
+        self.rows.sync_epochs(urfin_i18n::epoch(), self.style_epoch);
         self.tokens.set_theme(ctx.theme());
         self.take_toasts(&ctx, ev);
-        let epoch = filenav_i18n::epoch();
+        let epoch = urfin_i18n::epoch();
         self.keybar.refresh(&i18n, epoch, &self.registered);
         if self.fmt.0 != epoch {
             let iso = self.cfg.date_format.eq_ignore_ascii_case("iso");

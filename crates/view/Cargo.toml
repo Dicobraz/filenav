@@ -1,6 +1,6 @@
 [package]
-name = "filenav-view"
-description = "FileNav viewer and editor"
+name = "urfin-view"
+description = "Urfin viewer and editor"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

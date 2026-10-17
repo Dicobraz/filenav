@@ -1,8 +1,8 @@
 //! Строка F-клавиш. Привязки — заглушка пресета Far из S3 §3, пока нет
 //! `Keymap::keybar` (S3-04); подписи — `keybar-<id>`, запасная `cmd-<id>` (S0 v3 №14).
 
-use filenav_core::CommandRegistry;
-use filenav_i18n::I18n;
+use urfin_core::CommandRegistry;
+use urfin_i18n::I18n;
 
 /// Команды F1…F12 без модификаторов (пресет Far, S3 §3).
 pub const FAR_STUB: [Option<&str>; 12] = [

@@ -1,4 +1,4 @@
-﻿# FileNav: подготовка стенда Windows 11. Идемпотентно.
+﻿# Urfin: подготовка стенда Windows 11. Идемпотентно.
 # Запуск из корня репо: powershell -ExecutionPolicy Bypass -File scripts/stand/setup-windows.ps1
 # Build Tools ставятся с принятием лицензии Microsoft Visual Studio Build Tools.
 $ErrorActionPreference = 'Stop'
@@ -48,7 +48,7 @@ function GhTool($exe, $repoName, $tagPrefix, $pattern) {
     $tag = gh release list -R $repoName --limit 30 --exclude-pre-releases --json tagName --jq '.[].tagName' |
         Where-Object { $_ -like "$tagPrefix*" } | Select-Object -First 1
     if (-not $tag) { throw "${repoName}: релиз не найден" }
-    $tmp = Join-Path ([IO.Path]::GetTempPath()) ("filenav-" + [guid]::NewGuid())
+    $tmp = Join-Path ([IO.Path]::GetTempPath()) ("urfin-" + [guid]::NewGuid())
     New-Item -ItemType Directory $tmp | Out-Null
     try {
         gh release download $tag -R $repoName -p $pattern -D $tmp

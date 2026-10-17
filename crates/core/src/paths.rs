@@ -1,5 +1,5 @@
 //! Каталоги приложения (S1 §2.8, решение владельца №1): профиль ОС, portable — при
-//! файле `filenav.portable` рядом с exe.
+//! файле `urfin.portable` рядом с exe.
 
 use std::fs;
 use std::io::{self, Write};
@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Маркер portable-режима рядом с exe.
-pub const PORTABLE_MARKER: &str = "filenav.portable";
+pub const PORTABLE_MARKER: &str = "urfin.portable";
 
 /// Каталоги конфига, состояния, логов и кэша.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -41,14 +41,14 @@ impl OsDirs {
 }
 
 impl Paths {
-    /// Portable, если рядом с exe есть `filenav.portable`: тогда всё в `<exe>/data/`.
+    /// Portable, если рядом с exe есть `urfin.portable`: тогда всё в `<exe>/data/`.
     /// Иначе — профиль ОС:
     ///
     /// | ОС | `config_dir` | `state_dir`, `log_dir`, `cache_dir` |
     /// |---|---|---|
-    /// | Windows | `%APPDATA%\FileNav` | `%LOCALAPPDATA%\FileNav\{state,logs,cache}` |
-    /// | macOS | `~/Library/Application Support/FileNav` | там же `/{state,logs}`, кэш — `~/Library/Caches/FileNav` |
-    /// | Linux | `$XDG_CONFIG_HOME/filenav` | `$XDG_STATE_HOME/filenav{,/logs}`, кэш — `$XDG_CACHE_HOME/filenav` |
+    /// | Windows | `%APPDATA%\Urfin` | `%LOCALAPPDATA%\Urfin\{state,logs,cache}` |
+    /// | macOS | `~/Library/Application Support/Urfin` | там же `/{state,logs}`, кэш — `~/Library/Caches/Urfin` |
+    /// | Linux | `$XDG_CONFIG_HOME/urfin` | `$XDG_STATE_HOME/urfin{,/logs}`, кэш — `$XDG_CACHE_HOME/urfin` |
     ///
     /// Если каталог ОС не определяется, используется portable-раскладка рядом с exe.
     pub fn detect() -> Self {
@@ -71,8 +71,8 @@ impl Paths {
 
     #[cfg(windows)]
     fn profile(os: &OsDirs) -> Option<Self> {
-        let config = os.config.as_ref()?.join("FileNav");
-        let local = os.data_local.as_ref()?.join("FileNav");
+        let config = os.config.as_ref()?.join("Urfin");
+        let local = os.data_local.as_ref()?.join("Urfin");
         Some(Paths {
             config_dir: config,
             state_dir: local.join("state"),
@@ -84,8 +84,8 @@ impl Paths {
 
     #[cfg(target_os = "macos")]
     fn profile(os: &OsDirs) -> Option<Self> {
-        let support = os.config.as_ref()?.join("FileNav");
-        let cache = os.cache.as_ref()?.join("FileNav");
+        let support = os.config.as_ref()?.join("Urfin");
+        let cache = os.cache.as_ref()?.join("Urfin");
         Some(Paths {
             state_dir: support.join("state"),
             log_dir: support.join("logs"),
@@ -97,12 +97,12 @@ impl Paths {
 
     #[cfg(not(any(windows, target_os = "macos")))]
     fn profile(os: &OsDirs) -> Option<Self> {
-        let state = os.state.as_ref()?.join("filenav");
+        let state = os.state.as_ref()?.join("urfin");
         Some(Paths {
-            config_dir: os.config.as_ref()?.join("filenav"),
+            config_dir: os.config.as_ref()?.join("urfin"),
             log_dir: state.join("logs"),
             state_dir: state,
-            cache_dir: os.cache.as_ref()?.join("filenav"),
+            cache_dir: os.cache.as_ref()?.join("urfin"),
             portable: false,
         })
     }
@@ -209,21 +209,21 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let p = Paths::detect_with(Some(tmp.path()), &os(tmp.path()));
         if cfg!(windows) {
-            assert_eq!(p.config_dir, tmp.path().join("cfg").join("FileNav"));
+            assert_eq!(p.config_dir, tmp.path().join("cfg").join("Urfin"));
             assert_eq!(
                 p.state_dir,
-                tmp.path().join("local").join("FileNav").join("state")
+                tmp.path().join("local").join("Urfin").join("state")
             );
             assert_eq!(
                 p.log_dir,
-                tmp.path().join("local").join("FileNav").join("logs")
+                tmp.path().join("local").join("Urfin").join("logs")
             );
         } else if cfg!(target_os = "macos") {
-            assert_eq!(p.config_dir, tmp.path().join("cfg").join("FileNav"));
+            assert_eq!(p.config_dir, tmp.path().join("cfg").join("Urfin"));
             assert_eq!(p.log_dir, p.config_dir.join("logs"));
         } else {
-            assert_eq!(p.config_dir, tmp.path().join("cfg").join("filenav"));
-            assert_eq!(p.state_dir, tmp.path().join("st").join("filenav"));
+            assert_eq!(p.config_dir, tmp.path().join("cfg").join("urfin"));
+            assert_eq!(p.state_dir, tmp.path().join("st").join("urfin"));
             assert_eq!(p.log_dir, p.state_dir.join("logs"));
         }
     }

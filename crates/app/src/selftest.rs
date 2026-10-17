@@ -10,8 +10,8 @@ use std::sync::{Mutex, OnceLock, PoisonError};
 use std::time::{Duration, Instant};
 
 use eframe::egui;
-use filenav_core::{AppState, Command, Core, ListingStatus};
 use serde::Serialize;
+use urfin_core::{AppState, Command, Core, ListingStatus};
 
 /// Скриншот не пришёл за это время — записать отказ и идти дальше.
 const SHOT_TIMEOUT: Duration = Duration::from_secs(3);

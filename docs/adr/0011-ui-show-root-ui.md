@@ -10,7 +10,7 @@ S1 §4 и S2 фиксируют сигнатуру фронтенда `Ui::show(
 
 ## Решение
 
-Фронтенды (`filenav_ui::DebugUi` сейчас, `Ui` S2 потом) получают корневой `Ui` от eframe:
+Фронтенды (`urfin_ui::DebugUi` сейчас, `Ui` S2 потом) получают корневой `Ui` от eframe:
 
 ```rust
 pub fn show(&mut self, root: &mut egui::Ui, s: &AppState, ev: &[UiEvent], out: &mut Vec<Command>);

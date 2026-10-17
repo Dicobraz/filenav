@@ -1,24 +1,24 @@
 # Имена продукта не считаются «кодом без обратных кавычек» (clippy::doc_markdown).
 # ".." сохраняет встроенный список clippy.
-doc-valid-idents = ["FileNav", "WinUI", ".."]
+doc-valid-idents = ["Urfin", "WinUI", ".."]
 
 # Тексты интерфейса — только через Fluent (S2 §7, S0-decisions №4): текстовые API egui
-# разрешены лишь в модуле-шлюзе `filenav_ui::text`.
+# разрешены лишь в модуле-шлюзе `urfin_ui::text`.
 disallowed-methods = [
-    { path = "egui::Ui::label", reason = "текст через filenav_ui::text (Fluent)" },
-    { path = "egui::Ui::button", reason = "текст через filenav_ui::text (Fluent)" },
-    { path = "egui::Ui::heading", reason = "текст через filenav_ui::text (Fluent)" },
-    { path = "egui::Ui::small", reason = "текст через filenav_ui::text (Fluent)" },
-    { path = "egui::Ui::strong", reason = "текст через filenav_ui::text (Fluent)" },
-    { path = "egui::Ui::weak", reason = "текст через filenav_ui::text (Fluent)" },
-    { path = "egui::Ui::monospace", reason = "текст через filenav_ui::text (Fluent)" },
-    { path = "egui::Ui::code", reason = "текст через filenav_ui::text (Fluent)" },
-    { path = "egui::Ui::selectable_label", reason = "текст через filenav_ui::text (Fluent)" },
-    { path = "egui::Ui::hyperlink_to", reason = "текст через filenav_ui::text (Fluent)" },
-    { path = "egui::Ui::checkbox", reason = "текст через filenav_ui::text (Fluent)" },
-    { path = "egui::Ui::radio", reason = "текст через filenav_ui::text (Fluent)" },
-    { path = "egui::RichText::new", reason = "текст через filenav_ui::text (Fluent)" },
-    { path = "egui::Label::new", reason = "текст через filenav_ui::text (Fluent)" },
-    { path = "egui::Button::new", reason = "текст через filenav_ui::text (Fluent)" },
-    { path = "egui::Painter::text", reason = "текст через filenav_ui::text (Fluent)" },
+    { path = "egui::Ui::label", reason = "текст через urfin_ui::text (Fluent)" },
+    { path = "egui::Ui::button", reason = "текст через urfin_ui::text (Fluent)" },
+    { path = "egui::Ui::heading", reason = "текст через urfin_ui::text (Fluent)" },
+    { path = "egui::Ui::small", reason = "текст через urfin_ui::text (Fluent)" },
+    { path = "egui::Ui::strong", reason = "текст через urfin_ui::text (Fluent)" },
+    { path = "egui::Ui::weak", reason = "текст через urfin_ui::text (Fluent)" },
+    { path = "egui::Ui::monospace", reason = "текст через urfin_ui::text (Fluent)" },
+    { path = "egui::Ui::code", reason = "текст через urfin_ui::text (Fluent)" },
+    { path = "egui::Ui::selectable_label", reason = "текст через urfin_ui::text (Fluent)" },
+    { path = "egui::Ui::hyperlink_to", reason = "текст через urfin_ui::text (Fluent)" },
+    { path = "egui::Ui::checkbox", reason = "текст через urfin_ui::text (Fluent)" },
+    { path = "egui::Ui::radio", reason = "текст через urfin_ui::text (Fluent)" },
+    { path = "egui::RichText::new", reason = "текст через urfin_ui::text (Fluent)" },
+    { path = "egui::Label::new", reason = "текст через urfin_ui::text (Fluent)" },
+    { path = "egui::Button::new", reason = "текст через urfin_ui::text (Fluent)" },
+    { path = "egui::Painter::text", reason = "текст через urfin_ui::text (Fluent)" },
 ]

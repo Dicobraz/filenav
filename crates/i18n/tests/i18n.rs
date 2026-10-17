@@ -4,10 +4,10 @@ use std::fmt::Write as _;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use filenav_i18n::fmt::{bytes_exact_with, bytes_with, datetime_with};
-use filenav_i18n::{Catalog, FluentArgs, I18n, I18nWarning, LanguageIdentifier};
 use jiff::tz::{Offset, TimeZone};
 use proptest::prelude::*;
+use urfin_i18n::fmt::{bytes_exact_with, bytes_with, datetime_with};
+use urfin_i18n::{Catalog, FluentArgs, I18n, I18nWarning, LanguageIdentifier};
 
 fn lang(tag: &str) -> LanguageIdentifier {
     tag.parse().unwrap()
@@ -257,22 +257,22 @@ fn no_isolation_marks() {
 fn global_switch_is_thread_safe() {
     let dir = tempfile::tempdir().unwrap();
     write_files(dir.path(), &[("ru/extra.ftl", "user-key = свой\n")]);
-    let warnings = filenav_i18n::init("ru", Some(dir.path()));
+    let warnings = urfin_i18n::init("ru", Some(dir.path()));
     assert!(warnings.is_empty(), "{warnings:?}");
-    assert_eq!(filenav_i18n::current().lang(), &lang("ru"));
-    assert_eq!(filenav_i18n::tr!("user-key"), "свой");
+    assert_eq!(urfin_i18n::current().lang(), &lang("ru"));
+    assert_eq!(urfin_i18n::tr!("user-key"), "свой");
     assert_eq!(
-        filenav_i18n::tr!(
+        urfin_i18n::tr!(
             "ui-footer-selected",
             count = 3,
-            bytes = filenav_i18n::fmt::bytes(50_688)
+            bytes = urfin_i18n::fmt::bytes(50_688)
         ),
         "3 выбрано · 49,5 КБ"
     );
-    assert_eq!(filenav_i18n::fmt::count(12_345), "12\u{a0}345");
-    assert!(filenav_i18n::available().contains(&lang("ru")));
+    assert_eq!(urfin_i18n::fmt::count(12_345), "12\u{a0}345");
+    assert!(urfin_i18n::available().contains(&lang("ru")));
 
-    let start = filenav_i18n::epoch();
+    let start = urfin_i18n::epoch();
     let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let readers: Vec<_> = (0..4)
         .map(|_| {
@@ -280,7 +280,7 @@ fn global_switch_is_thread_safe() {
             std::thread::spawn(move || {
                 let mut seen = 0;
                 while !stop.load(std::sync::atomic::Ordering::Relaxed) {
-                    let text = filenav_i18n::tr!("ui-footer-selected", count = 3, bytes = "b");
+                    let text = urfin_i18n::tr!("ui-footer-selected", count = 3, bytes = "b");
                     assert!(
                         text == "3 выбрано · b" || text == "3 selected · b",
                         "{text:?}"
@@ -292,17 +292,17 @@ fn global_switch_is_thread_safe() {
         })
         .collect();
     for i in 0..200 {
-        let warnings = filenav_i18n::set_language(if i % 2 == 0 { "en" } else { "ru" });
+        let warnings = urfin_i18n::set_language(if i % 2 == 0 { "en" } else { "ru" });
         assert!(warnings.is_empty(), "{warnings:?}");
     }
     stop.store(true, std::sync::atomic::Ordering::Relaxed);
     for reader in readers {
         assert!(reader.join().unwrap() > 0);
     }
-    assert_eq!(filenav_i18n::epoch(), start + 200);
-    assert_eq!(filenav_i18n::current().lang(), &lang("ru"));
+    assert_eq!(urfin_i18n::epoch(), start + 200);
+    assert_eq!(urfin_i18n::current().lang(), &lang("ru"));
     // Пользовательский каталог сохраняется при смене языка.
-    assert_eq!(filenav_i18n::tr!("user-key"), "свой");
+    assert_eq!(urfin_i18n::tr!("user-key"), "свой");
 }
 
 #[test]

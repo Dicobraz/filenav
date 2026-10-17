@@ -5,8 +5,8 @@
 //! `type.archive`, исполняемые → `type.exec`.
 
 use egui::Color32;
-use filenav_core::{Attrs, ConfigWarning, Entry, EntryKind, Mask};
 use rustc_hash::FxHashMap;
+use urfin_core::{Attrs, ConfigWarning, Entry, EntryKind, Mask};
 
 use crate::config::ColorRule;
 use crate::tokens::{Role, Tokens, parse_color};

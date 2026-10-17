@@ -1,6 +1,6 @@
 [package]
-name = "filenav-term"
-description = "FileNav terminal and command line"
+name = "urfin-term"
+description = "Urfin terminal and command line"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

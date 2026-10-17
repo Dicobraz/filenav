@@ -4,7 +4,7 @@
 
 | # | Изменение |
 |---|---|
-| 1 | `unsafe` разрешён в `filenav-ui::sys` (Mica/DWM, свой заголовок с табами, чтение темы/акцента ОС). Зависимости: `windows-sys` (ui), `objc2`/`objc2-app-kit` (ui, macOS). Правило «unsafe только в sys» сохраняется |
+| 1 | `unsafe` разрешён в `urfin-ui::sys` (Mica/DWM, свой заголовок с табами, чтение темы/акцента ОС). Зависимости: `windows-sys` (ui), `objc2`/`objc2-app-kit` (ui, macOS). Правило «unsafe только в sys» сохраняется |
 | 2 | IME включён в Cmdline, Terminal и оверлеях с вводом текста (rename, ввод пути, quick search, черновики операций). Уточняет v3 №13 |
 | 3 | Ресурсы: вшиты JetBrains Mono (OFL; терминал/hex/cmdline) и подмножество Fluent System Icons (MIT) для macOS/Linux/Win10. Segoe UI Variable и Segoe Fluent Icons — только с диска ОС |
 | 4 | v3 №12 закрыт: моно-шрифт — JetBrains Mono |

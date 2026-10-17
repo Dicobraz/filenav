@@ -5,8 +5,8 @@
 use std::sync::atomic::Ordering;
 
 use egui::{Align2, Color32, Rect, Sense};
-use filenav_core::{AppState, Command, Side};
-use filenav_i18n::I18n;
+use urfin_core::{AppState, Command, Side};
+use urfin_i18n::I18n;
 
 use crate::chrome::{ChromeHandle, PxRect, TitleLayout};
 use crate::fonts::{Font, FontSet};

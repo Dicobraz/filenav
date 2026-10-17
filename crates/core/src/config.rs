@@ -94,7 +94,7 @@ impl Default for PanelsCfg {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LogCfg {
-    /// `error | warn | info | debug | trace` или фильтр `tracing` (`FILENAV_LOG` важнее).
+    /// `error | warn | info | debug | trace` или фильтр `tracing` (`URFIN_LOG` важнее).
     pub level: CompactString,
     /// Сколько дневных файлов лога хранить.
     pub keep_files: u16,
@@ -137,7 +137,7 @@ impl fmt::Display for ConfigWarning {
 }
 
 /// Шаблон `config.toml` по умолчанию; разбирается ровно в `Config::default()`.
-pub const DEFAULT_TEMPLATE: &str = r#"# FileNav settings. The app only reads this file; edit it and run
+pub const DEFAULT_TEMPLATE: &str = r#"# Urfin settings. The app only reads this file; edit it and run
 # "Reload configuration" (app.reload_config) or restart.
 # Unknown sections are kept for other components ([ui], [keymap], [vfs], [ops], [term], [viewer]).
 
@@ -174,7 +174,7 @@ cpu_threads = 0
 msg_capacity = 1024
 
 [log]
-# error | warn | info | debug | trace. The FILENAV_LOG environment variable wins.
+# error | warn | info | debug | trace. The URFIN_LOG environment variable wins.
 level = "info"
 # Daily log files to keep.
 keep_files = 7

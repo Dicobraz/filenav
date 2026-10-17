@@ -9,7 +9,7 @@
 | 2 | `Focus::Editor`: IME вкл; keymap поглощает только `editor` + `global`, остальное — виджету. `Focus::Viewer`: IME выкл | S7-2 |
 | 3 | Слои окна: терминал → панели → cmdline → вьювер/редактор (S7) → оверлеи. Quick view рисует `ui::view::quick`; `PreviewProvider` из S2-18 снимается | S7-3, уточняет v3 №11 |
 | 4 | **Ввод редактора — `ViewInbox`** (очередь UI→handler, разбирается в начале pump). Набор текста не идёт через Command bus; `Value::Text` не вводим | S7-4 |
-| 5 | `unsafe` дополнительно разрешён в `filenav-view::sys` (mmap, ReplaceFileW) и `filenav-app::sys` (хук `KeyNotes`, меню macOS). Итого sys-модули: vfs, ops, term, ui, view, app | S7-5, вопрос пакета |
+| 5 | `unsafe` дополнительно разрешён в `urfin-view::sys` (mmap, ReplaceFileW) и `urfin-app::sys` (хук `KeyNotes`, меню macOS). Итого sys-модули: vfs, ops, term, ui, view, app | S7-5, вопрос пакета |
 | 6 | `MsgSink::poke()` и `Runtime::waker() -> Arc<dyn Waker>` — через общий `WakeFlag` (сигнатуры из TASKS-M0 утверждены); `Args::side(&self, k) -> Option<SideRef>` (`Left\|Right\|Active\|Passive`) — публичный API core | вопрос пакета, v3 №5/№7 |
 | 7 | `PromptSpec.secret: bool` — ввод маскируется, значение никогда не логируется, не попадает в историю/сессию | S8-5 |
 | 8 | `Location`: глубина `outer` ≤ 8; `>>` в компонентах экранируется в `to_uri`; схемы `search:` и `cmp:` в сессии не сохраняются (таб восстанавливается к последнему реальному каталогу) | S8-6 |
@@ -21,8 +21,8 @@
 ## VFS / ops / новые крейты
 | # | Изменение | Откуда |
 |---|---|---|
-| 13 | Новые крейты: `filenav-search`, `filenav-arc` (S8), `filenav-testdata` (dev, S9; `gen_tree` из S4-11 переезжает сюда). Фаза 3: `filenav-net` | S8-1, S9-1 |
-| 14 | Общий обходчик `filenav_vfs::walk` (work-stealing поверх `Vfs::list`) — владелец S4; используют S4 `dir_size`, S5 (не-локальные источники), S8 | S8-2 |
+| 13 | Новые крейты: `urfin-search`, `urfin-arc` (S8), `urfin-testdata` (dev, S9; `gen_tree` из S4-11 переезжает сюда). Фаза 3: `urfin-net` | S8-1, S9-1 |
+| 14 | Общий обходчик `urfin_vfs::walk` (work-stealing поверх `Vfs::list`) — владелец S4; используют S4 `dir_size`, S5 (не-локальные источники), S8 | S8-2 |
 | 15 | Trait `Vfs` расширяется: `resolve(base, item)`, `extract_plan` + `ExtractStream`, `Caps::{READ_ONLY, SEQUENTIAL, VIRTUAL}`; фаза 3 — `writer() -> VfsWriteTxn`. Владелец trait — S4 | S8-3 |
 | 16 | S5: `Engine::Vfs` для не-локального источника (dest в M5a — только local); `ops.move` из `READ_ONLY` → черновик с предложением копирования | S8-4 |
 | 17 | `viewer.open { pos?, line? }`; файлы из архивов — через `open_read` или спилл во временный файл | S8-8 |
@@ -35,8 +35,8 @@
 
 ## Зависимости и политика
 - Одобрено: memmap2 0.9, encoding_rs 0.8, chardetng 1.0, memchr 2.8, regex-automata 0.4, regex-syntax 0.8, ropey 1.6, regex-cursor 0.1.5, unicode-segmentation 1.12, zip 9, sevenz-rust2 0.24, grep-searcher/grep-regex, ignore (только gitignore), tracing-tracy, winresource. deny.toml: allow BSD-3-Clause. `unrar` — под feature, исключение `LicenseRef-UnRAR` — после решения владельца №37.
-- Датасеты S7 V1–V6 добавляются в `filenav-testdata` (S9).
+- Датасеты S7 V1–V6 добавляются в `urfin-testdata` (S9).
 - **Пороги регрессий (единые, отменяют расхождения S2/S5):** CI — 3% по инструкциям (gungraun) и аллокациям, 20% A/B по времени на одном раннере; стенд — 10% при CV ≤ 5%. Правило `perf-evidence`: PR в горячие пути vfs/ops/term/ui-render требует JSON прогона стенда в `docs/perf/runs/`.
-- Бюджет «бинарь < 15 МБ» — только `filenav.exe`; DLL ConPTY/OpenConsole не входят.
+- Бюджет «бинарь < 15 МБ» — только `urfin.exe`; DLL ConPTY/OpenConsole не входят.
 - Заголовки PR — Conventional Commits (`feat(core): …`).
 - До RC закрыть решения №5 (a11y) и №15 ($Recycle.Bin). Идентификаторы (издатель, winget ID, bundle id, UpgradeCode) — до S9-17, см. решение владельца.

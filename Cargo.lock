@@ -1007,136 +1007,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b97b65636e5b9ef369943878ac74335ba1c55c1cb6adbf1e2c293c624248d693"
 
 [[package]]
-name = "filenav-app"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "eframe",
- "egui-wgpu",
- "filenav-core",
- "filenav-i18n",
- "filenav-ui",
- "filenav-vfs",
- "raw-window-handle",
- "serde",
- "serde_json",
- "tempfile",
- "tracing",
- "tracing-appender",
- "tracing-subscriber",
- "wgpu",
- "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "filenav-arc"
-version = "0.1.0"
-
-[[package]]
-name = "filenav-core"
-version = "0.1.0"
-dependencies = [
- "compact_str",
- "criterion",
- "crossbeam-channel",
- "dirs",
- "filenav-i18n",
- "insta",
- "proptest",
- "rayon",
- "rustc-hash 2.1.3",
- "serde",
- "smallvec",
- "tempfile",
- "thiserror 2.0.21",
- "toml",
- "tracing",
-]
-
-[[package]]
-name = "filenav-i18n"
-version = "0.1.0"
-dependencies = [
- "fluent-bundle",
- "fluent-syntax",
- "insta",
- "jiff",
- "proptest",
- "sys-locale",
- "tempfile",
- "thiserror 2.0.21",
- "tracing",
- "tracing-subscriber",
- "unic-langid",
-]
-
-[[package]]
-name = "filenav-keymap"
-version = "0.1.0"
-
-[[package]]
-name = "filenav-ops"
-version = "0.1.0"
-
-[[package]]
-name = "filenav-search"
-version = "0.1.0"
-
-[[package]]
-name = "filenav-term"
-version = "0.1.0"
-
-[[package]]
-name = "filenav-testdata"
-version = "0.1.0"
-
-[[package]]
-name = "filenav-ui"
-version = "0.1.0"
-dependencies = [
- "compact_str",
- "criterion",
- "egui",
- "filenav-core",
- "filenav-i18n",
- "filenav-vfs",
- "insta",
- "jiff",
- "proptest",
- "raw-window-handle",
- "rustc-hash 2.1.3",
- "serde",
- "smallvec",
- "tempfile",
- "toml",
- "tracing",
- "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "filenav-vfs"
-version = "0.1.0"
-dependencies = [
- "compact_str",
- "criterion",
- "crossbeam-channel",
- "filenav-core",
- "proptest",
- "rayon",
- "rustc-hash 2.1.3",
- "serde",
- "smallvec",
- "tempfile",
- "thiserror 2.0.21",
- "tracing",
- "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "filenav-view"
-version = "0.1.0"
-
-[[package]]
 name = "find-msvc-tools"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3410,6 +3280,137 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4ac048d71ede7ee76d585517add45da530660ef4390e49b098733c6e897f254"
 
 [[package]]
+name = "urfin-app"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "eframe",
+ "egui-wgpu",
+ "raw-window-handle",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+ "urfin-core",
+ "urfin-i18n",
+ "urfin-ui",
+ "urfin-vfs",
+ "wgpu",
+ "windows-sys 0.61.2",
+ "winresource",
+]
+
+[[package]]
+name = "urfin-arc"
+version = "0.1.0"
+
+[[package]]
+name = "urfin-core"
+version = "0.1.0"
+dependencies = [
+ "compact_str",
+ "criterion",
+ "crossbeam-channel",
+ "dirs",
+ "insta",
+ "proptest",
+ "rayon",
+ "rustc-hash 2.1.3",
+ "serde",
+ "smallvec",
+ "tempfile",
+ "thiserror 2.0.21",
+ "toml",
+ "tracing",
+ "urfin-i18n",
+]
+
+[[package]]
+name = "urfin-i18n"
+version = "0.1.0"
+dependencies = [
+ "fluent-bundle",
+ "fluent-syntax",
+ "insta",
+ "jiff",
+ "proptest",
+ "sys-locale",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tracing",
+ "tracing-subscriber",
+ "unic-langid",
+]
+
+[[package]]
+name = "urfin-keymap"
+version = "0.1.0"
+
+[[package]]
+name = "urfin-ops"
+version = "0.1.0"
+
+[[package]]
+name = "urfin-search"
+version = "0.1.0"
+
+[[package]]
+name = "urfin-term"
+version = "0.1.0"
+
+[[package]]
+name = "urfin-testdata"
+version = "0.1.0"
+
+[[package]]
+name = "urfin-ui"
+version = "0.1.0"
+dependencies = [
+ "compact_str",
+ "criterion",
+ "egui",
+ "insta",
+ "jiff",
+ "proptest",
+ "raw-window-handle",
+ "rustc-hash 2.1.3",
+ "serde",
+ "smallvec",
+ "tempfile",
+ "toml",
+ "tracing",
+ "urfin-core",
+ "urfin-i18n",
+ "urfin-vfs",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "urfin-vfs"
+version = "0.1.0"
+dependencies = [
+ "compact_str",
+ "criterion",
+ "crossbeam-channel",
+ "proptest",
+ "rayon",
+ "rustc-hash 2.1.3",
+ "serde",
+ "smallvec",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tracing",
+ "urfin-core",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "urfin-view"
+version = "0.1.0"
+
+[[package]]
 name = "uuid"
 version = "1.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4160,6 +4161,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "winresource"
+version = "0.1.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2bc6d36480b829272a5bdabf08e6dca8004761c1da7e35efef800540c66221b"
+dependencies = [
+ "version_check",
 ]
 
 [[package]]

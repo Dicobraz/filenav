@@ -1,6 +1,6 @@
 [package]
-name = "filenav-ops"
-description = "FileNav file operations engine"
+name = "urfin-ops"
+description = "Urfin file operations engine"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

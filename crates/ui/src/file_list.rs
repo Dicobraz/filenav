@@ -11,9 +11,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use egui::{Align2, CursorIcon, Pos2, Rect, Sense, pos2, vec2};
-use filenav_core::{Command, ListingStatus, Row, Side, SortKey, Tab, TabId, ViewMode};
-use filenav_i18n::{FluentArgs, I18n};
 use rustc_hash::FxHashMap;
+use urfin_core::{Command, ListingStatus, Row, Side, SortKey, Tab, TabId, ViewMode};
+use urfin_i18n::{FluentArgs, I18n};
 
 use crate::cache::RowCache;
 use crate::canvas::Canvas;
@@ -246,7 +246,7 @@ pub(crate) fn show(
         } else {
             t.selection.bytes()
         };
-        let exact = filenav_i18n::fmt::bytes_exact_with(cx.i18n, bytes);
+        let exact = urfin_i18n::fmt::bytes_exact_with(cx.i18n, bytes);
         text::tooltip(&foot, cx.i18n, &Tx::user(exact));
     }
 }

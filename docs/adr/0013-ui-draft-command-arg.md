@@ -6,7 +6,7 @@
 
 S2 §3 задаёт команду строки ввода аргумента: `ui.draft {cmd:Str, arg:Str, init?:Str}` (F7 → `ui.draft cmd=ops.mkdir arg=name`).
 
-Но имя `cmd` занято. S3 §2.2 резервирует ключи `cmd` и `_repeat` в таблице привязки keymap (`{ cmd = "panel.sort", key = "mtime" }`), и core это уже проверяет: `valid_key` в `filenav-core` (S1) отвергает аргумент `cmd` у любой команды. Поэтому команду в виде из S2 §3 нельзя ни разобрать из текста (`Command::parse`), ни описать в keymap.
+Но имя `cmd` занято. S3 §2.2 резервирует ключи `cmd` и `_repeat` в таблице привязки keymap (`{ cmd = "panel.sort", key = "mtime" }`), и core это уже проверяет: `valid_key` в `urfin-core` (S1) отвергает аргумент `cmd` у любой команды. Поэтому команду в виде из S2 §3 нельзя ни разобрать из текста (`Command::parse`), ни описать в keymap.
 
 ## Решение
 

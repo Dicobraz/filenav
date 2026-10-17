@@ -9,11 +9,11 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use filenav_core::{
+use serde::Deserialize;
+use urfin_core::{
     ArrangeReq, ArrangeSpec, Entry, ListingService, ListingUpdate, LoadReq, Runtime, SortKey,
     TaskCx, listing_msg,
 };
-use serde::Deserialize;
 
 use crate::api::{ListOpts, VfsError, VfsRegistry};
 use crate::batch::{Batcher, Resort};
@@ -88,7 +88,7 @@ impl ListingService for VfsListing {
         let reg = Arc::clone(&self.reg);
         let opts = self.cfg.arrange_opts();
         rt.spawn(
-            filenav_core::Lane::Interactive,
+            urfin_core::Lane::Interactive,
             "vfs.list",
             req.cancel.clone(),
             move |cx| load(&reg, &req, opts, &cx),

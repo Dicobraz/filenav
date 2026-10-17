@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 use std::sync::mpsc;
 
-use filenav_core::ConfigWarning;
+use urfin_core::ConfigWarning;
 
 use crate::accent::AccentPalette;
 
@@ -125,7 +125,7 @@ pub fn probe_system() -> SysProbe {
 fn font_warning(fonts: &FontFiles) -> Option<ConfigWarning> {
     fonts.ui.is_empty().then(|| ConfigWarning {
         key: "ui.fonts".to_owned(),
-        msg: filenav_i18n::current().get("ui-warn-no-system-font"),
+        msg: urfin_i18n::current().get("ui-warn-no-system-font"),
     })
 }
 

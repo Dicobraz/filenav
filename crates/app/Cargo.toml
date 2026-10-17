@@ -1,6 +1,6 @@
 [package]
-name = "filenav-app"
-description = "FileNav: fast dual-pane file manager"
+name = "urfin-app"
+description = "Urfin: fast dual-pane file manager"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,7 +9,7 @@ authors.workspace = true
 repository.workspace = true
 
 [[bin]]
-name = "filenav"
+name = "urfin"
 path = "src/main.rs"
 
 
@@ -17,10 +17,10 @@ path = "src/main.rs"
 anyhow.workspace = true
 eframe.workspace = true
 # FakeListing: настоящий листинг ФС — S4.
-filenav-core = { workspace = true, features = ["fake"] }
-filenav-i18n.workspace = true
-filenav-ui.workspace = true
-filenav-vfs.workspace = true
+urfin-core = { workspace = true, features = ["fake"] }
+urfin-i18n.workspace = true
+urfin-ui.workspace = true
+urfin-vfs.workspace = true
 raw-window-handle.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -53,6 +53,10 @@ windows-sys = { workspace = true, features = [
     "Win32_System_Threading",
     "Win32_UI_WindowsAndMessaging",
 ] }
+
+# Ресурсы exe (ProductName, CompanyName) — build.rs, только при сборке под Windows.
+[target.'cfg(windows)'.build-dependencies]
+winresource.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -1,4 +1,4 @@
-# Sizes and dates (filenav_i18n::fmt). Decimal and group separators come from
+# Sizes and dates (urfin_i18n::fmt). Decimal and group separators come from
 # the language (fmt::NumFmt), not from here.
 fmt-unit-b = B
 fmt-unit-kb = KB

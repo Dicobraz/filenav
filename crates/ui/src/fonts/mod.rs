@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use egui::epaint::text::{FontData, FontDefinitions, FontInsert, FontPriority, InsertFontFamily};
 use egui::{Color32, FontFamily, FontId};
-use filenav_core::ConfigWarning;
+use urfin_core::ConfigWarning;
 
 use crate::config::UiCfg;
 use crate::sys::FontFiles;
@@ -210,7 +210,7 @@ pub fn install(ctx: &egui::Context, loaded: &LoadedFonts) -> FontSet {
         };
         let mut chain = Vec::new();
         if let Some(data) = face {
-            let key = format!("filenav-{family}");
+            let key = format!("urfin-{family}");
             add(&mut defs, &key, data);
             chain.push(key);
         }
@@ -222,16 +222,16 @@ pub fn install(ctx: &egui::Context, loaded: &LoadedFonts) -> FontSet {
         defs.families.insert(FontFamily::Proportional, ui);
     }
     if let Some(mono) = &loaded.mono {
-        add(&mut defs, "filenav-mono", mono.data(&[]));
+        add(&mut defs, "urfin-mono", mono.data(&[]));
         defs.families
             .entry(FontFamily::Monospace)
             .or_default()
-            .insert(0, "filenav-mono".to_owned());
+            .insert(0, "urfin-mono".to_owned());
     }
     let mut icons = Vec::new();
     if let Some(face) = &loaded.icons {
-        add(&mut defs, "filenav-icons", face.data(&[]));
-        icons.push("filenav-icons".to_owned());
+        add(&mut defs, "urfin-icons", face.data(&[]));
+        icons.push("urfin-icons".to_owned());
     }
     icons.extend(base_prop.iter().cloned());
     defs.families.insert(FontFamily::Name(ICONS.into()), icons);
@@ -263,7 +263,7 @@ pub fn add_fallbacks(ctx: &egui::Context, fonts: &[FallbackFont]) {
     ];
     for FallbackFont(face) in fonts {
         ctx.add_font(FontInsert::new(
-            &format!("filenav-fallback-{}", face.name),
+            &format!("urfin-fallback-{}", face.name),
             face.data(&[]),
             families
                 .iter()

@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use egui::{Rect, pos2, vec2};
-use filenav_core::{Attrs, Entry, EntryKind, Gen, Listing, ListingStatus, Location, Tab};
+use urfin_core::{Attrs, Entry, EntryKind, Gen, Listing, ListingStatus, Location, Tab};
 
 use super::*;
 use crate::canvas::RecordCanvas;
@@ -22,9 +22,9 @@ fn entry(name: &str, size: u64, attrs: u32, kind: EntryKind, minutes: i64) -> En
 
 /// Каталог мокапа: фиксированный путь ОС; в снапшоте — `<dir>`.
 #[cfg(windows)]
-const MOCK_DIR: &str = r"C:\Projects\filenav";
+const MOCK_DIR: &str = r"C:\Projects\urfin";
 #[cfg(not(windows))]
-const MOCK_DIR: &str = "/projects/filenav";
+const MOCK_DIR: &str = "/projects/urfin";
 
 /// Снапшот без пути ОС — одинаков на всех платформах (в YAML `\` экранирован).
 fn redact(yaml: &str) -> String {
@@ -93,7 +93,7 @@ fn mockup_tab() -> Tab {
 
 struct Fx {
     ctx: egui::Context,
-    i18n: filenav_i18n::I18n,
+    i18n: urfin_i18n::I18n,
     tokens: Tokens,
     fonts: FontSet,
     hl: Highlighter,
@@ -105,7 +105,7 @@ struct Fx {
 
 impl Fx {
     fn new() -> Self {
-        let i18n = filenav_i18n::Catalog::embedded()
+        let i18n = urfin_i18n::Catalog::embedded()
             .build(&"ru".parse().unwrap())
             .0;
         let fmt = FmtCfg::new(&i18n, false, Zone::utc());

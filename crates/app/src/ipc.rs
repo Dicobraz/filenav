@@ -2,8 +2,8 @@
 //! `{argv, cwd}` и выходит; первый открывает пути новыми табами и выходит на
 //! передний план. `--new-instance` — отдельный экземпляр (отладка).
 //!
-//! Windows: mutex `Local\filenav-<sid>-<key>` + named pipe
-//! `\\.\pipe\filenav-<sid>-<key>`. Unix: `flock` на `state_dir/instance.lock` +
+//! Windows: mutex `Local\urfin-<sid>-<key>` + named pipe
+//! `\\.\pipe\urfin-<sid>-<key>`. Unix: `flock` на `state_dir/instance.lock` +
 //! unix socket. `key` — хэш `state_dir`: portable-копии — разные экземпляры.
 //! Lock держит ОС: умерший процесс его отпускает; старый сокет удаляет новый
 //! первый экземпляр.
@@ -14,8 +14,8 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
-use filenav_core::{Command, Location, Paths};
 use serde::{Deserialize, Serialize};
+use urfin_core::{Command, Location, Paths};
 
 /// Запрос больше этого не читается (защита от мусора в канале).
 const MAX_REQUEST: u64 = 64 * 1024;
@@ -210,7 +210,7 @@ mod imp {
     use std::os::windows::io::OwnedHandle;
     use std::sync::OnceLock;
 
-    use filenav_core::Paths;
+    use urfin_core::Paths;
 
     use crate::sys::ipc_win as sys;
 
@@ -221,7 +221,7 @@ mod imp {
     fn base(key: &str) -> String {
         static SID: OnceLock<String> = OnceLock::new();
         let sid = SID.get_or_init(|| sys::user_sid().unwrap_or_else(|| "user".into()));
-        format!("filenav-{sid}-{key}")
+        format!("urfin-{sid}-{key}")
     }
 
     fn pipe_name(key: &str) -> String {
@@ -250,7 +250,7 @@ mod imp {
     use std::os::unix::net::{UnixListener, UnixStream};
     use std::path::PathBuf;
 
-    use filenav_core::Paths;
+    use urfin_core::Paths;
 
     pub struct Lock {
         _file: File,
@@ -264,7 +264,7 @@ mod imp {
             .filter(|d| d.is_dir())
             .map_or_else(
                 || paths.state_dir.join("instance.sock"),
-                |d| d.join(format!("filenav-{key}.sock")),
+                |d| d.join(format!("urfin-{key}.sock")),
             )
     }
 

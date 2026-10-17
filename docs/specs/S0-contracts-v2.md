@@ -15,7 +15,7 @@
 | 9 | `Progress`: `phase: AtomicU8` (`Phase { Scan, Transfer, Verify, Finalize, Recover }`), `total_final: AtomicBool`, `parked: AtomicU32`; те же поля в `ProgressSnap` | S5-3 | S1-09 |
 | 10 | `AppState.ext: Extensions` — typemap `get::<T>() / get_mut::<T>() / insert`; мутации только в Handler/Msg; ключи — типы своих крейтов | S5-4 | S1-06 |
 | 11 | `Value::List(Arc<[Value]>)`; `Args::list(k)`, `Args::locs(k)`; текстовая форма `src=["a","b"]` | S5-5 | S1-04 |
-| 12 | `VolumeInfo` (том, носитель SSD/HDD/NVMe/USB/Net, ФС, capabilities: reflink, case_sensitive, trash, free) — модуль `filenav_vfs::volume`; API — S4, sys-реализация — задача S5-02 | S5-6 | — (S4/S5) |
+| 12 | `VolumeInfo` (том, носитель SSD/HDD/NVMe/USB/Net, ФС, capabilities: reflink, case_sensitive, trash, free) — модуль `urfin_vfs::volume`; API — S4, sys-реализация — задача S5-02 | S5-6 | — (S4/S5) |
 | 13 | `Handler::on_quit(&mut self, cx) -> QuitDecision { Allow, Veto(PromptSpec) }` (default Allow); `app.quit` опрашивает все handlers до `shutdown` | S5-7 | S1-07 |
 | 14 | Core дедуплицирует `panel.refresh` по tab в пределах pump. Watcher: debounce 50 мс / max 250 мс (S4). Ops шлёт refresh ≤1/с на таб | S5-8 | S1-07 |
 | 15 | `Banner.actions: SmallVec<[(CompactString, Command); 3]>` вместо `action` | S5-9 | S1-06 |
