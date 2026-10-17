@@ -21,6 +21,8 @@ use crate::tokens::{Role, Tokens};
 pub trait Canvas {
     /// Регион раскладки (для записи; в egui ничего не рисует).
     fn region(&mut self, name: &'static str, r: Rect);
+    /// Дальнейшее рисование — только внутри `r` (прокручиваемые полосы).
+    fn clip(&mut self, r: Rect);
     fn rect(&mut self, r: Rect, role: Role, radius: CornerRadius);
     fn stroke(&mut self, r: Rect, role: Role, radius: CornerRadius, width: f32);
     /// Текст роли `font` кеглем `size`; возвращает занятый прямоугольник.
@@ -67,6 +69,10 @@ impl std::fmt::Debug for EguiCanvas<'_> {
 
 impl Canvas for EguiCanvas<'_> {
     fn region(&mut self, _name: &'static str, _r: Rect) {}
+
+    fn clip(&mut self, r: Rect) {
+        self.painter.set_clip_rect(r);
+    }
 
     fn rect(&mut self, r: Rect, role: Role, radius: CornerRadius) {
         self.painter.rect_filled(r, radius, self.tokens.c(role));
@@ -203,6 +209,10 @@ impl<'a> RecordCanvas<'a> {
 impl Canvas for RecordCanvas<'_> {
     fn region(&mut self, name: &'static str, r: Rect) {
         self.push("region", r, None, Some(name.to_owned()));
+    }
+
+    fn clip(&mut self, r: Rect) {
+        self.push("clip", r, None, None);
     }
 
     fn rect(&mut self, r: Rect, role: Role, _radius: CornerRadius) {
