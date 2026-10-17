@@ -8,6 +8,7 @@ fn frame(ctx: &Context) {
     out.textures_delta.clear();
 }
 
+#[cfg(windows)]
 fn width(ctx: &Context, id: &FontId, text: &str, slot: Option<f32>) -> f32 {
     match slot {
         Some(slot) => tabular_layout(text, slot, |c| ctx.fonts_mut(|f| f.glyph_width(id, c))).1,
