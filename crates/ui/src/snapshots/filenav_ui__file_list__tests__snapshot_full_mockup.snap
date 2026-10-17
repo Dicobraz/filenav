@@ -1,8 +1,8 @@
 ---
 source: crates/ui/src/file_list_tests.rs
-expression: yaml
+expression: redact(&yaml)
 ---
-- text: [24, 53, 568, 14] text.primary "C:\\Users\\A81F7~1.ANT\\AppData\\Local\\Temp\\filenav"
+- text: [24, 53, 568, 14] text.primary "<dir>"
 - text: [32, 84, 30, 12] text.secondary "Имя ˄"
 - text: [436, 84, 36, 12] text.secondary "Размер"
 - text: [480, 84, 42, 12] text.secondary "Изменён"

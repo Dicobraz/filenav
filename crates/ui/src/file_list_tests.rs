@@ -20,6 +20,17 @@ fn entry(name: &str, size: u64, attrs: u32, kind: EntryKind, minutes: i64) -> En
     }
 }
 
+/// Каталог мокапа: фиксированный путь ОС; в снапшоте — `<dir>`.
+#[cfg(windows)]
+const MOCK_DIR: &str = r"C:\Projects\filenav";
+#[cfg(not(windows))]
+const MOCK_DIR: &str = "/projects/filenav";
+
+/// Снапшот без пути ОС — одинаков на всех платформах (в YAML `\` экранирован).
+fn redact(yaml: &str) -> String {
+    yaml.replace(&MOCK_DIR.replace('\\', r"\\"), "<dir>")
+}
+
 /// Левая панель мокапа §2.1: каталоги, затем файлы; курсор на README.md, помечены
 /// Cargo.lock, Cargo.toml и deny.toml.
 #[allow(
@@ -62,10 +73,7 @@ fn mockup_tab() -> Tab {
         f("backup.7z", 1_024_000_000, 18_717),
     ];
     let n = u32::try_from(entries.len()).unwrap();
-    let mut t = Tab::new(
-        TabId(1),
-        Location::local(std::env::temp_dir().join("filenav")),
-    );
+    let mut t = Tab::new(TabId(1), Location::local(MOCK_DIR));
     t.listing = Listing::with_entries(entries, (0..n).collect(), Gen(1));
     t.listing.status = ListingStatus::Complete;
     for name in ["Cargo.lock", "Cargo.toml", "deny.toml"] {
@@ -154,7 +162,7 @@ fn snapshot_full_mockup() {
     let t = mockup_tab();
     fx.frame(&t, true, Vec::new());
     let (yaml, _) = fx.frame(&t, true, Vec::new());
-    insta::assert_snapshot!(yaml);
+    insta::assert_snapshot!(redact(&yaml));
 }
 
 /// Wide §2.2: имя на всю ширину и размер, без даты.
@@ -166,7 +174,7 @@ fn snapshot_wide() {
     fx.frame(&t, false, Vec::new());
     let (yaml, _) = fx.frame(&t, false, Vec::new());
     assert!(!yaml.contains("Изменён"));
-    insta::assert_snapshot!(yaml);
+    insta::assert_snapshot!(redact(&yaml));
 }
 
 #[test]
