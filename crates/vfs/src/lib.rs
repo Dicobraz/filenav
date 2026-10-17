@@ -1,6 +1,12 @@
-//! FileNav — VFS: листинг, локальный бэкенд, watcher, сортировка.
-//!
-//! Заглушка S1-01, владелец — S4.
+//! FileNav — VFS (S4): адрес `Location`, trait `Vfs`, реестр backend'ов,
+//! локальная ФС. Листинг для core (`ListingService`), сортировка, watcher и кэш —
+//! S4-03 и дальше.
+
+mod api;
+mod local;
+
+pub use api::*;
+pub use local::LocalFs;
 
 /// Версия крейта из `Cargo.toml`.
 pub fn version() -> &'static str {

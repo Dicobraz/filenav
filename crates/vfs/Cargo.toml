@@ -8,5 +8,15 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 
+[dependencies]
+compact_str.workspace = true
+crossbeam-channel.workspace = true
+filenav-core.workspace = true
+rustc-hash.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
 [lints]
 workspace = true
