@@ -8,7 +8,7 @@ use filenav_core::{
 };
 
 use super::*;
-use crate::panel::{HOLD, hold_left, lines};
+use crate::panel::{HOLD, hold_left};
 
 fn tab(names: &[&str]) -> Tab {
     // Путь с родителем на любой ОС: строка 0 — `..`.
@@ -59,13 +59,36 @@ fn lines_from_top_with_cursor() {
     t.cursor.top = 1;
     t.cursor.row = 2;
     let fmt = crate::fmt_cell::FmtCfg::new(&en(), false, crate::sys::Zone::utc());
-    let v = lines(&fmt, &crate::highlight::Highlighter::default(), &t, 2);
+    let hl = crate::highlight::Highlighter::default();
+    let ctx = egui::Context::default();
+    let mut cache = crate::cache::RowCache::new();
+    let mut v = Vec::new();
+    let mut full = ctx.run_ui(egui::RawInput::default(), |_| {
+        let cx = crate::panel::LineCx {
+            ctx: &ctx,
+            fmt: &fmt,
+            hl: &hl,
+            font: egui::FontId::proportional(14.0),
+            name_w: 300.0,
+            digit_slot: None,
+        };
+        crate::panel::fill_lines(&mut v, &mut cache, &cx, &t, 2);
+    });
+    full.textures_delta.clear();
     let got: Vec<_> = v
         .iter()
-        .map(|l| (l.name.as_str(), l.size.as_str(), l.cursor))
+        .map(|l| {
+            let size = l.size.as_ref().map(|s| s.0.text().to_owned());
+            (l.name.text().to_owned(), size, l.cursor, l.row)
+        })
         .collect();
-    assert_eq!(got, [("a", "2.0 KB", false), ("b", "2.0 KB", true)]);
-    assert_eq!(v[1].click, Command::new("panel.cursor.to").arg("name", "b"));
+    assert_eq!(
+        got,
+        [
+            ("a".to_owned(), Some("2.0 KB".to_owned()), false, 1),
+            ("b".to_owned(), Some("2.0 KB".to_owned()), true, 2)
+        ]
+    );
 }
 
 #[test]

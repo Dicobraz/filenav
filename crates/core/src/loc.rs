@@ -63,6 +63,14 @@ impl Location {
     }
 
     /// Родительский каталог; у корня контейнера — сам контейнер (`outer`).
+    /// Есть ли [`Location::parent`] — без построения пути (строки списка, каждый кадр).
+    pub fn has_parent(&self) -> bool {
+        match self.path.parent() {
+            Some(p) if !p.as_os_str().is_empty() => true,
+            _ => self.outer.is_some(),
+        }
+    }
+
     pub fn parent(&self) -> Option<Location> {
         match self.path.parent() {
             Some(p) if !p.as_os_str().is_empty() => Some(Location {
@@ -580,6 +588,29 @@ mod tests {
             prop::collection::vec(component(), 0..4),
         )
             .prop_map(|(b, comps)| (b.to_owned(), format!("/{}", comps.join("/"))))
+    }
+
+    #[test]
+    fn has_parent_matches_parent() {
+        let root = if cfg!(windows) { r"C:\" } else { "/" };
+        let nested = if cfg!(windows) { r"C:" } else { "/a/b" };
+        let locs = [
+            Location::local(PathBuf::from(root)),
+            Location::local(PathBuf::from(nested)),
+            inside(
+                Location::local(PathBuf::from(nested).join("x.zip")),
+                "zip",
+                "/",
+            ),
+            inside(
+                Location::local(PathBuf::from(nested).join("x.zip")),
+                "zip",
+                "/d",
+            ),
+        ];
+        for l in locs {
+            assert_eq!(l.has_parent(), l.parent().is_some(), "{l:?}");
+        }
     }
 
     proptest! {

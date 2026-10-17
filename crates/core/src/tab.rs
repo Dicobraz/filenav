@@ -262,7 +262,7 @@ impl Tab {
 
     /// `..` есть везде, кроме корня (у корня контейнера она ведёт в `outer`).
     pub fn has_parent_row(&self) -> bool {
-        self.loc.parent().is_some()
+        self.loc.has_parent()
     }
 
     /// `..` (если есть) + видимые элементы.
