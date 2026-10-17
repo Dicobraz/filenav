@@ -356,3 +356,108 @@ fn commands_i18n() {
     assert!(c.registry().iter().count() > 60);
     assert_eq!(missing, Vec::<String>::new());
 }
+
+fn headless_frame(
+    ctx: &egui::Context,
+    ui: &mut FileNavUi,
+    c: &Core,
+    events: Vec<egui::Event>,
+    out: &mut Vec<Command>,
+) {
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1200.0, 760.0),
+        )),
+        events,
+        ..Default::default()
+    };
+    let mut full = ctx.run_ui(input, |root| ui.show(root, c.state(), &[], out));
+    full.textures_delta.clear();
+}
+
+fn new_ui(c: &Core) -> FileNavUi {
+    FileNavUi::new(
+        c.registry(),
+        &sys::SysProbe::default(),
+        &UiCfg::default(),
+        fonts::FontSet::default(),
+    )
+}
+
+/// Деление колеса над левым списком — `panel.viewport top=3` (ручная проверка: колесо
+/// не работало — сглаженная дельта округлялась в ноль).
+#[test]
+fn mouse_wheel_scrolls_by_three_rows() {
+    let c = core();
+    let mut ui = new_ui(&c);
+    let ctx = egui::Context::default();
+    let mut out = Vec::new();
+    headless_frame(&ctx, &mut ui, &c, Vec::new(), &mut out);
+    out.clear();
+    let events = vec![
+        egui::Event::PointerMoved(egui::pos2(300.0, 300.0)),
+        egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Line,
+            delta: egui::vec2(0.0, -1.0),
+            modifiers: egui::Modifiers::NONE,
+            phase: egui::TouchPhase::Move,
+        },
+    ];
+    headless_frame(&ctx, &mut ui, &c, events, &mut out);
+    let scroll: Vec<_> = out
+        .iter()
+        .filter(|c| c.id.as_str() == "panel.viewport" && c.args.int("top").is_some())
+        .collect();
+    assert_eq!(scroll.len(), 1, "{out:?}");
+    assert_eq!(scroll[0].args.int("top"), Some(3));
+    assert_eq!(scroll[0].args.str("side"), Some("left"));
+}
+
+/// Пересоздание атласа шрифтов (смена шрифтов, переполнение) — `RowCache` размечает
+/// заново (ручная проверка: кракозябры при старте до разворота окна).
+#[test]
+fn font_atlas_recreate_resets_row_cache() {
+    let c = core();
+    let mut ui = new_ui(&c);
+    let ctx = egui::Context::default();
+    let mut out = Vec::new();
+    for _ in 0..3 {
+        headless_frame(&ctx, &mut ui, &c, Vec::new(), &mut out);
+    }
+    // Как прогрев при старте: атлас занят многими строками глифов.
+    let mut full = ctx.run_ui(egui::RawInput::default(), |ui| {
+        let text: String = ('!'..='~').chain('А'..='я').collect();
+        for size in [12.0, 20.0, 32.0, 48.0] {
+            let _ = ui.ctx().fonts_mut(|f| {
+                f.layout_no_wrap(
+                    text.clone(),
+                    egui::FontId::proportional(size),
+                    egui::Color32::WHITE,
+                )
+            });
+        }
+    });
+    full.textures_delta.clear();
+    headless_frame(&ctx, &mut ui, &c, Vec::new(), &mut out);
+    let (steady, _) = ui.row_cache_stats();
+    headless_frame(&ctx, &mut ui, &c, Vec::new(), &mut out);
+    assert_eq!(
+        ui.row_cache_stats().0.misses,
+        steady.misses,
+        "устойчивый кадр — попадания"
+    );
+    // Другие определения (те же egui пропускает): новый атлас.
+    let mut defs = egui::FontDefinitions::default();
+    if let Some(list) = defs.families.get_mut(&egui::FontFamily::Proportional) {
+        list.reverse();
+    }
+    ctx.set_fonts(defs);
+    for _ in 0..2 {
+        headless_frame(&ctx, &mut ui, &c, Vec::new(), &mut out);
+    }
+    assert!(
+        ui.row_cache_stats().0.misses > steady.misses,
+        "после новых шрифтов ячейки размечены заново"
+    );
+}
