@@ -180,6 +180,28 @@ impl KeyHints for FarStub {
     }
 }
 
+impl FarStub {
+    /// Все привязки заглушки: команда и сочетание (для реестра команд).
+    pub fn bindings() -> Vec<(Command, String)> {
+        let mut out = Vec::new();
+        for mods in [Mods::None, Mods::Shift, Mods::Ctrl, Mods::Alt] {
+            for (n, slot) in FAR[mods.idx()].iter().enumerate() {
+                if let Some((cmd, _)) = slot {
+                    let c = Command::parse(cmd).expect("stub command parses");
+                    out.push((c, format!("{}F{}", mods.prefix(), n + 1)));
+                }
+            }
+        }
+        for (cmd, key) in FAR_EXTRA {
+            out.push((
+                Command::parse(cmd).expect("stub command parses"),
+                (*key).to_owned(),
+            ));
+        }
+        out
+    }
+}
+
 /// Fluent-ключ команды: точки id → дефисы (`ops.copy` → `ops-copy`).
 pub fn key_part(id: &str) -> String {
     id.replace('.', "-")

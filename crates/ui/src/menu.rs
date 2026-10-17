@@ -10,7 +10,7 @@
 use compact_str::CompactString;
 use egui::{Align2, Pos2, Rect, Sense, pos2, vec2};
 use serde::Deserialize;
-use urfin_core::{Command, Side};
+use urfin_core::{Command, CommandRegistry, Side};
 use urfin_i18n::I18n;
 
 use crate::canvas::Canvas;
@@ -69,9 +69,13 @@ struct RawItem {
     sep: bool,
 }
 
-/// Разбор `menu.toml`. Пункт с незарегистрированной или неразборной командой скрыт,
+/// Разбор `menu.toml`. Команда пункта проверяется по реестру (docs/COMMANDS.md): id
+/// известен, аргументы описаны и нужного типа, обязательные есть. Иначе пункт скрыт,
 /// предупреждение — во втором значении (S2-14).
-pub fn parse(text: &str, registered: &[&str]) -> Result<(Vec<MenuDef>, Vec<String>), String> {
+pub fn parse(
+    text: &str,
+    registry: &CommandRegistry,
+) -> Result<(Vec<MenuDef>, Vec<String>), String> {
     let file: File = toml::from_str(text).map_err(|e| e.to_string())?;
     let mut warnings = Vec::new();
     let menus = file
@@ -103,8 +107,8 @@ pub fn parse(text: &str, registered: &[&str]) -> Result<(Vec<MenuDef>, Vec<Strin
                         continue;
                     }
                 };
-                if !registered.contains(&cmd.id.as_str()) {
-                    warnings.push(format!("menu {}: unknown command {}", m.id, cmd.id));
+                if let Err(e) = registry.validate(&cmd) {
+                    warnings.push(format!("menu {}: {text}: {e}", m.id));
                     continue;
                 }
                 let label = raw
@@ -127,6 +131,17 @@ pub fn parse(text: &str, registered: &[&str]) -> Result<(Vec<MenuDef>, Vec<Strin
         })
         .collect();
     Ok((menus, warnings))
+}
+
+/// Копия реестра (описания команд статические): UI держит её для проверки
+/// `menu.toml`, загруженного после старта.
+pub fn copy_registry(r: &CommandRegistry) -> CommandRegistry {
+    let mut copy = CommandRegistry::new();
+    for m in r.iter() {
+        // Id уже проверены при первой регистрации.
+        let _ = copy.register(std::slice::from_ref(m));
+    }
+    copy
 }
 
 /// Меню F9 открыто: id меню (`ui.menu menu=`), не меню breadcrumb.

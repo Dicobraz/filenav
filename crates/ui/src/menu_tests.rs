@@ -6,9 +6,9 @@ use crate::canvas::RecordCanvas;
 use crate::keybar::FarStub;
 use crate::tokens::Tokens;
 
-/// Id команд core и ui, как в приложении.
-fn registered() -> Vec<&'static str> {
-    crate::tests::registry_ids()
+/// Реестр команд core и ui, как в приложении.
+fn registered() -> urfin_core::CommandRegistry {
+    crate::tests::registry()
 }
 
 fn i18n() -> urfin_i18n::I18n {
@@ -56,13 +56,32 @@ items = [
     { sep = true },
 ]
 "#;
-    let (menus, warnings) = parse(text, &["sel.all", "sel.none"]).unwrap();
+    let (menus, warnings) = parse(text, &registered()).unwrap();
     assert_eq!(warnings.len(), 1);
     assert!(warnings[0].contains("no.such"));
     let items = &menus[0].items;
     assert_eq!(items.len(), 3, "{items:?}");
     assert!(matches!(items[1], Item::Sep));
-    assert!(parse("[[menu]]\nid = 1", &[]).is_err());
+    assert!(parse("[[menu]]\nid = 1", &registered()).is_err());
+}
+
+/// Аргументы проверяются по реестру: лишний, не того типа, без обязательного.
+#[test]
+fn bad_arguments_hide_the_item() {
+    let text = r#"
+[[menu]]
+id = "x"
+title = "menu-files"
+items = [
+    { cmd = "panel.sort bogus=1" },
+    { cmd = "ui.zoom delta=big" },
+    { cmd = "panel.view_mode" },
+    { cmd = "panel.sort key=size" },
+]
+"#;
+    let (menus, warnings) = parse(text, &registered()).unwrap();
+    assert_eq!(warnings.len(), 3, "{warnings:?}");
+    assert_eq!(menus[0].items.len(), 1);
 }
 
 #[test]
