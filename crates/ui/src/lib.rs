@@ -8,8 +8,10 @@
 
 pub mod accent;
 pub mod config;
+pub mod fonts;
 mod handler;
 pub mod highlight;
+pub mod icons;
 pub mod keybar;
 mod panel;
 pub mod state;
@@ -31,6 +33,7 @@ pub use handler::UiHandler;
 pub use state::{Draft, ThemeMode, UiState};
 
 use crate::config::UiCfg;
+use crate::fonts::{Font, FontSet};
 use crate::highlight::Highlighter;
 use crate::panel::{CardMemo, Shown};
 use crate::text::Tx;
@@ -61,15 +64,25 @@ pub struct FileNavUi {
     cfg_theme: ThemeMode,
     tokens: Tokens,
     highlighter: Highlighter,
+    fonts: FontSet,
+    /// Файлы fallback-шрифтов из probe (читаются в фоне после первого кадра).
+    font_files: sys::FontFiles,
+    fallback_rx: Option<mpsc::Receiver<Vec<fonts::FallbackFont>>>,
+    frames: u64,
     /// Применённые настройки вида: тема, масштаб, `look` ОС.
     applied: Option<(ThemeMode, u16, sys::Look)>,
 }
 
 impl FileNavUi {
     /// `registry` — команды всех handlers (keybar гасит незарегистрированные);
-    /// `probe` — [`sys::probe_system`]; `cfg` — секция `[ui]`. Предупреждения probe и
-    /// конфига показываются тостами.
-    pub fn new(registry: &CommandRegistry, probe: &sys::SysProbe, cfg: &UiCfg) -> Self {
+    /// `probe` — [`sys::probe_system`]; `cfg` — секция `[ui]`; `fonts` — [`fonts::install`]
+    /// (без него — шрифты egui). Предупреждения probe и конфига показываются тостами.
+    pub fn new(
+        registry: &CommandRegistry,
+        probe: &sys::SysProbe,
+        cfg: &UiCfg,
+        fonts: FontSet,
+    ) -> Self {
         let (tokens, mut warnings) = Tokens::build(probe, cfg);
         let (highlighter, more) = Highlighter::build(&cfg.colors);
         warnings.extend(more);
@@ -103,7 +116,56 @@ impl FileNavUi {
             cfg_theme,
             tokens,
             highlighter,
+            fonts,
+            font_files: probe.fonts.clone(),
+            fallback_rx: None,
+            frames: 0,
             applied: None,
+        }
+    }
+
+    /// Первый кадр — прогрев атласа и проверка цифр; второй — фоновое чтение
+    /// fallback-шрифтов; дальше — их установка, когда прочитаны.
+    fn fonts_step(&mut self, ctx: &egui::Context) {
+        self.frames += 1;
+        if self.frames == 1 && self.fonts.installed() {
+            let t = &self.tokens;
+            self.fonts.warm_up(
+                ctx,
+                &[
+                    (Font::Ui, t.m(Metric::TypeBody)),
+                    (Font::Strong, t.m(Metric::TypeBody)),
+                    (Font::Caption, t.m(Metric::TypeCaption)),
+                    (Font::Subtitle, t.m(Metric::TypeSubtitle)),
+                    (Font::Mono, t.m(Metric::TypeMono)),
+                    (Font::Icons, t.m(Metric::WIcon)),
+                ],
+                &icons::all_text(),
+            );
+        }
+        if self.frames == 2 && self.fonts.installed() {
+            let (tx, rx) = mpsc::channel();
+            let files = self.font_files.clone();
+            let cfg = self.cfg.clone();
+            let ctx = ctx.clone();
+            let spawned = std::thread::Builder::new()
+                .name("font-fallback".into())
+                .spawn(move || {
+                    let (list, warnings) = fonts::load_fallbacks(&files, &cfg);
+                    for w in warnings {
+                        tracing::warn!(key = %w.key, msg = %w.msg, "fallback font");
+                    }
+                    if tx.send(list).is_ok() {
+                        ctx.request_repaint();
+                    }
+                });
+            if spawned.is_ok() {
+                self.fallback_rx = Some(rx);
+            }
+        }
+        if let Some(list) = self.fallback_rx.as_ref().and_then(|rx| rx.try_recv().ok()) {
+            fonts::add_fallbacks(ctx, &list);
+            self.fallback_rx = None;
         }
     }
 
@@ -132,6 +194,7 @@ impl FileNavUi {
         let fallback = UiState::new();
         let st = s.ext.get::<UiState>().unwrap_or(&fallback);
         self.apply_look(&ctx, st);
+        self.fonts_step(&ctx);
         self.tokens.set_theme(ctx.theme());
         self.take_toasts(&ctx, ev);
         self.keybar
@@ -152,7 +215,7 @@ impl FileNavUi {
         egui::CentralPanel::default()
             .frame(central)
             .show(root, |ui| {
-                top_bars(ui, &i18n, &self.tokens, s, st, out);
+                top_bars(ui, &i18n, &self.tokens, &self.fonts, s, st, out);
                 let h = ui.available_height();
                 let w = ui.available_width();
                 let left_w = ((w - gap) * st.split).max(0.0);
@@ -190,7 +253,7 @@ impl FileNavUi {
             };
             // Предупреждения конфига уже показаны при создании.
             self.tokens = Tokens::build(&probe, &self.cfg).0;
-            tokens::style::apply(ctx, &self.tokens);
+            tokens::style::apply(ctx, &self.tokens, &self.fonts);
         }
         self.applied = Some(want);
         ctx.set_theme(match (mode, self.look.theme) {
@@ -238,9 +301,11 @@ impl FileNavUi {
         let t = p.tab();
         let tk = &self.tokens;
         let hl = &self.highlighter;
+        let fs = &self.fonts;
+        let strong = fs.id(Font::Strong, tk.m(Metric::TypeBody));
         let card = panel::card_frame(tk).show(ui, |ui| {
             ui.set_min_size(ui.available_size());
-            tab_strip(ui, i18n, tk, p, side, out);
+            tab_strip(ui, i18n, tk, &strong, p, side, out);
             // Новый каталог ещё ничего не прислал — прежний кадр, а не пустая панель:
             // иначе каждый переход мигает (S2: индикатор — после 150 мс).
             let held = panel::hold_left(t).and_then(|left| {
@@ -253,7 +318,13 @@ impl FileNavUi {
                 Some(prev) => (prev.path.clone(), prev.footer.clone()),
                 None => (panel::path_text(t), panel::footer(i18n, t)),
             };
-            text::label_styled(ui, i18n, &Tx::user(path.as_str()), None, active);
+            text::label_styled(
+                ui,
+                i18n,
+                &Tx::user(path.as_str()),
+                Some(tk.c(Role::TextPrimary)),
+                active.then(|| strong.clone()),
+            );
             ui.separator();
 
             let row_h = tk.m(Metric::HRow);
@@ -296,6 +367,8 @@ impl FileNavUi {
                 i18n,
                 tokens: tk,
                 hl,
+                fonts: fs,
+                icons: fs.icons,
                 active,
                 interactive,
                 side,
@@ -307,7 +380,7 @@ impl FileNavUi {
                 i18n,
                 &Tx::user(shown.footer.as_str()),
                 Some(tk.c(Role::TextSecondary)),
-                false,
+                Some(fs.id(Font::Caption, tk.m(Metric::TypeCaption))),
             );
             memo.shown = Some(shown);
         });
@@ -405,6 +478,7 @@ fn tab_strip(
     ui: &mut egui::Ui,
     i18n: &I18n,
     tk: &Tokens,
+    strong: &egui::FontId,
     p: &filenav_core::Panel,
     side: Side,
     out: &mut Vec<Command>,
@@ -422,7 +496,7 @@ fn tab_strip(
                 i18n,
                 &Tx::user(tab.title().as_ref()),
                 Some(color),
-                current,
+                current.then(|| strong.clone()),
             );
             // Клик без фокуса: в панелях нет фокусируемых виджетов (S0 v3 №13).
             if ui
@@ -444,10 +518,12 @@ fn top_bars(
     ui: &mut egui::Ui,
     i18n: &I18n,
     t: &Tokens,
+    fonts: &FontSet,
     s: &AppState,
     st: &UiState,
     out: &mut Vec<Command>,
 ) {
+    let strong = fonts.id(Font::Strong, t.m(Metric::TypeBody));
     if let Some(b) = &s.banner {
         let fg = match b.level {
             Level::Error => Role::CriticalFg,
@@ -455,7 +531,7 @@ fn top_bars(
             Level::Info => Role::TextPrimary,
         };
         ui.horizontal_wrapped(|ui| {
-            text::label_styled(ui, i18n, &Tx::user(b.text.as_str()), Some(t.c(fg)), false);
+            text::label_styled(ui, i18n, &Tx::user(b.text.as_str()), Some(t.c(fg)), None);
             for (label, cmd) in &b.actions {
                 if text::button(ui, i18n, &Tx::user(label.as_str())).clicked() {
                     out.push(cmd.clone());
@@ -470,7 +546,13 @@ fn top_bars(
         .filter(|p| !st.prompt_hidden.contains(&p.id))
     {
         ui.horizontal_wrapped(|ui| {
-            text::label_styled(ui, i18n, &Tx::user(p.spec.title.as_str()), None, true);
+            text::label_styled(
+                ui,
+                i18n,
+                &Tx::user(p.spec.title.as_str()),
+                None,
+                Some(strong.clone()),
+            );
             text::label(ui, i18n, &Tx::user(p.spec.body.as_str()));
             for c in &p.spec.choices {
                 if text::button(ui, i18n, &Tx::user(c.label.as_str())).clicked() {

@@ -226,11 +226,25 @@ pub struct Launch {
 pub fn run(launch: Launch) -> anyhow::Result<()> {
     // `WGPU_BACKEND` (переменная wgpu) заменяет очередь — для диагностики.
     let order = wgpu::Backends::from_env().map_or_else(|| BACKENDS.to_vec(), |b| vec![b]);
-    // Probe ОС (тема, акцент, шрифты) — параллельно созданию окна и `Core::new`.
+    let (ui_cfg, ui_cfg_warning) = launch
+        .boot
+        .config
+        .section::<filenav_ui::config::UiCfg>("ui");
+    if let Some(w) = ui_cfg_warning {
+        tracing::warn!(key = %w.key, msg = %w.msg, "[ui] section ignored");
+    }
+    // Probe ОС (тема, акцент, файлы шрифтов) и чтение шрифтов — параллельно созданию
+    // окна и `Core::new`.
+    let cfg = ui_cfg.clone();
     let probe = std::thread::Builder::new()
         .name("font-probe".into())
-        .spawn(filenav_ui::sys::probe_system)?;
-    let pending = Rc::new(RefCell::new(Some((launch, probe))));
+        .spawn(move || {
+            let mut probe = filenav_ui::sys::probe_system();
+            let (fonts, warnings) = filenav_ui::fonts::load(&probe.fonts, &cfg);
+            probe.warnings.extend(warnings);
+            (probe, fonts)
+        })?;
+    let pending = Rc::new(RefCell::new(Some((launch, probe, ui_cfg))));
     let mut last = None;
     for backends in order {
         match run_with(backends, &pending) {
@@ -249,14 +263,14 @@ pub fn run(launch: Launch) -> anyhow::Result<()> {
     ))
 }
 
-type Probe = std::thread::JoinHandle<filenav_ui::sys::SysProbe>;
-type Pending = Rc<RefCell<Option<(Launch, Probe)>>>;
+type Probe = std::thread::JoinHandle<(filenav_ui::sys::SysProbe, filenav_ui::fonts::LoadedFonts)>;
+type Pending = Rc<RefCell<Option<(Launch, Probe, filenav_ui::config::UiCfg)>>>;
 
 fn run_with(backends: wgpu::Backends, pending: &Pending) -> eframe::Result {
     let geom = pending
         .borrow()
         .as_ref()
-        .and_then(|(l, _)| l.boot.session.as_ref().and_then(|s| s.window));
+        .and_then(|(l, _, _)| l.boot.session.as_ref().and_then(|s| s.window));
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("FileNav")
         .with_visible(false)
@@ -292,19 +306,13 @@ fn run_with(backends: wgpu::Backends, pending: &Pending) -> eframe::Result {
                     selftest,
                 },
                 probe,
+                ui_cfg,
             ) = pending.borrow_mut().take().expect("launch is taken once");
             let services = crate::vfs_services(&boot.config);
             startup.window = window_started.elapsed();
             let ctx = cc.egui_ctx.clone();
-            {
-                let _s = tracing::info_span!("startup.fonts").entered();
-                // Шрифты Segoe / JetBrains Mono — S2; пока шрифты egui по умолчанию.
-                ctx.options_mut(|o| o.zoom_with_keyboard = false);
-            }
-            let (ui_cfg, ui_cfg_warning) = boot.config.section::<filenav_ui::config::UiCfg>("ui");
-            if let Some(w) = ui_cfg_warning {
-                tracing::warn!(key = %w.key, msg = %w.msg, "[ui] section ignored");
-            }
+            // Масштаб — только командой `ui.zoom` (S0 v3 №13).
+            ctx.options_mut(|o| o.zoom_with_keyboard = false);
             let mut core = {
                 let _s = tracing::info_span!("startup.core").entered();
                 let t = Instant::now();
@@ -320,12 +328,14 @@ fn run_with(backends: wgpu::Backends, pending: &Pending) -> eframe::Result {
                 let ctx = cc.egui_ctx.clone();
                 inbox.set_waker(move || ctx.request_repaint());
             }
-            let probe = probe.join().unwrap_or_else(|_| {
+            let (probe, loaded) = probe.join().unwrap_or_else(|_| {
                 tracing::error!("system probe panicked; using defaults");
-                filenav_ui::sys::SysProbe::default()
+                Default::default()
             });
+            // Шрифты — до первого кадра: он рисуется уже ими.
+            let fonts = filenav_ui::fonts::install(&cc.egui_ctx, &loaded);
             let theme = probe.look.theme.unwrap_or_else(|| cc.egui_ctx.theme());
-            let mut ui = FileNavUi::new(core.registry(), &probe, &ui_cfg);
+            let mut ui = FileNavUi::new(core.registry(), &probe, &ui_cfg, fonts);
             ui.watch_system(&cc.egui_ctx);
             // Окно показывается скрытым от экрана: первые кадры рисуются уже в
             // итоговом размере, на экран выходит только готовый (S1-13).

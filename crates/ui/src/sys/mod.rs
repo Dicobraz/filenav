@@ -58,6 +58,8 @@ pub struct FontFiles {
     pub ui: Vec<PathBuf>,
     /// Иконки: Segoe Fluent Icons, иначе Segoe MDL2 Assets; нет — вшитые (S2-04).
     pub icons: Option<PathBuf>,
+    /// Моноширинный: Cascadia Mono, иначе Consolas.
+    pub mono: Option<PathBuf>,
     /// Символы вне Segoe UI.
     pub symbols: Option<PathBuf>,
     /// CJK по языку ОС; грузится после первого кадра.
