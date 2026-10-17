@@ -94,7 +94,10 @@ jobs:
       - name: No diagnostic features in release (profile, dhat-heap, count-alloc)
         run: $PY ci/release_features.py
       - run: cargo build --release -p filenav-app --locked
+      # Бюджет 15 МиБ меряется на Windows (S0-decisions); Linux/macOS — только
+      # сводка и предупреждение, без блокировки (нюансы — docs/macos-notes.md).
       - name: Binary size ≤ 15 MB
+        continue-on-error: ${{ runner.os != 'Windows' }}
         run: $PY ci/size.py "$BIN" 15
       - name: Smoke
         run: '"$BIN" --smoke'
