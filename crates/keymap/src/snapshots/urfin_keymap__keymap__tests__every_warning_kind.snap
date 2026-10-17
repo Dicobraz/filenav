@@ -1,0 +1,21 @@
+---
+source: crates/keymap/src/keymap_tests.rs
+expression: "text.join(\"\\n\")"
+---
+bad: keymap 'bad' is defined twice; the later one is ignored
+layer0: cannot read: key with no value, expected `=`
+future: unsupported format 2 (expected 1)
+a: extends cycle: a → b → a
+orphan: extends unknown keymap 'ghost'
+c1: extends chain longer than 4: c1 → c2 → c3 → c4 → c5 → c6
+bad: colour: unknown key
+bad: [panel] Alt+Tab: reserved by the OS: never reaches Urfin
+bad: [panel] Ctrl+Alt+Q: Ctrl+Alt+printable is AltGr in many layouts
+bad: [panel] Ctrl+Nope: bad key: at 5: unknown key 'Nope'
+bad: [panel] F2: unknown command 'no.such'
+bad: [panel] F3: bad arguments: arg bogus: unknown argument
+bad: [panel] F4: bad arguments: arg key: required
+bad: [panel &&]: bad context: at 8: expected context or flag
+bad: [panel && nope]: unknown flag 'nope'
+bad: [panel || cmdline] F5: same key and specificity as [panel] in this file; the later one wins
+bad: [panel] Ctrl+K: chord 'Ctrl+K Ctrl+C' starts with this key; this single binding is disabled

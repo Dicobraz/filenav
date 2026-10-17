@@ -1,0 +1,4 @@
+# Пресет Far (S0-decisions №21). Наполнение — S3-09 (таблицы S3 §3).
+format = 1
+name = "far"
+extends = "base"

@@ -156,7 +156,8 @@ const FOCUS_ATOMS: [(&str, u16); 8] = [
 enum Op {
     /// Фокус в маске; специфичность атома (у `global` — 0).
     Focus(u16, u8),
-    Flag(FlagFn),
+    /// Флаг и его номер в `When::flags` (для анализа пересечений).
+    Flag(FlagFn, u8),
     Not,
     And,
     Or,
@@ -166,7 +167,7 @@ impl std::fmt::Debug for Op {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Op::Focus(m, s) => write!(f, "Focus({m:#x}, {s})"),
-            Op::Flag(_) => f.write_str("Flag"),
+            Op::Flag(_, i) => write!(f, "Flag({i})"),
             Op::Not => f.write_str("Not"),
             Op::And => f.write_str("And"),
             Op::Or => f.write_str("Or"),
@@ -184,6 +185,8 @@ pub struct When {
     /// `*` — любой контекст (только для снятия привязок, S3 §2.4).
     any: bool,
     src: CompactString,
+    /// Имена флагов выражения по номеру `Op::Flag`.
+    flags: SmallVec<[CompactString; 2]>,
 }
 
 impl When {
@@ -193,6 +196,7 @@ impl When {
             code: SmallVec::new(),
             any: true,
             src: "*".into(),
+            flags: SmallVec::new(),
         }
     }
 
@@ -208,6 +212,7 @@ impl When {
             flags,
             code: SmallVec::new(),
             depth: 0,
+            names: SmallVec::new(),
         };
         p.skip_ws();
         if p.eof() {
@@ -227,6 +232,7 @@ impl When {
             code: p.code,
             any: false,
             src: trimmed.into(),
+            flags: p.names,
         })
     }
 
@@ -248,10 +254,15 @@ impl When {
     /// Специфичность сработавшей конъюнкции, если выражение истинно: число атомов в
     /// ней (`global` — 0, `*` — 0).
     pub fn matches(&self, st: &AppState) -> Option<u8> {
+        self.run(focus_bit(st.focus), |f, _| f(st))
+    }
+
+    /// Вычисление при фокусе `bit`; значение флага даёт `flag` (функция и номер).
+    #[inline]
+    fn run(&self, bit: u16, flag: impl Fn(FlagFn, u8) -> bool) -> Option<u8> {
         if self.any {
             return Some(0);
         }
-        let bit = focus_bit(st.focus);
         let mut stack = [(false, 0u8); MAX_DEPTH];
         let mut sp = 0usize;
         for op in &self.code {
@@ -260,8 +271,8 @@ impl When {
                     stack[sp] = (mask & bit != 0, spec);
                     sp += 1;
                 }
-                Op::Flag(f) => {
-                    stack[sp] = (f(st), 1);
+                Op::Flag(f, i) => {
+                    stack[sp] = (flag(f, i), 1);
                     sp += 1;
                 }
                 Op::Not => {
@@ -291,6 +302,33 @@ impl When {
         v.then_some(s)
     }
 
+    /// Могут ли оба выражения быть истинны одновременно с равной специфичностью
+    /// (предупреждение `Ambiguous`, S3 §2.5). Перебор всех фокусов и значений флагов:
+    /// флаги считаются независимыми.
+    pub fn ambiguous_with(&self, other: &When) -> bool {
+        let mut names: SmallVec<[&str; 8]> = SmallVec::new();
+        for n in self.flags.iter().chain(&other.flags) {
+            if !names.contains(&n.as_str()) {
+                names.push(n);
+            }
+        }
+        if names.len() > 12 {
+            return false;
+        }
+        let slot = |w: &When, i: u8| {
+            let name = &w.flags[usize::from(i)];
+            names.iter().position(|n| *n == name.as_str()).unwrap_or(0)
+        };
+        (0..12).any(|f| {
+            let bit = 1u16 << f;
+            (0u32..1 << names.len()).any(|set| {
+                let a = self.run(bit, |_, i| set & (1 << slot(self, i)) != 0);
+                let b = other.run(bit, |_, i| set & (1 << slot(other, i)) != 0);
+                matches!((a, b), (Some(x), Some(y)) if x == y)
+            })
+        })
+    }
+
     /// Наибольшая специфичность выражения (без состояния): для сравнения привязок при
     /// компиляции (S3-04).
     pub fn specificity(&self) -> u8 {
@@ -305,7 +343,7 @@ impl When {
                     stack[sp] = s;
                     sp += 1;
                 }
-                Op::Flag(_) => {
+                Op::Flag(..) => {
                     stack[sp] = 1;
                     sp += 1;
                 }
@@ -330,6 +368,7 @@ struct Parser<'a> {
     flags: &'a FlagRegistry,
     code: SmallVec<[Op; 8]>,
     depth: usize,
+    names: SmallVec<[CompactString; 2]>,
 }
 
 impl Parser<'_> {
@@ -366,7 +405,7 @@ impl Parser<'_> {
 
     /// Глубина стека: каждый атом занимает ячейку до свёртки — не глубже `MAX_DEPTH`.
     fn push(&mut self, op: Op) -> Result<(), WhenError> {
-        if matches!(op, Op::Focus(..) | Op::Flag(_)) {
+        if matches!(op, Op::Focus(..) | Op::Flag(..)) {
             self.depth += 1;
             if self.depth > MAX_DEPTH {
                 return Err(self.err(WhenErrorKind::TooDeep));
@@ -441,7 +480,15 @@ impl Parser<'_> {
             return self.push(Op::Focus(*bit, spec));
         }
         if let Some(f) = self.flags.get(name) {
-            self.push(Op::Flag(f))
+            let idx = self
+                .names
+                .iter()
+                .position(|n| n == name)
+                .unwrap_or_else(|| {
+                    self.names.push(name.into());
+                    self.names.len() - 1
+                });
+            self.push(Op::Flag(f, u8::try_from(idx).unwrap_or(u8::MAX)))
         } else {
             self.pos = start;
             Err(self.err(WhenErrorKind::UnknownFlag(name.into())))
