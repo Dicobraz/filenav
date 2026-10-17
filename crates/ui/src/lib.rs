@@ -8,6 +8,7 @@
 
 pub mod accent;
 pub mod config;
+pub mod fmt_cell;
 pub mod fonts;
 mod handler;
 pub mod highlight;
@@ -69,6 +70,8 @@ pub struct FileNavUi {
     font_files: sys::FontFiles,
     fallback_rx: Option<mpsc::Receiver<Vec<fonts::FallbackFont>>>,
     frames: u64,
+    /// Языковые шаблоны ячеек и эпоха языка, для которой собраны.
+    fmt: (u64, fmt_cell::FmtCfg),
     /// Применённые настройки вида: тема, масштаб, `look` ОС.
     applied: Option<(ThemeMode, u16, sys::Look)>,
 }
@@ -120,6 +123,14 @@ impl FileNavUi {
             font_files: probe.fonts.clone(),
             fallback_rx: None,
             frames: 0,
+            fmt: (
+                filenav_i18n::epoch(),
+                fmt_cell::FmtCfg::new(
+                    &filenav_i18n::current(),
+                    cfg.date_format.eq_ignore_ascii_case("iso"),
+                    sys::Zone::system(),
+                ),
+            ),
             applied: None,
         }
     }
@@ -197,8 +208,15 @@ impl FileNavUi {
         self.fonts_step(&ctx);
         self.tokens.set_theme(ctx.theme());
         self.take_toasts(&ctx, ev);
-        self.keybar
-            .refresh(&i18n, filenav_i18n::epoch(), &self.registered);
+        let epoch = filenav_i18n::epoch();
+        self.keybar.refresh(&i18n, epoch, &self.registered);
+        if self.fmt.0 != epoch {
+            let iso = self.cfg.date_format.eq_ignore_ascii_case("iso");
+            self.fmt = (
+                epoch,
+                fmt_cell::FmtCfg::new(&i18n, iso, sys::Zone::system()),
+            );
+        }
 
         let t = &self.tokens;
         let gap = t.m(Metric::GapPanels);
@@ -360,7 +378,7 @@ impl FileNavUi {
             let shown = held.unwrap_or_else(|| Shown {
                 path,
                 footer,
-                lines: panel::lines(i18n, hl, t, page),
+                lines: panel::lines(&self.fmt.1, hl, t, page),
             });
             let mut list = ui.new_child(egui::UiBuilder::new().max_rect(list_rect));
             panel::Rows {

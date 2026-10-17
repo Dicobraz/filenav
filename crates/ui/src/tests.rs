@@ -58,12 +58,13 @@ fn lines_from_top_with_cursor() {
     let mut t = tab(&["a", "b", "c"]);
     t.cursor.top = 1;
     t.cursor.row = 2;
-    let v = lines(&en(), &crate::highlight::Highlighter::default(), &t, 2);
+    let fmt = crate::fmt_cell::FmtCfg::new(&en(), false, crate::sys::Zone::utc());
+    let v = lines(&fmt, &crate::highlight::Highlighter::default(), &t, 2);
     let got: Vec<_> = v
         .iter()
         .map(|l| (l.name.as_str(), l.size.as_str(), l.cursor))
         .collect();
-    assert_eq!(got, [("a", "2.00 KB", false), ("b", "2.00 KB", true)]);
+    assert_eq!(got, [("a", "2.0 KB", false), ("b", "2.0 KB", true)]);
     assert_eq!(v[1].click, Command::new("panel.cursor.to").arg("name", "b"));
 }
 
@@ -74,7 +75,7 @@ fn footer_texts() {
     t.listing.status = ListingStatus::Complete;
     t.listing.stats.files = 2;
     t.listing.stats.bytes = 4096;
-    assert_eq!(panel::footer(&i18n, &t), "2 items · 4.00 KB");
+    assert_eq!(panel::footer(&i18n, &t), "2 items · 4.0 KB");
     t.listing.status = ListingStatus::Loading {
         since: Instant::now(),
     };

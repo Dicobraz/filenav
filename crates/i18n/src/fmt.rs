@@ -120,35 +120,93 @@ fn localized<const DECIMAL: char, const GROUP: char, M>(
     Some(f.localize(&number.as_string()))
 }
 
-/// Размер для колонок и подвала: 3 цифры (`47,1 КБ`, `977 МБ`, `0,98 ГБ`); меньше 1024 — в
-/// байтах без округления (`1023 Б`). Основание 1024; единица растёт, когда округлённое
-/// значение доходит до 1000.
+/// Размер для колонок и подвала: не больше одного знака после запятой (`1,2 КБ`,
+/// `47,1 КБ`, `977 МБ`; решение владельца 2026-10-17 — точные байты в свойствах);
+/// меньше 1024 — в байтах (`1023 Б`). Основание 1024; единица растёт, когда округлённое
+/// значение доходит до 1000 (`999 КБ` → `1,0 МБ`).
 pub fn bytes(n: u64) -> String {
     bytes_with(&current(), n)
 }
 
 /// [`bytes`] для заданного языка.
 pub fn bytes_with(i18n: &I18n, n: u64) -> String {
-    let (number, unit) = bytes_parts(n);
-    let number = number.replace('.', &i18n.num_fmt().decimal.to_string());
-    format!("{number} {}", i18n.get(UNITS[unit]))
+    let units = UNITS.map(|k| i18n.get(k));
+    let mut out = String::new();
+    let _ = write_bytes(
+        &mut out,
+        n,
+        i18n.num_fmt().decimal,
+        &units.each_ref().map(String::as_str),
+    );
+    out
 }
 
-/// Число (в записи с точкой) и индекс единицы для [`bytes`].
-fn bytes_parts(n: u64) -> (String, usize) {
-    if n < 1024 {
-        return (n.to_string(), 0);
+/// Ключи Fluent единиц [`bytes`] (Б … ЭБ): для заранее подготовленных подписей.
+pub const UNIT_KEYS: [&str; 7] = UNITS;
+
+/// [`bytes`] в любой `fmt::Write` без кучи: `units` — подписи [`UNIT_KEYS`] на языке
+/// интерфейса, `decimal` — разделитель дробной части.
+pub fn write_bytes(
+    w: &mut impl std::fmt::Write,
+    n: u64,
+    decimal: char,
+    units: &[&str; 7],
+) -> std::fmt::Result {
+    let mut digits = Digits::default();
+    let unit = bytes_parts(n, &mut digits);
+    for c in digits.as_str().chars() {
+        w.write_char(if c == '.' { decimal } else { c })?;
     }
-    // Точность f64 (53 бита) с запасом покрывает 3 значащие цифры.
+    w.write_char(' ')?;
+    w.write_str(units[unit])
+}
+
+/// Число до 20 знаков на стеке.
+#[derive(Default)]
+struct Digits {
+    buf: [u8; 32],
+    len: usize,
+}
+
+impl Digits {
+    fn as_str(&self) -> &str {
+        std::str::from_utf8(&self.buf[..self.len]).unwrap_or_default()
+    }
+
+    fn clear(&mut self) {
+        self.len = 0;
+    }
+}
+
+impl std::fmt::Write for Digits {
+    fn write_str(&mut self, s: &str) -> std::fmt::Result {
+        let end = self.len + s.len();
+        let dst = self.buf.get_mut(self.len..end).ok_or(std::fmt::Error)?;
+        dst.copy_from_slice(s.as_bytes());
+        self.len = end;
+        Ok(())
+    }
+}
+
+/// Число (в записи с точкой) в `out` и индекс единицы для [`bytes`].
+fn bytes_parts(n: u64, out: &mut Digits) -> usize {
+    use std::fmt::Write as _;
+    out.clear();
+    if n < 1024 {
+        let _ = write!(out, "{n}");
+        return 0;
+    }
+    // Точности f64 (53 бита) с запасом хватает на 3 значащие цифры.
     #[allow(clippy::cast_precision_loss)]
     let mut value = n as f64;
     for unit in 1..UNITS.len() {
         value /= 1024.0;
-        for decimals in [2, 1, 0] {
-            let text = format!("{value:.decimals$}");
-            let limit = [1000.0, 100.0, 10.0][decimals];
-            if text.parse::<f64>().is_ok_and(|v| v < limit) {
-                return (text, unit);
+        for decimals in [1, 0] {
+            out.clear();
+            let _ = write!(out, "{value:.decimals$}");
+            let limit = [1000.0, 100.0][decimals];
+            if out.as_str().parse::<f64>().is_ok_and(|v| v < limit) {
+                return unit;
             }
         }
     }
@@ -215,15 +273,22 @@ mod tests {
         assert_eq!(NumFmt::of(&ru).localize("-12345.50"), "-12\u{a0}345,50");
     }
 
+    fn bytes_parts(n: u64) -> (String, usize) {
+        let mut d = Digits::default();
+        let unit = super::bytes_parts(n, &mut d);
+        (d.as_str().to_owned(), unit)
+    }
+
     #[test]
     fn bytes_parts_edges() {
         assert_eq!(bytes_parts(0), ("0".into(), 0));
         assert_eq!(bytes_parts(1023), ("1023".into(), 0));
-        assert_eq!(bytes_parts(1024), ("1.00".into(), 1));
-        assert_eq!(bytes_parts(10_234), ("9.99".into(), 1));
-        assert_eq!(bytes_parts(10_235), ("10.0".into(), 1));
+        assert_eq!(bytes_parts(1024), ("1.0".into(), 1));
+        assert_eq!(bytes_parts(10_234), ("10.0".into(), 1));
+        assert_eq!(bytes_parts(102_348), ("99.9".into(), 1));
+        assert_eq!(bytes_parts(102_349), ("100".into(), 1));
         assert_eq!(bytes_parts(1_023_487), ("999".into(), 1));
-        assert_eq!(bytes_parts(1_023_488), ("0.98".into(), 2));
+        assert_eq!(bytes_parts(1_023_488), ("1.0".into(), 2));
         assert_eq!(bytes_parts(u64::MAX), ("16.0".into(), 6));
     }
 }

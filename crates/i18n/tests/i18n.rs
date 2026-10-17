@@ -87,7 +87,9 @@ fn bytes_acceptance() {
         (118, "118 Б"),
         (48_213, "47,1 КБ"),
         (1_023, "1023 Б"),
-        (1_024, "1,00 КБ"),
+        (1_024, "1,0 КБ"),
+        (1_229, "1,2 КБ"),
+        (3_891, "3,8 КБ"),
         (1_024_000_000, "977 МБ"),
     ];
     for (n, want) in cases {
@@ -359,13 +361,16 @@ static EN: std::sync::LazyLock<I18n> = std::sync::LazyLock::new(|| embedded("en"
 
 proptest! {
     #[test]
-    fn bytes_three_digits(n in 1024u64..) {
+    fn bytes_one_decimal(n in 1024u64..) {
         let text = bytes_with(&EN, n);
         let (number, value) = parse_bytes(&text);
-        prop_assert_eq!(number.chars().filter(char::is_ascii_digit).count(), 3, "{}", text);
+        let digits = number.chars().filter(char::is_ascii_digit).count();
+        prop_assert!(digits == 2 || digits == 3, "{}", text);
+        let decimals = number.split_once('.').map_or(0, |(_, f)| f.len());
+        prop_assert!(decimals <= 1, "{}", text);
         #[allow(clippy::cast_precision_loss)]
         let exact = n as f64;
-        prop_assert!((value - exact).abs() / exact <= 0.006, "{} for {}", text, n);
+        prop_assert!((value - exact).abs() / exact <= 0.05, "{} for {}", text, n);
     }
 
     #[test]

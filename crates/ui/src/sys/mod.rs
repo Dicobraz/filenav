@@ -15,6 +15,27 @@ mod windows;
 #[cfg(windows)]
 use windows as os;
 
+#[cfg(windows)]
+#[path = "time_win.rs"]
+mod time;
+
+#[cfg(not(windows))]
+#[path = "time_other.rs"]
+mod time;
+
+pub use time::Zone;
+
+/// Местное время для ячеек дат (S2-08).
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct LocalTime {
+    pub year: i32,
+    pub month: u8,
+    pub day: u8,
+    pub hour: u8,
+    pub minute: u8,
+    pub second: u8,
+}
+
 #[cfg(not(windows))]
 mod other;
 #[cfg(not(windows))]
@@ -80,6 +101,9 @@ pub struct SysProbe {
 pub fn probe_system() -> SysProbe {
     let _s = tracing::info_span!("startup.probe").entered();
     let started = std::time::Instant::now();
+    // Linux/macOS: zoneinfo читает и кэширует jiff — здесь, а не в UI-потоке (S2-08).
+    #[cfg(not(windows))]
+    let _ = Zone::system();
     let mut probe = SysProbe {
         look: os::look(),
         backdrop: os::backdrop(),

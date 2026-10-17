@@ -7,6 +7,7 @@ use egui::{Align2, CornerRadius, Rect, Sense, Stroke, StrokeKind};
 use filenav_core::{Command, ListingStatus, Row, Side, Tab};
 use filenav_i18n::{FluentArgs, I18n};
 
+use crate::fmt_cell::{Cell, ColKind, FmtCfg, cell_text};
 use crate::fonts::{Font, FontSet};
 use crate::highlight::Highlighter;
 use crate::text::{self, Tx};
@@ -80,7 +81,8 @@ pub(crate) fn path_text(t: &Tab) -> String {
 }
 
 /// Видимые строки таба: `page` строк от `cursor.top`.
-pub(crate) fn lines(i18n: &I18n, hl: &Highlighter, t: &Tab, page: u32) -> Vec<Line> {
+pub(crate) fn lines(fmt: &FmtCfg, hl: &Highlighter, t: &Tab, page: u32) -> Vec<Line> {
+    let mut cell = Cell::new();
     let top = t.cursor.top;
     (top..(top + page).min(t.rows()))
         .map_while(|r| {
@@ -106,10 +108,9 @@ pub(crate) fn lines(i18n: &I18n, hl: &Highlighter, t: &Tab, page: u32) -> Vec<Li
                         } else {
                             entry.name.to_string()
                         },
-                        size: if dir {
-                            String::new()
-                        } else {
-                            filenav_i18n::fmt::bytes_with(i18n, entry.size)
+                        size: {
+                            cell_text(ColKind::Size, entry, fmt, &mut cell);
+                            cell.as_str().to_owned()
                         },
                         cursor: false,
                         selected,
