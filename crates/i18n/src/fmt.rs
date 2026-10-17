@@ -129,15 +129,71 @@ pub fn bytes(n: u64) -> String {
 
 /// [`bytes`] для заданного языка.
 pub fn bytes_with(i18n: &I18n, n: u64) -> String {
-    let (number, unit) = bytes_parts(n);
-    let number = number.replace('.', &i18n.num_fmt().decimal.to_string());
-    format!("{number} {}", i18n.get(UNITS[unit]))
+    let units = UNITS.map(|k| i18n.get(k));
+    let mut out = String::new();
+    let _ = write_bytes(
+        &mut out,
+        n,
+        i18n.num_fmt().decimal,
+        &units.each_ref().map(String::as_str),
+    );
+    out
 }
 
-/// Число (в записи с точкой) и индекс единицы для [`bytes`].
-fn bytes_parts(n: u64) -> (String, usize) {
+/// Ключи Fluent единиц [`bytes`] (Б … ЭБ): для заранее подготовленных подписей.
+pub const UNIT_KEYS: [&str; 7] = UNITS;
+
+/// [`bytes`] в любой `fmt::Write` без кучи: `units` — подписи [`UNIT_KEYS`] на языке
+/// интерфейса, `decimal` — разделитель дробной части.
+pub fn write_bytes(
+    w: &mut impl std::fmt::Write,
+    n: u64,
+    decimal: char,
+    units: &[&str; 7],
+) -> std::fmt::Result {
+    let mut digits = Digits::default();
+    let unit = bytes_parts(n, &mut digits);
+    for c in digits.as_str().chars() {
+        w.write_char(if c == '.' { decimal } else { c })?;
+    }
+    w.write_char(' ')?;
+    w.write_str(units[unit])
+}
+
+/// Число до 20 знаков на стеке.
+#[derive(Default)]
+struct Digits {
+    buf: [u8; 32],
+    len: usize,
+}
+
+impl Digits {
+    fn as_str(&self) -> &str {
+        std::str::from_utf8(&self.buf[..self.len]).unwrap_or_default()
+    }
+
+    fn clear(&mut self) {
+        self.len = 0;
+    }
+}
+
+impl std::fmt::Write for Digits {
+    fn write_str(&mut self, s: &str) -> std::fmt::Result {
+        let end = self.len + s.len();
+        let dst = self.buf.get_mut(self.len..end).ok_or(std::fmt::Error)?;
+        dst.copy_from_slice(s.as_bytes());
+        self.len = end;
+        Ok(())
+    }
+}
+
+/// Число (в записи с точкой) в `out` и индекс единицы для [`bytes`].
+fn bytes_parts(n: u64, out: &mut Digits) -> usize {
+    use std::fmt::Write as _;
+    out.clear();
     if n < 1024 {
-        return (n.to_string(), 0);
+        let _ = write!(out, "{n}");
+        return 0;
     }
     // Точность f64 (53 бита) с запасом покрывает 3 значащие цифры.
     #[allow(clippy::cast_precision_loss)]
@@ -145,10 +201,11 @@ fn bytes_parts(n: u64) -> (String, usize) {
     for unit in 1..UNITS.len() {
         value /= 1024.0;
         for decimals in [2, 1, 0] {
-            let text = format!("{value:.decimals$}");
+            out.clear();
+            let _ = write!(out, "{value:.decimals$}");
             let limit = [1000.0, 100.0, 10.0][decimals];
-            if text.parse::<f64>().is_ok_and(|v| v < limit) {
-                return (text, unit);
+            if out.as_str().parse::<f64>().is_ok_and(|v| v < limit) {
+                return unit;
             }
         }
     }
@@ -213,6 +270,12 @@ mod tests {
         assert_eq!(NumFmt::of(&en).int(0), "0");
         assert_eq!(NumFmt::of(&en).int(999), "999");
         assert_eq!(NumFmt::of(&ru).localize("-12345.50"), "-12\u{a0}345,50");
+    }
+
+    fn bytes_parts(n: u64) -> (String, usize) {
+        let mut d = Digits::default();
+        let unit = super::bytes_parts(n, &mut d);
+        (d.as_str().to_owned(), unit)
     }
 
     #[test]

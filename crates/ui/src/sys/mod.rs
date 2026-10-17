@@ -80,6 +80,8 @@ pub struct SysProbe {
 pub fn probe_system() -> SysProbe {
     let _s = tracing::info_span!("startup.probe").entered();
     let started = std::time::Instant::now();
+    // Зона ОС кэшируется jiff: прочитать здесь, а не в UI-потоке (даты ячеек, S2-08).
+    let _ = jiff::tz::TimeZone::system();
     let mut probe = SysProbe {
         look: os::look(),
         backdrop: os::backdrop(),
