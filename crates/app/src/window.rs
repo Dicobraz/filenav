@@ -265,7 +265,7 @@ fn run_with(backends: wgpu::Backends, pending: &Pending) -> eframe::Result {
                 open,
                 selftest,
             } = pending.borrow_mut().take().expect("launch is taken once");
-            let services = crate::demo_services();
+            let services = crate::vfs_services(&boot.config);
             startup.window = window_started.elapsed();
             let ctx = cc.egui_ctx.clone();
             {

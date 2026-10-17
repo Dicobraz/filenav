@@ -1,16 +1,19 @@
 //! FileNav — VFS (S4): адрес `Location`, trait `Vfs`, реестр backend'ов,
-//! локальная ФС. Листинг для core (`ListingService`), сортировка, watcher и кэш —
-//! S4-03 и дальше.
+//! локальная ФС, листинг для core (`VfsListing`), сортировка, иконки. Watcher и
+//! кэш — S4-12…16.
 
 mod api;
+pub mod batch;
 pub mod icons;
 mod local;
 pub mod name;
 pub mod path;
+pub mod service;
 pub mod sort;
 
 pub use api::*;
 pub use local::LocalFs;
+pub use service::{VfsCfg, VfsListing};
 
 /// Версия крейта из `Cargo.toml`.
 pub fn version() -> &'static str {

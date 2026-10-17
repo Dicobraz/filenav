@@ -36,6 +36,7 @@ use filenav_core::{
     Boot, Command, Config, ConfigWarning, Core, Level, Location, Paths, Services, Session, UiEvent,
     Waker,
 };
+use filenav_vfs::{VfsCfg, VfsListing, VfsRegistry};
 
 /// Версия приложения из `Cargo.toml`.
 fn version() -> &'static str {
@@ -157,8 +158,9 @@ fn run() -> anyhow::Result<()> {
         Session::load(&paths)
     };
     let t_session = t.elapsed();
-    let root = demo_root();
-    let mut boot = Boot::new(root.clone(), root);
+    // Без сессии обе панели — в домашнем каталоге.
+    let home = home_dir();
+    let mut boot = Boot::new(home.clone(), home);
     boot.paths = paths;
     boot.config = config;
     boot.warnings = warnings;
@@ -230,7 +232,27 @@ fn ipc_test_server(inbox: Option<ipc::Inbox>) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Корень демо-дерева `FakeListing` (настоящая ФС — S4).
+/// Домашний каталог (или корень системного диска, если ОС его не знает).
+fn home_dir() -> Location {
+    Location::local(
+        std::env::home_dir()
+            .unwrap_or_else(|| PathBuf::from(if cfg!(windows) { r"C:\" } else { "/" })),
+    )
+}
+
+/// Листинг настоящей ФС (S4): `VfsListing` с секцией `[vfs]` конфига.
+pub(crate) fn vfs_services(config: &Config) -> Services {
+    let (cfg, warning) = config.section::<VfsCfg>("vfs");
+    if let Some(w) = warning {
+        tracing::warn!(warning = ?w, "[vfs] config section ignored");
+    }
+    Services {
+        listing: Arc::new(VfsListing::new(Arc::new(VfsRegistry::with_local()), cfg)),
+        open_resolvers: Vec::new(),
+    }
+}
+
+/// Корень демо-дерева `FakeListing` для `--smoke`: детерминированный прогон без ФС.
 fn demo_root() -> Location {
     Location::local(if cfg!(windows) {
         r"C:\FakeListing"
@@ -239,8 +261,8 @@ fn demo_root() -> Location {
     })
 }
 
-/// Листинг до S4: генерируемое дерево, чанки как у S4.
-pub(crate) fn demo_services() -> Services {
+/// Генерируемое дерево для `--smoke`, чанки как у S4.
+fn demo_services() -> Services {
     Services {
         listing: Arc::new(FakeListing::new(2048).with_tree(FakeTree {
             dirs: 12,

@@ -19,6 +19,7 @@ eframe.workspace = true
 # FakeListing: настоящий листинг ФС — S4.
 filenav-core = { workspace = true, features = ["fake"] }
 filenav-ui.workspace = true
+filenav-vfs.workspace = true
 raw-window-handle.workspace = true
 serde.workspace = true
 serde_json.workspace = true
