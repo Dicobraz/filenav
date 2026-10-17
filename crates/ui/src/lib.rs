@@ -7,6 +7,7 @@
 //! (`clippy.toml`: `disallowed-methods`).
 
 pub mod accent;
+pub mod breadcrumb;
 pub mod cache;
 pub mod canvas;
 pub mod chrome;
@@ -15,6 +16,7 @@ pub(crate) mod file_list;
 pub mod fmt_cell;
 pub mod fonts;
 mod frame;
+mod fs_tasks;
 mod handler;
 pub mod highlight;
 pub mod icons;
@@ -54,7 +56,7 @@ const TOASTS_MAX: usize = 3;
 
 /// Регистрирует handler `ui`; `UiState` появится в `ext` в первом pump.
 pub fn register(core: &mut Core) {
-    core.register(Box::new(UiHandler));
+    core.register(Box::new(UiHandler::default()));
 }
 
 /// Фронтенд окна: только читает `AppState`, действия — командами.
@@ -303,9 +305,21 @@ impl UrfinUi {
             top_bars(&mut ui, &i18n, &self.tokens, &self.fonts, s, st, out);
         }
         self.paint_jobs(root, &regions, &i18n, s);
+        // Меню breadcrumb — до карточек: клик по другому `›` закрывает его и открывает новое.
+        breadcrumb::menu(
+            &ctx,
+            &i18n,
+            &self.tokens,
+            st,
+            [
+                (&self.cards[0].crumbs, Side::Left),
+                (&self.cards[1].crumbs, Side::Right),
+            ],
+            out,
+        );
         for side in [Side::Left, Side::Right] {
             if let Some(r) = regions.panel(side) {
-                self.card(root, r, &i18n, s, side, out);
+                self.card(root, r, &i18n, s, st, side, out);
             }
         }
         if let Some(sp) = regions.splitter {
@@ -381,12 +395,17 @@ impl UrfinUi {
     }
 
     /// Карточка панели: `FileList` (S2-10) в прямоугольнике раскладки.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "карточка: состояние, UI и регион"
+    )]
     fn card(
         &mut self,
         root: &mut egui::Ui,
         r: egui::Rect,
         i18n: &I18n,
         s: &AppState,
+        st: &UiState,
         side: Side,
         out: &mut Vec<Command>,
     ) {
@@ -411,6 +430,7 @@ impl UrfinUi {
             cache: &mut self.rows,
             memo: &mut self.cards[side.idx()],
             widths: &mut self.widths,
+            st,
         };
         file_list::show(&mut c, r, p.tab(), side, s.active == side, &mut cx, out);
     }

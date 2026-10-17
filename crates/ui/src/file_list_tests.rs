@@ -20,15 +20,13 @@ fn entry(name: &str, size: u64, attrs: u32, kind: EntryKind, minutes: i64) -> En
     }
 }
 
-/// Каталог мокапа: фиксированный путь ОС; в снапшоте — `<dir>`.
-#[cfg(windows)]
-const MOCK_DIR: &str = r"C:\Projects\urfin";
-#[cfg(not(windows))]
-const MOCK_DIR: &str = "/projects/urfin";
-
-/// Снапшот без пути ОС — одинаков на всех платформах (в YAML `\` экранирован).
-fn redact(yaml: &str) -> String {
-    yaml.replace(&MOCK_DIR.replace('\\', r"\\"), "<dir>")
+/// Каталог мокапов: не локальный — сегменты breadcrumb одинаковы на всех ОС.
+fn mock_dir(path: &str) -> Location {
+    Location {
+        backend: "test".into(),
+        path: path.into(),
+        outer: None,
+    }
 }
 
 /// Левая панель мокапа §2.1: каталоги, затем файлы; курсор на README.md, помечены
@@ -73,7 +71,7 @@ fn mockup_tab() -> Tab {
         f("backup.7z", 1_024_000_000, 18_717),
     ];
     let n = u32::try_from(entries.len()).unwrap();
-    let mut t = Tab::new(TabId(1), Location::local(MOCK_DIR));
+    let mut t = Tab::new(TabId(1), mock_dir("/work/urfin"));
     t.listing = Listing::with_entries(entries, (0..n).collect(), Gen(1));
     t.listing.status = ListingStatus::Complete;
     for name in ["Cargo.lock", "Cargo.toml", "deny.toml"] {
@@ -126,7 +124,7 @@ fn backup_tab() -> Tab {
         hidden("~$draft.docx", 162),
     ]);
     let n = u32::try_from(entries.len()).unwrap();
-    let mut t = Tab::new(TabId(2), Location::local(MOCK_DIR));
+    let mut t = Tab::new(TabId(2), mock_dir("/backup"));
     t.listing = Listing::with_entries(entries, (0..n).collect(), Gen(1));
     t.listing.status = ListingStatus::Complete;
     t.view_mode = ViewMode::Brief;
@@ -145,6 +143,7 @@ struct Fx {
     cache: RowCache,
     memo: CardMemo,
     widths: Widths,
+    st: crate::state::UiState,
 }
 
 impl Fx {
@@ -163,6 +162,7 @@ impl Fx {
             cache: RowCache::new(),
             memo: CardMemo::default(),
             widths: Widths::default(),
+            st: crate::state::UiState::new(),
         }
     }
 
@@ -189,6 +189,7 @@ impl Fx {
                 cache: &mut self.cache,
                 memo: &mut self.memo,
                 widths: &mut self.widths,
+                st: &self.st,
             };
             show(&mut c, card, t, Side::Left, active, &mut cx, &mut out);
             yaml = c.to_yaml();
@@ -206,7 +207,7 @@ fn snapshot_full_mockup() {
     let t = mockup_tab();
     fx.frame(&t, true, Vec::new());
     let (yaml, _) = fx.frame(&t, true, Vec::new());
-    insta::assert_snapshot!(redact(&yaml));
+    insta::assert_snapshot!(yaml);
 }
 
 /// Wide §2.2: имя на всю ширину и размер, без даты.
@@ -218,7 +219,7 @@ fn snapshot_wide() {
     fx.frame(&t, false, Vec::new());
     let (yaml, _) = fx.frame(&t, false, Vec::new());
     assert!(!yaml.contains("Изменён"));
-    insta::assert_snapshot!(redact(&yaml));
+    insta::assert_snapshot!(yaml);
 }
 
 /// Brief §2.1 (правая панель): колонки только с именем, не уже 160 px, по столбцам;
@@ -232,7 +233,7 @@ fn snapshot_brief() {
     assert!(!yaml.contains("Размер") && !yaml.contains("Изменён"));
     assert_eq!(yaml.matches("Имя").count(), 1);
     assert_eq!(out.len(), 0, "viewport only on the first frame");
-    insta::assert_snapshot!(redact(&yaml));
+    insta::assert_snapshot!(yaml);
 }
 
 /// Medium §2.2: две колонки «имя + размер», заголовок над каждой, стрелка — у первой.
@@ -246,7 +247,7 @@ fn snapshot_medium() {
     assert_eq!(yaml.matches("Размер").count(), 2);
     assert_eq!(yaml.matches("Имя ˄").count(), 1);
     assert!(!yaml.contains("Изменён"));
-    insta::assert_snapshot!(redact(&yaml));
+    insta::assert_snapshot!(yaml);
 }
 
 /// `panel.viewport`: строки в колонке и колонки вида (Brief — по ширине, Medium — 2).
