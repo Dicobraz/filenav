@@ -49,6 +49,10 @@ fn hard_key(key: egui::Key, m: egui::Modifiers) -> Option<Command> {
         K::End => Some("end"),
         _ => None,
     };
+    // Ctrl+O — панели за терминалом (S0-decisions №27; привязка S3 §3).
+    if m.ctrl && !m.shift && !m.alt && key == K::O {
+        return Some(Command::new("ui.panels.toggle_all"));
+    }
     if m.shift && !m.ctrl && !m.alt {
         // Shift+стрелки: пометка с движением (Far).
         return motion(key).map(|mo| Command::new("sel.move").arg("motion", mo));
@@ -78,16 +82,19 @@ fn hard_key(key: egui::Key, m: egui::Modifiers) -> Option<Command> {
     })
 }
 
-/// Забирает из ввода egui клавиши панели и превращает их в команды. Отпускание
+/// Забирает из ввода egui клавиши панели и превращает их в команды. Клавиша — по
+/// позиции (`physical_key`): буквенные сочетания работают на любой раскладке (S0 v4 №5).
+/// Отпускание
 /// поглощённой клавиши тоже удаляется; пробел не уходит в egui текстом.
 fn take_keys(events: &mut Vec<egui::Event>, out: &mut Vec<Command>) {
     events.retain(|e| match e {
         egui::Event::Key {
             key,
+            physical_key,
             pressed,
             modifiers,
             ..
-        } => match hard_key(*key, *modifiers) {
+        } => match hard_key(physical_key.unwrap_or(*key), *modifiers) {
             Some(c) => {
                 if *pressed {
                     out.push(c);
@@ -287,7 +294,7 @@ fn run_with(backends: wgpu::Backends, pending: &Pending, mica: bool) -> eframe::
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("FileNav")
         .with_visible(false)
-        .with_min_inner_size([480.0, 320.0])
+        .with_min_inner_size(filenav_ui::layout::MIN_WINDOW)
         .with_transparent(mica)
         .with_inner_size(geom.map_or([1200.0, 760.0], |g| [g.w, g.h]));
     // «Развёрнуто» — не здесь: winit показал бы окно при создании, до первого
@@ -595,6 +602,22 @@ mod tests {
         let mut out = Vec::new();
         take_keys(&mut events, &mut out);
         (events, out.iter().map(ToString::to_string).collect())
+    }
+
+    #[test]
+    fn ctrl_o_by_position_on_any_layout() {
+        let ctrl = egui::Modifiers::CTRL;
+        // Русская раскладка: логической клавиши O нет, позиция — O.
+        let ev = egui::Event::Key {
+            key: egui::Key::Num0,
+            physical_key: Some(egui::Key::O),
+            pressed: true,
+            repeat: false,
+            modifiers: ctrl,
+        };
+        let (rest, cmds) = run(vec![ev]);
+        assert_eq!(rest.len(), 0);
+        assert_eq!(cmds, ["ui.panels.toggle_all"]);
     }
 
     #[test]

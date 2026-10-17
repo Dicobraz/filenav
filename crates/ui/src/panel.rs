@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use egui::{Align2, CornerRadius, Rect, Sense, Stroke, StrokeKind};
+use egui::{Align2, CornerRadius, Sense, Stroke, StrokeKind};
 use filenav_core::{Command, ListingStatus, Row, Side, Tab};
 use filenav_i18n::{FluentArgs, I18n};
 
@@ -319,25 +319,4 @@ impl Rows<'_> {
             }
         }
     }
-}
-
-/// Рамка карточки (S2 §1.2–1.3): `layer.panel`, `stroke.card`, `radius.overlay`.
-pub(crate) fn card_frame(t: &Tokens) -> egui::Frame {
-    let pad = t.m(Metric::SpaceS) as i8;
-    egui::Frame::new()
-        .fill(t.c(Role::LayerPanel))
-        .stroke(Stroke::new(t.m(Metric::StrokeThin), t.c(Role::StrokeCard)))
-        .corner_radius(radius(t, Metric::RadiusOverlay))
-        .inner_margin(egui::Margin::same(pad))
-}
-
-/// Акцентная полоса активной панели — верх карточки (`w.accent_bar`).
-pub(crate) fn accent_bar(ui: &egui::Ui, t: &Tokens, card: Rect) {
-    let r = t.m(Metric::RadiusOverlay);
-    let bar = Rect::from_min_size(
-        card.min + egui::vec2(r, 0.0),
-        egui::vec2((card.width() - 2.0 * r).max(0.0), t.m(Metric::WAccentBar)),
-    );
-    let rr = CornerRadius::same(1);
-    ui.painter().rect_filled(bar, rr, t.c(Role::AccentFill));
 }

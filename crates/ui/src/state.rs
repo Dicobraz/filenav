@@ -48,6 +48,8 @@ pub struct UiState {
     pub split: f32,
     /// Набор Custom columns (`ui.columns`, M2+).
     pub columns: Option<CompactString>,
+    /// Ctrl+O: панели скрыты, виден вывод терминала (S0-decisions №27).
+    pub panels_hidden: bool,
 }
 
 impl Default for UiState {
@@ -71,6 +73,7 @@ impl UiState {
             jobs_expanded: false,
             theme: None,
             columns: None,
+            panels_hidden: false,
         }
     }
 

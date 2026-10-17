@@ -70,3 +70,4 @@ cmd-ui-zoom = Масштаб
 cmd-ui-split = Раздел панелей
 cmd-ui-lang = Язык
 cmd-ui-columns = Колонки
+cmd-ui-panels-toggle_all = Скрыть или показать панели

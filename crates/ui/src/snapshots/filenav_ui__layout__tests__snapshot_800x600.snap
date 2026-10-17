@@ -1,0 +1,17 @@
+---
+source: crates/ui/src/layout_tests.rs
+expression: "record(&r, &s, &ui)"
+---
+- region: [8, 40, 784, 488] "terminal"
+- region: [0, 0, 800, 40] "titlebar"
+- region: [8, 40, 388, 488] "panel.left"
+- rect: [8, 40, 388, 488] layer.panel
+- stroke: [8, 40, 388, 488] stroke.card
+- rect: [16, 40, 372, 3] accent.fill
+- region: [404, 40, 388, 488] "panel.right"
+- rect: [404, 40, 388, 488] layer.panel
+- stroke: [404, 40, 388, 488] stroke.card
+- region: [396, 40, 8, 488] "splitter"
+- region: [8, 536, 784, 32] "cmdline"
+- text: [20, 545.5, 104, 13] text.secondary "C:\\work\\filenav>"
+- region: [8, 568, 784, 24] "keybar"

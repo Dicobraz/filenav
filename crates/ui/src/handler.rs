@@ -63,6 +63,8 @@ static COMMANDS: &[CommandMeta] = &[
     ),
     meta("ui.lang", "Language", &[arg("lang", ValueKind::Str, true)]),
     meta("ui.columns", "Columns", &[arg("set", ValueKind::Str, true)]),
+    // Имя — из S3 §3 (Ctrl+O), чтобы keymap не расходился с S2.
+    meta("ui.panels.toggle_all", "Hide or show panels", &[]),
 ];
 
 /// Шаг `ui.zoom` и пределы, %.
@@ -170,6 +172,10 @@ impl Handler for UiHandler {
             "ui.zoom" => zoom(ui_state(cx), a.int("delta")),
             "ui.split" => split(ui_state(cx), a.bool("reset"), a.int("delta")),
             "ui.lang" => lang(cx, a.str("lang").unwrap_or_default()),
+            "ui.panels.toggle_all" => {
+                let st = ui_state(cx);
+                st.panels_hidden = !st.panels_hidden;
+            }
             "ui.columns" => {
                 ui_state(cx).columns = Some(a.str("set").unwrap_or_default().into());
             }
