@@ -180,6 +180,7 @@ pub(crate) struct ListCx<'a> {
     pub cache: &'a mut RowCache,
     pub memo: &'a mut CardMemo,
     pub widths: &'a mut Widths,
+    pub st: &'a crate::state::UiState,
 }
 
 /// Карточка панели в прямоугольнике `r` (подложку и полосу акцента рисует `frame`).
@@ -218,16 +219,23 @@ pub(crate) fn show(
     }
     let interactive = held.is_none();
 
-    // Путь.
+    // Путь — breadcrumb (S2-12).
     let body = cx.fonts.id(Font::Ui, tk.m(Metric::TypeBody));
     let caption = tk.m(Metric::TypeCaption);
-    c.text_clipped(
-        path_r.left_center() + vec2(pad, 0.0),
-        path_r.width() - 2.0 * pad,
-        &Tx::user(cx.memo.path.as_str()),
-        if active { Font::Strong } else { Font::Ui },
-        tk.m(Metric::TypeBody),
-        Role::TextPrimary,
+    crate::breadcrumb::show(
+        c,
+        &mut crate::breadcrumb::CrumbCx {
+            ui: cx.ui,
+            tokens: tk,
+            fonts: cx.fonts,
+            st: cx.st,
+            memo: &mut cx.memo.crumbs,
+        },
+        path_r,
+        &t.loc,
+        side,
+        active,
+        out,
     );
 
     // Колонки и заголовки.

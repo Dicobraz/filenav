@@ -498,3 +498,107 @@ fn brief_columns_drive_left_right_and_page_down() {
     run(&mut c, "panel.cursor.page_down");
     assert_eq!(row(&c), start + rows * cols);
 }
+
+/// Pump, пока `done` не вернёт `true` (фоновые задачи `fs_tasks`), не дольше 3 с.
+fn pump_until(core: &mut Core, mut done: impl FnMut(&mut Core) -> bool) -> bool {
+    for _ in 0..300 {
+        core.pump(Duration::from_millis(5));
+        if done(core) {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    false
+}
+
+/// Ввод несуществующего пути (S2-12, ADR-0014): тост, путь панели прежний, поле открыто.
+#[test]
+fn path_input_rejects_missing_dir() {
+    let mut c = core();
+    let before = c.state().panel(Side::Left).tab().loc.clone();
+    let tmp = tempfile::tempdir().unwrap();
+    let missing = tmp.path().join("nope");
+    run(&mut c, "ui.path_edit side=left");
+    c.dispatch(
+        Command::new("ui.path_edit")
+            .arg("side", "left")
+            .arg("path", missing.display().to_string()),
+    );
+    let mut toasts = Vec::new();
+    assert!(pump_until(&mut c, |c| {
+        toasts.extend(errors(c));
+        !toasts.is_empty()
+    }));
+    assert!(toasts[0].contains("nope"), "{toasts:?}");
+    assert_eq!(c.state().panel(Side::Left).tab().loc, before);
+    assert_eq!(ui_state(&c).path_edit, Some(Side::Left));
+    assert_eq!(c.state().focus, Focus::Overlay(OverlayKind::InlineEdit));
+}
+
+/// Существующий каталог — `panel.go`, поле закрыто; относительный путь — от каталога таба.
+#[test]
+fn path_input_goes_to_existing_dir() {
+    let mut c = core();
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir(tmp.path().join("sub")).unwrap();
+    let dir = Location::local(tmp.path());
+    run(&mut c, "ui.path_edit side=left");
+    c.dispatch(
+        Command::new("ui.path_edit")
+            .arg("side", "left")
+            .arg("path", tmp.path().display().to_string()),
+    );
+    assert!(pump_until(&mut c, |c| c
+        .state()
+        .panel(Side::Left)
+        .tab()
+        .loc
+        == dir));
+    assert_eq!(ui_state(&c).path_edit, None);
+    assert_eq!(c.state().focus, Focus::Panel);
+    c.dispatch(
+        Command::new("ui.path_edit")
+            .arg("side", "left")
+            .arg("path", "sub"),
+    );
+    let sub = Location::local(tmp.path().join("sub"));
+    assert!(pump_until(&mut c, |c| c
+        .state()
+        .panel(Side::Left)
+        .tab()
+        .loc
+        == sub));
+}
+
+/// Меню `›`: только каталоги, натуральный порядок.
+#[test]
+fn subdirs_menu_lists_dirs_only() {
+    let mut c = core();
+    let tmp = tempfile::tempdir().unwrap();
+    for d in ["b10", "a", "b9"] {
+        std::fs::create_dir(tmp.path().join(d)).unwrap();
+    }
+    std::fs::write(tmp.path().join("file.txt"), b"x").unwrap();
+    c.dispatch(
+        Command::new("ui.menu")
+            .arg("menu", "subdirs")
+            .arg("side", "left")
+            .arg("path", Location::local(tmp.path())),
+    );
+    assert!(pump_until(&mut c, |c| ui_state(c)
+        .subdirs
+        .as_ref()
+        .is_some_and(|s| s.items.is_some())));
+    let s = ui_state(&c).subdirs.clone().unwrap();
+    let names: Vec<String> = s
+        .items
+        .unwrap()
+        .unwrap()
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    assert_eq!(names, ["a", "b9", "b10"]);
+    assert_eq!(ui_state(&c).menu_side, Some(Side::Left));
+    run(&mut c, "ui.cancel");
+    assert_eq!(ui_state(&c).subdirs, None);
+}

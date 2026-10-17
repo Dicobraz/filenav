@@ -1,12 +1,18 @@
-//! Handler namespace `ui` (S2 §3): меняет только [`UiState`] и фокус, без I/O.
-//! Оверлеи пока не рисуются — их виджеты появятся в S2-12…S2-17.
+//! Handler namespace `ui` (S2 §3): меняет только [`UiState`] и фокус, сам без I/O.
+//! Чтения ФС для breadcrumb (меню подкаталогов, проверка введённого пути) — задачами
+//! на полосе Interactive (ADR-0014, `fs_tasks`).
+
+use std::sync::Arc;
+
+use urfin_vfs::VfsRegistry;
 
 use urfin_core::{
-    ArgSpec, Args, CmdError, Command, CommandMeta, Cx, Focus, Handler, Level, OverlayKind,
-    PromptId, Row, Side, UiEvent, ValueKind,
+    ArgSpec, Args, CancelToken, CmdError, Command, CommandMeta, Cx, Focus, Handler, Level,
+    OverlayKind, PromptId, Row, Side, UiEvent, ValueKind,
 };
 
-use crate::state::{Draft, ThemeMode, UiState};
+use crate::fs_tasks;
+use crate::state::{Draft, Subdirs, ThemeMode, UiState};
 
 const fn arg(name: &'static str, kind: ValueKind, required: bool) -> ArgSpec {
     ArgSpec {
@@ -30,14 +36,28 @@ const SIDE: ArgSpec = arg("side", ValueKind::Str, false);
 const ID: ArgSpec = arg("id", ValueKind::Int, false);
 
 static COMMANDS: &[CommandMeta] = &[
-    meta("ui.menu", "Menu", &[arg("menu", ValueKind::Str, false)]),
+    // `menu=subdirs side path` и `menu=crumbs side` — меню breadcrumb (ADR-0014).
+    meta(
+        "ui.menu",
+        "Menu",
+        &[
+            arg("menu", ValueKind::Str, false),
+            SIDE,
+            arg("path", ValueKind::Loc, false),
+        ],
+    ),
     meta(
         "ui.qsearch",
         "Quick search",
         &[arg("text", ValueKind::Str, false)],
     ),
     meta("ui.rename", "Rename in place", &[]),
-    meta("ui.path_edit", "Edit path", &[SIDE]),
+    // С `path` — подтвердить ввод: проверка и `panel.go` или тост (ADR-0014).
+    meta(
+        "ui.path_edit",
+        "Edit path",
+        &[SIDE, arg("path", ValueKind::Str, false)],
+    ),
     meta(
         "ui.draft",
         "Command argument",
@@ -75,8 +95,43 @@ const SPLIT_STEP: f32 = 0.05;
 const SPLIT_RANGE: (f32, f32) = (0.1, 0.9);
 
 /// Handler `ui`. [`UiState`] кладётся в `AppState.ext` в первом pump.
-#[derive(Debug, Default)]
-pub struct UiHandler;
+pub struct UiHandler {
+    /// Чтения для меню и проверки пути. Свой реестр, пока архивы (S8) не общие.
+    vfs: Arc<VfsRegistry>,
+    /// Текущая фоновая задача меню или проверки пути — отменяется при закрытии.
+    task: Option<CancelToken>,
+}
+
+impl Default for UiHandler {
+    fn default() -> Self {
+        Self {
+            vfs: Arc::new(VfsRegistry::with_local()),
+            task: None,
+        }
+    }
+}
+
+impl std::fmt::Debug for UiHandler {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UiHandler").finish_non_exhaustive()
+    }
+}
+
+impl UiHandler {
+    /// Отменить прежнюю задачу и выдать токен новой.
+    fn new_task(&mut self, cx: &Cx<'_>) -> CancelToken {
+        self.cancel_task();
+        let t = cx.rt.token();
+        self.task = Some(t.clone());
+        t
+    }
+
+    fn cancel_task(&mut self) {
+        if let Some(t) = self.task.take() {
+            t.cancel();
+        }
+    }
+}
 
 impl Handler for UiHandler {
     fn namespace(&self) -> &'static str {
@@ -95,16 +150,14 @@ impl Handler for UiHandler {
         if open.is_some() && !matches!(focus, Focus::Overlay(_)) {
             st.close_overlay();
             cx.state.touch();
+            self.cancel_task();
         }
     }
 
     fn handle(&mut self, cmd: &Command, cx: &mut Cx<'_>) -> Result<(), CmdError> {
         let a = &cmd.args;
         match cmd.id.as_str() {
-            "ui.menu" => {
-                let menu = a.str("menu").unwrap_or_default().into();
-                open(cx, OverlayKind::Menu, |st| st.menu = Some(menu));
-            }
+            "ui.menu" => self.menu(cx, a),
             "ui.qsearch" => {
                 let side = cx.state.active;
                 let text = a.str("text").unwrap_or_default().into();
@@ -122,10 +175,7 @@ impl Handler for UiHandler {
                 let target = (t.id, entry.name.clone());
                 open(cx, OverlayKind::InlineEdit, |st| st.rename = Some(target));
             }
-            "ui.path_edit" => {
-                let side = side_arg(cx, a);
-                open(cx, OverlayKind::InlineEdit, |st| st.path_edit = Some(side));
-            }
+            "ui.path_edit" => self.path_edit(cx, a),
             "ui.draft" => {
                 let draft = Draft {
                     cmd: a.str("command").unwrap_or_default().into(),
@@ -135,6 +185,7 @@ impl Handler for UiHandler {
                 open(cx, OverlayKind::Draft, |st| st.draft = Some(draft));
             }
             "ui.cancel" => {
+                self.cancel_task();
                 ui_state(cx).close_overlay();
                 if matches!(cx.state.focus, Focus::Overlay(_)) {
                     set_focus(cx, Focus::Panel);
@@ -182,6 +233,78 @@ impl Handler for UiHandler {
             _ => return Err(CmdError::Unknown(cmd.id.as_str().into())),
         }
         Ok(())
+    }
+}
+
+impl UiHandler {
+    /// `ui.menu`: F9 (S2-14) или меню breadcrumb — подкаталоги (`›`) и свёрнутые
+    /// сегменты (`…`).
+    fn menu(&mut self, cx: &mut Cx<'_>, a: &Args) {
+        let menu = a.str("menu").unwrap_or_default();
+        let side = side_arg(cx, a);
+        if menu == "subdirs" {
+            let loc = a
+                .loc("path")
+                .unwrap_or_else(|| cx.state.panel(side).tab().loc.clone());
+            let cancel = self.new_task(cx);
+            let generation = ui_state(cx).bump();
+            fs_tasks::spawn_subdirs(
+                cx.rt,
+                Arc::clone(&self.vfs),
+                loc.clone(),
+                generation,
+                cancel,
+            );
+            open(cx, OverlayKind::Menu, |st| {
+                st.menu = Some("subdirs".into());
+                st.menu_side = Some(side);
+                st.subdirs = Some(Subdirs {
+                    side,
+                    loc,
+                    items: None,
+                    generation,
+                });
+            });
+            return;
+        }
+        self.cancel_task();
+        let crumbs = menu == "crumbs";
+        let menu = menu.into();
+        open(cx, OverlayKind::Menu, |st| {
+            st.menu = Some(menu);
+            st.menu_side = crumbs.then_some(side);
+        });
+    }
+
+    /// `ui.path_edit`: без `path` — открыть поле; с `path` — проверить и перейти.
+    fn path_edit(&mut self, cx: &mut Cx<'_>, a: &Args) {
+        let side = side_arg(cx, a);
+        let Some(text) = a.str("path") else {
+            self.cancel_task();
+            open(cx, OverlayKind::InlineEdit, |st| st.path_edit = Some(side));
+            return;
+        };
+        let base = cx.state.panel(side).tab().loc.clone();
+        let Some(loc) = fs_tasks::resolve_input(text, &base) else {
+            let mut args = urfin_i18n::FluentArgs::new();
+            args.set("path", text.to_owned());
+            args.set("error", "-");
+            let msg = urfin_i18n::current().fmt("ui-path-not-found", &args);
+            cx.toast(Level::Warn, msg);
+            return;
+        };
+        let cancel = self.new_task(cx);
+        let st = ui_state(cx);
+        let generation = st.bump();
+        st.path_check = Some(generation);
+        if st.path_edit != Some(side) {
+            st.close_overlay();
+            st.path_check = Some(generation);
+            st.overlay = Some(OverlayKind::InlineEdit);
+            st.path_edit = Some(side);
+            set_focus(cx, Focus::Overlay(OverlayKind::InlineEdit));
+        }
+        fs_tasks::spawn_path_check(cx.rt, Arc::clone(&self.vfs), side, loc, generation, cancel);
     }
 }
 

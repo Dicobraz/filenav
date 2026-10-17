@@ -15,6 +15,7 @@
 | 0011 | [UI-фронтенд получает корневой `egui::Ui`](0011-ui-show-root-ui.md) |
 | 0012 | [Рендер wgpu (DX12 на Windows) вместо glow](0012-renderer-wgpu.md) |
 | 0013 | [Аргумент `ui.draft` — `command`, а не `cmd`](0013-ui-draft-command-arg.md) |
+| 0014 | [Ввод пути и меню подкаталогов breadcrumb — через handler `ui`](0014-breadcrumb-io-commands.md) |
 
 Новые ADR — со следующего свободного номера: `NNNN-кратко.md`.
 

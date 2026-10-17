@@ -31,6 +31,11 @@ ui-folder-empty = Папка пуста
 ui-retry = Повторить
 ui-loading-count = Загрузка… { $count }
 
+# Breadcrumb (S2-12)
+ui-menu-loading = Загрузка…
+ui-menu-empty = Папок нет
+ui-path-not-found = Не открыть { $path }: { $error }
+
 ui-renderer-fallback = Графический драйвер сбоит — включён программный рендер
 
 ## О программе / сплэш (R-01). Экранов ещё нет: TODO S2-14 (меню F9).

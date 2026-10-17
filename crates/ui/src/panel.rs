@@ -54,15 +54,15 @@ pub(crate) struct CardMemo {
     /// каждый кадр).
     pub page: u32,
     pub cols: u32,
-    /// Кадр, каким его увидел пользователь: путь, подвал, строки.
+    /// Кадр, каким его увидел пользователь: подвал и строки (путь — breadcrumb).
     pub lines: Vec<Line>,
-    pub path: String,
     pub footer: String,
     /// Есть что показать при удержании прежнего кадра.
     pub has_frame: bool,
     /// Дробный остаток прокрутки колесом (в строках).
     pub wheel_acc: f32,
-    path_key: Option<(urfin_core::TabId, urfin_core::Location)>,
+    /// Breadcrumb: сегменты пути, поле ввода, точка меню.
+    pub crumbs: crate::breadcrumb::CrumbMemo,
     footer_key: Option<FooterKey>,
 }
 
@@ -80,16 +80,8 @@ struct FooterKey {
 }
 
 impl CardMemo {
-    /// Путь и подвал таба — пересчёт только при смене входов (без аллокаций в простое).
+    /// Подвал таба — пересчёт только при смене входов (без аллокаций в простое).
     pub(crate) fn refresh_texts(&mut self, i18n: &I18n, t: &Tab) {
-        if self
-            .path_key
-            .as_ref()
-            .is_none_or(|(id, loc)| *id != t.id || *loc != t.loc)
-        {
-            self.path = path_text(t);
-            self.path_key = Some((t.id, t.loc.clone()));
-        }
         let status = match &t.listing.status {
             ListingStatus::Loading { .. } => 0,
             ListingStatus::Failed(_) => 1,
