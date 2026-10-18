@@ -24,6 +24,12 @@ fn is_escape(c: char) -> bool {
     (WIDE_BASE..=0x10_FFFF).contains(&u32::from(c))
 }
 
+/// Может ли имя быть экранированным (символы зоны экранирования): подсказка
+/// `ESCAPED_NAME` для `stat_entry` по имени без `Entry`.
+pub fn may_be_escaped(name: &str) -> bool {
+    name.chars().any(is_escape)
+}
+
 /// UTF-16 → имя; `true` — экранировано.
 pub fn escape_wide(units: &[u16]) -> (CompactString, bool) {
     if let Ok(s) = String::from_utf16(units) {

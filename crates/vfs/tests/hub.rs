@@ -17,8 +17,13 @@ impl Waker for NoWake {
 }
 
 fn setup(left: &Path, right: &Path) -> (Core, Arc<VfsListing>) {
+    setup_with(left, right, VfsCfg::default().patch_threshold)
+}
+
+fn setup_with(left: &Path, right: &Path, patch_threshold: u32) -> (Core, Arc<VfsListing>) {
     let cfg = VfsCfg {
         poll_interval_ms: 100,
+        patch_threshold,
         ..VfsCfg::default()
     };
     let listing = Arc::new(VfsListing::new(Arc::new(VfsRegistry::with_local()), cfg));
@@ -223,4 +228,91 @@ fn storm_is_rate_limited() {
     // После шторма список догоняет.
     let n = i as usize;
     pump_until(&mut core, "caught up", |c| names(c, Side::Left).len() == n);
+}
+
+fn cursor_name(core: &Core, side: Side) -> Option<String> {
+    match core.state().panel(side).tab().current() {
+        Some(Row::Entry { entry, .. }) => Some(entry.name.to_string()),
+        _ => None,
+    }
+}
+
+fn selected(core: &Core, side: Side) -> Vec<String> {
+    let t = core.state().panel(side).tab();
+    let mut v: Vec<String> = t
+        .selection
+        .names(&t.listing)
+        .into_iter()
+        .map(|n| n.to_string())
+        .collect();
+    v.sort();
+    v
+}
+
+/// Большой каталог (≥ `patch_threshold`): изменения приходят патчем — без
+/// перечитывания (поколение то же), курсор и выделение на тех же именах,
+/// порядок как у полного листинга (S4-15).
+#[test]
+fn big_directory_is_patched_in_place() {
+    let a = tempfile::tempdir().unwrap();
+    let b = tempfile::tempdir().unwrap();
+    for i in 0..40 {
+        fs::write(a.path().join(format!("file{i:02}.txt")), b"x").unwrap();
+    }
+    for n in ["keep-1.md", "keep-2.md"] {
+        fs::write(a.path().join(n), b"x").unwrap();
+    }
+    let (mut core, listing) = setup_with(a.path(), b.path(), 10);
+    pump_until(&mut core, "initial", |c| complete(c, Side::Left));
+    let left = tab_id(&core, Side::Left);
+    pump_until(&mut core, "watched", |_| {
+        listing.watched_tabs().contains(&left)
+    });
+    core.dispatch(Command::new("sel.add").arg("mask", "keep-*"));
+    core.dispatch(Command::new("panel.cursor.down").arg("n", 20));
+    let at = cursor_name(&core, Side::Left).expect("cursor on an entry");
+    let generation = core.state().panel(Side::Left).tab().listing.generation;
+    assert_eq!(selected(&core, Side::Left), ["keep-1.md", "keep-2.md"]);
+
+    // Удалить файлы до и после курсора, добавить новые, изменить размер.
+    fs::remove_file(a.path().join("file00.txt")).unwrap();
+    fs::remove_file(a.path().join("file39.txt")).unwrap();
+    fs::write(a.path().join("aaa-new.txt"), b"x").unwrap();
+    fs::write(a.path().join("zzz-new.txt"), b"x").unwrap();
+    fs::write(a.path().join("file05.txt"), b"bigger").unwrap();
+    fs::rename(a.path().join("keep-2.md"), a.path().join("keep-3.md")).unwrap();
+
+    pump_until(&mut core, "patched", |c| {
+        let n = names(c, Side::Left);
+        n.contains(&"aaa-new.txt".to_string())
+            && n.contains(&"zzz-new.txt".to_string())
+            && !n.contains(&"file00.txt".to_string())
+            && !n.contains(&"file39.txt".to_string())
+            && n.contains(&"keep-3.md".to_string())
+    });
+    let t = core.state().panel(Side::Left).tab();
+    assert_eq!(t.listing.generation, generation, "patched, not re-read");
+    assert_eq!(cursor_name(&core, Side::Left).as_deref(), Some(at.as_str()));
+    // Переименованный выбранный файл — уже другое имя: выделение остаётся на keep-1.
+    assert_eq!(selected(&core, Side::Left), ["keep-1.md"]);
+    let size = |c: &Core, n: &str| {
+        let t = c.state().panel(Side::Left).tab();
+        t.listing
+            .entries
+            .iter()
+            .find(|e| e.name == n)
+            .map(|e| e.size)
+    };
+    pump_until(&mut core, "size updated", |c| {
+        size(c, "file05.txt") == Some(6)
+    });
+
+    // Порядок — как у свежего листинга того же каталога.
+    let patched = names(&core, Side::Left);
+    core.dispatch(Command::new("panel.refresh"));
+    pump_until(&mut core, "refreshed", |c| {
+        c.state().panel(Side::Left).tab().listing.generation != generation
+            && complete(c, Side::Left)
+    });
+    assert_eq!(names(&core, Side::Left), patched);
 }
