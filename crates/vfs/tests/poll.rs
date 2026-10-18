@@ -73,8 +73,11 @@ fn changes_are_seen_within_one_interval() {
     let interval = p.interval();
     let changed = Instant::now();
     wait_due(&p);
-    let ev = p.poll(&CancelToken::new(), Instant::now()).unwrap();
-    assert!(changed.elapsed() <= interval + Duration::from_millis(50));
+    // Опрос начат не позже интервала после изменения (сам листинг на медленном
+    // раннере может идти долго — в срок не входит).
+    let started = Instant::now();
+    let ev = p.poll(&CancelToken::new(), started).unwrap();
+    assert!(started.saturating_duration_since(changed) <= interval + Duration::from_millis(50));
     assert_eq!(summary(&ev), ["+new", "+sub", "-gone", "~grow"]);
 
     // Снимок обновлён: повторный опрос пуст.

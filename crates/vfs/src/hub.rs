@@ -278,7 +278,6 @@ enum Ctrl {
     Activate {
         tab: TabId,
         generation: Gen,
-        entries: Arc<Vec<Entry>>,
         list_time: Duration,
     },
     Tab(TabEvent),
@@ -395,18 +394,11 @@ impl Hub {
         false
     }
 
-    /// После `Done`: сбрасывать накопленное; `entries` — снимок для опроса.
-    pub(crate) fn activate(
-        &self,
-        tab: TabId,
-        generation: Gen,
-        entries: Arc<Vec<Entry>>,
-        list_time: Duration,
-    ) {
+    /// После `Done`: сбрасывать накопленное.
+    pub(crate) fn activate(&self, tab: TabId, generation: Gen, list_time: Duration) {
         let _ = self.ctrl.send(Ctrl::Activate {
             tab,
             generation,
-            entries,
             list_time,
         });
     }
@@ -577,7 +569,6 @@ impl Worker {
             Ctrl::Activate {
                 tab,
                 generation,
-                entries,
                 list_time,
             } => {
                 let poll = self.poll;
@@ -589,10 +580,10 @@ impl Worker {
                 }
                 s.active = true;
                 if s.guard.is_none() {
-                    s.poller = Some(Poller::new(
+                    // Снимок — первым опросом: копии записей у сервиса нет (ADR-0017).
+                    s.poller = Some(Poller::baseline(
                         Arc::clone(&s.vfs),
                         s.loc.clone(),
-                        &entries,
                         poll,
                         list_time,
                         Instant::now(),

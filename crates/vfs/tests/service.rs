@@ -250,28 +250,29 @@ fn navigation_cancels_listing_within_one_batch() {
     assert!(names(&core).iter().all(|n| n.starts_with("e1-")));
 }
 
-/// S4-06: на 2048+ записях — полная сортировка, пока каталог ещё грузится.
+/// ADR-0017: многочанковый каталог — `Complete` только с финальным порядком
+/// (его считает core по своим записям); пока грузится, хвост — в порядке прихода.
 #[test]
-fn list_is_resorted_while_streaming() {
+fn big_listing_is_complete_only_when_sorted() {
     let (reg, _, _) = slow();
     let mut core = core_with(
         reg,
         Location::local(root().join("desc")),
         Location::local(root().join("fast")),
     );
-    // Хвост между пересортами — в порядке прихода; после пересорта на 2048+
-    // список отсортирован, хотя каталог ещё грузится (батч — раз в 60 мс).
-    let sorted = |c: &Core| {
-        let v = names(c);
-        v.len() >= 3000 && v.windows(2).all(|w| w[0] < w[1])
-    };
-    pump_until(&mut core, sorted);
-    assert!(
-        matches!(status(&core), ListingStatus::Loading { .. }),
-        "отсортировано до конца загрузки"
-    );
-    pump_until(&mut core, |c| matches!(status(c), ListingStatus::Complete));
-    let v = names(&core);
-    assert_eq!(v.len(), 5000);
-    assert!(v.windows(2).all(|w| w[0] < w[1]));
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        assert!(Instant::now() < deadline, "timeout");
+        core.pump(Duration::from_millis(20));
+        if matches!(status(&core), ListingStatus::Complete) {
+            let v = names(&core);
+            assert_eq!(v.len(), 5000);
+            assert!(
+                v.windows(2).all(|w| w[0] < w[1]),
+                "Complete with an unsorted tail"
+            );
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(2));
+    }
 }

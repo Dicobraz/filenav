@@ -20,6 +20,8 @@ pub struct Poller {
     base: Duration,
     /// Снимок, отсортированный по байтам имени.
     snap: Vec<Entry>,
+    /// Снимка ещё нет: первый опрос его только запоминает.
+    primed: bool,
     last_list: Duration,
     due: Instant,
 }
@@ -52,10 +54,25 @@ impl Poller {
             dir,
             base,
             snap,
+            primed: true,
             last_list,
             due: now,
         };
         p.due = now + p.interval();
+        p
+    }
+
+    /// Без снимка: первый опрос (через интервал) запоминает каталог, изменения
+    /// — со второго.
+    pub fn baseline(
+        vfs: Arc<dyn Vfs>,
+        dir: VfsPath,
+        base: Duration,
+        last_list: Duration,
+        now: Instant,
+    ) -> Poller {
+        let mut p = Poller::new(vfs, dir, &[], base, last_list, now);
+        p.primed = false;
         p
     }
 
@@ -90,7 +107,12 @@ impl Poller {
             Err(e) => return Err(e),
         };
         fresh.sort_unstable_by(|a, b| a.name.as_bytes().cmp(b.name.as_bytes()));
-        let events = diff(&self.snap, &fresh);
+        let events = if self.primed {
+            diff(&self.snap, &fresh)
+        } else {
+            self.primed = true;
+            Vec::new()
+        };
         self.snap = fresh;
         Ok(events)
     }

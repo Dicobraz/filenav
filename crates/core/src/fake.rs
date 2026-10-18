@@ -41,6 +41,7 @@ pub struct FakeListing {
     chunk: usize,
     tree: Option<FakeTree>,
     silent: AtomicBool,
+    unsorted: AtomicBool,
 }
 
 /// Бесконечное детерминированное дерево: каталог без явного содержимого
@@ -75,6 +76,7 @@ impl FakeListing {
             chunk: chunk.max(1),
             tree: None,
             silent: AtomicBool::new(false),
+            unsorted: AtomicBool::new(false),
         }
     }
 
@@ -112,6 +114,12 @@ impl FakeListing {
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
         self.inner.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Как `VfsListing` без копии записей (ADR-0017): чанки в порядке прихода,
+    /// в конце `DoneUnsorted` вместо `Order` + `Done`.
+    pub fn set_unsorted(&self, on: bool) {
+        self.unsorted.store(on, AtomicOrdering::Relaxed);
     }
 
     /// «Медленный диск»: загрузки записываются, но ничего не присылают.
@@ -231,6 +239,7 @@ impl ListingService for FakeListing {
             return;
         }
         let chunk = self.chunk;
+        let unsorted = self.unsorted.load(AtomicOrdering::Relaxed);
         rt.spawn(
             Lane::Interactive,
             "fake.list",
@@ -258,6 +267,10 @@ impl ListingService for FakeListing {
                         return;
                     }
                     base += part.len() as u32;
+                }
+                if unsorted && req.view.sort.key != SortKey::Unsorted {
+                    send(ListingUpdate::DoneUnsorted);
+                    return;
                 }
                 if req.view.sort.key != SortKey::Unsorted
                     && !send(ListingUpdate::Order {

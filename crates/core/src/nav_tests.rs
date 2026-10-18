@@ -794,3 +794,33 @@ fn crash_banner_actions() {
     h.run(banner.actions[1].1.clone());
     assert!(h.core.state().banner.is_none());
 }
+
+/// ADR-0017: сервис без копии записей шлёт `DoneUnsorted` — core сам досортировывает
+/// свои записи и только тогда отмечает `Complete`.
+#[test]
+fn done_unsorted_is_arranged_by_core() {
+    let names: Vec<String> = (0..40).rev().map(|i| format!("f{i:02}")).collect();
+    let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+    let mut h = H::new(8, |f| {
+        f.set_dir(dir("b"), files(&refs));
+        f.set_unsorted(true);
+    });
+    let arranges = h.fake.arranges().len();
+    h.go("b");
+    assert!(matches!(h.tab().listing.status, ListingStatus::Complete));
+    let mut sorted = names.clone();
+    sorted.sort();
+    assert_eq!(h.names(), sorted);
+    assert!(
+        h.fake.arranges().len() > arranges,
+        "core asked for the final order"
+    );
+
+    // Refresh: подмена — уже с финальным порядком.
+    h.cmd("panel.cursor.to name=f17");
+    h.cmd("panel.refresh");
+    assert!(h.tab().incoming.is_none());
+    assert!(matches!(h.tab().listing.status, ListingStatus::Complete));
+    assert_eq!(h.names(), sorted);
+    assert_eq!(h.cur().as_deref(), Some("f17"));
+}

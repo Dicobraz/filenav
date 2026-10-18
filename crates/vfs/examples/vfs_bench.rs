@@ -153,7 +153,11 @@ fn main() {
     let services = Services {
         listing: Arc::new(VfsListing::new(
             Arc::new(VfsRegistry::with_local()),
-            VfsCfg::default(),
+            // Без кэша каталогов (S4-16): каждый прогон — настоящее чтение.
+            VfsCfg {
+                cache_dirs: 0,
+                ..VfsCfg::default()
+            },
         )),
         open_resolvers: Vec::new(),
     };

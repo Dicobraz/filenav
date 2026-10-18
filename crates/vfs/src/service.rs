@@ -16,7 +16,7 @@ use urfin_core::{
 };
 
 use crate::api::{ListOpts, VfsError, VfsRegistry};
-use crate::batch::{Batcher, Resort};
+use crate::batch::Batcher;
 use crate::cache::DirCache;
 use crate::hub::{Hub, HubCfg};
 use crate::sort::{ArrangeOpts, arrange, visible};
@@ -199,17 +199,17 @@ fn load(
         return;
     }
     match stream(reg, req, opts, cx, &send, t0) {
-        Ok(Some((all, resort))) => {
-            if req.view.sort.key != SortKey::Unsorted
-                && resort.final_due(all.len())
-                && !send_order(&all, req, opts, &send)
-            {
-                return;
-            }
-            tracing::debug!(target: "list.sorted", elapsed = ?t0.elapsed(), entries = all.len());
-            if send(ListingUpdate::Done) {
-                tracing::debug!(target: "list.done", elapsed = ?t0.elapsed(), entries = all.len(), loc = %req.loc.path.display());
-                hub.activate(req.tab, req.generation, Arc::new(all), t0.elapsed());
+        Ok(Some((count, chunks))) => {
+            // Один чанк пришёл уже отсортированным; больше — финальный порядок
+            // считает core по своим записям (копии здесь нет, ADR-0017).
+            let done = if chunks > 1 && req.view.sort.key != SortKey::Unsorted {
+                ListingUpdate::DoneUnsorted
+            } else {
+                ListingUpdate::Done
+            };
+            if send(done) {
+                tracing::debug!(target: "list.done", elapsed = ?t0.elapsed(), entries = count, chunks, loc = %req.loc.path.display());
+                hub.activate(req.tab, req.generation, t0.elapsed());
             }
         }
         // Отменено: ничего не отправляем.
@@ -245,9 +245,7 @@ fn from_cache(
         return;
     }
     tracing::debug!(target: "list.cache", fresh, elapsed = ?t0.elapsed(), entries = n, loc = %req.loc.path.display());
-    // Снимок для опроса не нужен: свежий кэш бывает только у наблюдаемых
-    // каталогов, а устаревший сейчас же перечитается (и снимок придёт с ним).
-    hub.activate(req.tab, req.generation, Arc::default(), Duration::ZERO);
+    hub.activate(req.tab, req.generation, Duration::ZERO);
     if !fresh {
         let (tab, generation) = (req.tab, req.generation);
         let m = urfin_core::msg("vfs.cache_stale", move |cx| {
@@ -263,25 +261,9 @@ fn from_cache(
     }
 }
 
-/// Полный порядок `all`; `false` — отправка не прошла (отмена).
-fn send_order(
-    all: &[Entry],
-    req: &LoadReq,
-    opts: ArrangeOpts,
-    send: &impl Fn(ListingUpdate) -> bool,
-) -> bool {
-    let order = arrange(all, &req.view, opts);
-    send(ListingUpdate::Order {
-        order: Arc::new(order),
-        for_len: u32::try_from(all.len()).unwrap_or(u32::MAX),
-        seq: req.seq,
-    })
-}
-
-/// Чтение и чанки с геометрическим пересортом: на CHUNK·2^k записей — полный
-/// `Order` до следующего чанка (core принимает `Order` только при
-/// `for_len == entries.len()`), сортировка — rayon внутри. `Ok(None)` —
-/// отменено или отправка не прошла (отмена).
+/// Чтение и чанки: первый — отсортированный, остальные — в порядке прихода
+/// (записи уходят в core без копии здесь, ADR-0017). `Ok(Some((записей,
+/// чанков)))`; `Ok(None)` — отменено или отправка не прошла (отмена).
 fn stream(
     reg: &VfsRegistry,
     req: &LoadReq,
@@ -289,12 +271,10 @@ fn stream(
     cx: &TaskCx,
     send: &impl Fn(ListingUpdate) -> bool,
     t0: Instant,
-) -> Result<Option<(Vec<Entry>, Resort)>, VfsError> {
-    let sorting = req.view.sort.key != SortKey::Unsorted;
-    let mut resort = Resort::default();
+) -> Result<Option<(usize, usize)>, VfsError> {
     let fs = reg.get(&req.loc)?;
     let mut s = fs.list(&req.loc, &ListOpts::default())?;
-    let mut all: Vec<Entry> = Vec::with_capacity(s.size_hint().unwrap_or(0) as usize);
+    let (mut count, mut chunks) = (0usize, 0usize);
     let mut pending: Vec<Entry> = Vec::new();
     let mut batcher = Batcher::default();
     loop {
@@ -309,8 +289,9 @@ fn stream(
             break;
         }
         let first = batcher.is_first();
-        let visible = chunk_visible(&pending, all.len(), &req.view, opts, first);
-        all.extend(pending.iter().cloned());
+        let visible = chunk_visible(&pending, count, &req.view, opts, first);
+        count += pending.len();
+        chunks += 1;
         if !send(ListingUpdate::Chunk {
             entries: std::mem::take(&mut pending),
             visible,
@@ -318,20 +299,14 @@ fn stream(
             return Ok(None);
         }
         if first {
-            tracing::debug!(target: "list.first_chunk", elapsed = ?t0.elapsed(), entries = all.len());
+            tracing::debug!(target: "list.first_chunk", elapsed = ?t0.elapsed(), entries = count);
         }
         batcher.flushed();
-        if sorting && more && resort.due(all.len()) {
-            if !send_order(&all, req, opts, send) {
-                return Ok(None);
-            }
-            resort.sorted(all.len());
-        }
         if !more {
             break;
         }
     }
-    Ok(Some((all, resort)))
+    Ok(Some((count, chunks)))
 }
 
 /// `visible` чанка: абсолютные индексы прошедших hidden и фильтр. Первый чанк —
