@@ -227,6 +227,20 @@ URFIN_UPDATE_DOCS=1 cargo nextest run -p urfin-keymap keys_doc -->
 | `Cmd+C` | `file.clip.copy` | M |
 | `Cmd+V` | `file.clip.paste` | M |
 
+### `panel && tree && cmdline_empty`
+
+| Сочетание | Команда | ОС |
+|---|---|---|
+| `Up` | `ui.tree.up` | W M L |
+| `Down` | `ui.tree.down` | W M L |
+| `PageUp` | `ui.tree.page_up` | W M L |
+| `PageDown` | `ui.tree.page_down` | W M L |
+| `Home` | `ui.tree.home` | W M L |
+| `End` | `ui.tree.end` | W M L |
+| `Right` | `ui.tree.expand` | W M L |
+| `Left` | `ui.tree.collapse` | W M L |
+| `Enter` | `ui.tree.enter` | W M L |
+
 ### `panel \|\| cmdline`
 
 | Сочетание | Команда | ОС |
@@ -551,6 +565,20 @@ URFIN_UPDATE_DOCS=1 cargo nextest run -p urfin-keymap keys_doc -->
 | `Right` | `panel.cursor.right` | W M L |
 | `Cmd+C` | `file.clip.copy` | M |
 | `Cmd+V` | `file.clip.paste` | M |
+
+### `panel && tree && cmdline_empty`
+
+| Сочетание | Команда | ОС |
+|---|---|---|
+| `Up` | `ui.tree.up` | W M L |
+| `Down` | `ui.tree.down` | W M L |
+| `PageUp` | `ui.tree.page_up` | W M L |
+| `PageDown` | `ui.tree.page_down` | W M L |
+| `Home` | `ui.tree.home` | W M L |
+| `End` | `ui.tree.end` | W M L |
+| `Right` | `ui.tree.expand` | W M L |
+| `Left` | `ui.tree.collapse` | W M L |
+| `Enter` | `ui.tree.enter` | W M L |
 
 ### `panel \|\| cmdline`
 

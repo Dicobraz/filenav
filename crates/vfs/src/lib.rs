@@ -11,6 +11,7 @@ pub mod path;
 pub mod service;
 pub mod sort;
 mod sys;
+pub mod volume;
 
 pub use api::*;
 pub use local::{ListMode, LocalFs, ROOTS_TIMEOUT};

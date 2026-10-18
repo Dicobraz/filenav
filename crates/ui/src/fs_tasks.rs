@@ -24,17 +24,59 @@ pub fn spawn_subdirs(
     cancel: CancelToken,
 ) {
     rt.spawn(Lane::Interactive, "ui.subdirs", cancel, move |t| {
-        let items = list_dirs(&vfs, &loc, &t.cancel);
+        let items = list_dirs(&vfs, &loc, &t.cancel, MENU_MAX);
         let _ = t
             .sink
             .send(Box::new(SubdirsListed { generation, items }), &t.cancel);
     });
 }
 
+/// Подкаталогов узла дерева не больше (S2-18): дальше — без них.
+pub const TREE_MAX: usize = 20_000;
+
+/// Подкаталоги узла дерева `loc` (S2-18); ответ — с поколением дерева.
+pub fn spawn_tree_children(
+    rt: &Runtime,
+    vfs: Arc<VfsRegistry>,
+    side: Side,
+    loc: Location,
+    generation: u64,
+    cancel: CancelToken,
+) {
+    rt.spawn(Lane::Interactive, "ui.tree", cancel, move |t| {
+        let names = list_dirs(&vfs, &loc, &t.cancel, TREE_MAX);
+        let msg = TreeListed {
+            side,
+            loc,
+            generation,
+            names,
+        };
+        let _ = t.sink.send(Box::new(msg), &t.cancel);
+    });
+}
+
+struct TreeListed {
+    side: Side,
+    loc: Location,
+    generation: u64,
+    names: Result<Vec<CompactString>, CompactString>,
+}
+
+impl Msg for TreeListed {
+    fn name(&self) -> &'static str {
+        "ui.tree"
+    }
+
+    fn apply(self: Box<Self>, cx: &mut Cx<'_>) {
+        crate::views::tree_children(cx, self.side, &self.loc, self.generation, self.names);
+    }
+}
+
 fn list_dirs(
     vfs: &VfsRegistry,
     loc: &Location,
     cancel: &CancelToken,
+    max: usize,
 ) -> Result<Vec<CompactString>, CompactString> {
     let err = |e: urfin_vfs::VfsError| CompactString::from(e.to_string());
     let fs = vfs.get(loc).map_err(err)?;
@@ -59,7 +101,7 @@ fn list_dirs(
         }
     }
     names.sort_by(|a, b| urfin_vfs::sort::name_cmp(a, b, true));
-    names.truncate(MENU_MAX);
+    names.truncate(max);
     Ok(names)
 }
 

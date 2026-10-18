@@ -67,6 +67,10 @@ pub struct UiState {
     pub columns: Option<CompactString>,
     /// Ctrl+O: панели скрыты, виден вывод терминала (S0-decisions №27).
     pub panels_hidden: bool,
+    /// Режимы панелей (S2-18) по сторонам: «Дерево», «Инфо», быстрый просмотр.
+    pub tree: [Option<crate::views::TreeState>; 2],
+    pub info: [Option<crate::views::InfoState>; 2],
+    pub preview: [Option<crate::views::PreviewState>; 2],
 }
 
 impl Default for UiState {
@@ -94,6 +98,9 @@ impl UiState {
             theme: None,
             columns: None,
             panels_hidden: false,
+            tree: [None, None],
+            info: [None, None],
+            preview: [None, None],
         }
     }
 

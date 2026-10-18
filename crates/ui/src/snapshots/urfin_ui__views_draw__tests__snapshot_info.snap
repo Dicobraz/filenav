@@ -1,0 +1,35 @@
+---
+source: crates/ui/src/views_draw_tests.rs
+expression: yaml
+---
+- rect: [644, 76, 592, 1] stroke.divider
+- rect: [644, 568, 592, 1] stroke.divider
+- text: [656, 53, 56, 14] text.primary "Сведения"
+- text: [656, 576, 228, 12] text.secondary "Ctrl+L — закрыть · обновляется на лету"
+- text: [656, 89, 140, 14] text.primary "Локальный диск (C:\\)"
+- text: [668, 114, 96, 12] text.secondary "Файловая система"
+- text: [808, 113, 416, 14] text.primary "NTFS · NVMe SSD"
+- text: [668, 138, 66, 12] text.secondary "Возможности"
+- text: [808, 137, 416, 14] text.primary "корзина, ADS, сжатие"
+- text: [668, 162, 48, 12] text.secondary "Свободно"
+- text: [808, 161, 416, 14] text.primary "412 ГБ из 952 ГБ (43 %)"
+- rect: [668, 180, 556, 4] stroke.divider
+- rect: [668, 180, 315.37817, 4] accent.fill
+- text: [656, 205, 35, 14] text.primary "urfin"
+- text: [668, 230, 24, 12] text.secondary "Путь"
+- text: [808, 229, 416, 14] text.primary "test:/work/urfin"
+- text: [668, 254, 60, 12] text.secondary "Содержимое"
+- text: [808, 253, 416, 14] text.primary "папок: 2 · файлов: 2"
+- text: [668, 278, 72, 12] text.secondary "Объём файлов"
+- text: [808, 277, 416, 14] text.primary "5\u{a0}120 байт"
+- text: [656, 321, 84, 14] text.primary "Под курсором"
+- text: [668, 346, 18, 12] text.secondary "Имя"
+- text: [808, 345, 416, 14] text.primary "README.md"
+- text: [668, 370, 18, 12] text.secondary "Тип"
+- text: [808, 369, 416, 14] text.primary "файл"
+- text: [668, 394, 36, 12] text.secondary "Размер"
+- text: [808, 393, 416, 14] text.primary "3\u{a0}891 байт"
+- text: [668, 418, 42, 12] text.secondary "Изменён"
+- text: [808, 417, 416, 14] text.primary "14.10.26 09:12"
+- text: [668, 442, 48, 12] text.secondary "Атрибуты"
+- text: [808, 441, 416, 14] text.primary "A"

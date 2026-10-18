@@ -87,7 +87,29 @@ static COMMANDS: &[CommandMeta] = &[
     meta("ui.panels.toggle_all", "Hide or show panels", &[]),
     // «О программе» (S0-decisions №49): имя Úrfionn и пасхалка — тостом, пока нет окна.
     meta("ui.about", "About", &[]),
+    // Дерево в панели (S2-18): клавиши — контекст keymap `panel && tree`.
+    repeat("ui.tree.up", "Tree: up", &[]),
+    repeat("ui.tree.down", "Tree: down", &[]),
+    repeat("ui.tree.page_up", "Tree: page up", &[]),
+    repeat("ui.tree.page_down", "Tree: page down", &[]),
+    meta("ui.tree.home", "Tree: first", &[]),
+    meta("ui.tree.end", "Tree: last", &[]),
+    meta("ui.tree.expand", "Tree: expand", &[]),
+    meta("ui.tree.collapse", "Tree: collapse", &[]),
+    meta("ui.tree.enter", "Tree: open", &[]),
+    meta(
+        "ui.tree.select",
+        "Tree: select",
+        &[arg("n", ValueKind::Int, true)],
+    ),
 ];
+
+const fn repeat(id: &'static str, title: &'static str, args: &'static [ArgSpec]) -> CommandMeta {
+    CommandMeta {
+        repeatable: true,
+        ..meta(id, title, args)
+    }
+}
 
 /// Шаг `ui.zoom` и пределы, %.
 const ZOOM_STEP: i64 = 10;
@@ -102,6 +124,8 @@ pub struct UiHandler {
     vfs: Arc<VfsRegistry>,
     /// Текущая фоновая задача меню или проверки пути — отменяется при закрытии.
     task: Option<CancelToken>,
+    /// Чтения режимов панелей (S2-18).
+    views: crate::views::ViewTasks,
 }
 
 impl Default for UiHandler {
@@ -109,6 +133,7 @@ impl Default for UiHandler {
         Self {
             vfs: Arc::new(VfsRegistry::with_local()),
             task: None,
+            views: crate::views::ViewTasks::default(),
         }
     }
 }
@@ -155,6 +180,7 @@ impl Handler for UiHandler {
             cx.state.touch();
             self.cancel_task();
         }
+        crate::views::sync(cx, &self.vfs, &mut self.views);
     }
 
     fn handle(&mut self, cmd: &Command, cx: &mut Cx<'_>) -> Result<(), CmdError> {
@@ -231,6 +257,9 @@ impl Handler for UiHandler {
             "ui.panels.toggle_all" => {
                 let st = ui_state(cx);
                 st.panels_hidden = !st.panels_hidden;
+            }
+            id if id.starts_with("ui.tree.") => {
+                crate::views::tree_command(cx, &self.vfs, &mut self.views, id, a.int("n"));
             }
             "ui.about" => {
                 let i18n = urfin_i18n::current();

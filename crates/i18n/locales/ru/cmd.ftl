@@ -95,3 +95,14 @@ cmd-keymap-preset = Пресет раскладки клавиш
 cmd-keymap-show = Раскладка клавиш
 cmd-keymap-dump = Выгрузить раскладку клавиш
     .menu-key = г
+# Дерево в панели (S2-18)
+cmd-ui-tree-up = Дерево: вверх
+cmd-ui-tree-down = Дерево: вниз
+cmd-ui-tree-page_up = Дерево: страница вверх
+cmd-ui-tree-page_down = Дерево: страница вниз
+cmd-ui-tree-home = Дерево: в начало
+cmd-ui-tree-end = Дерево: в конец
+cmd-ui-tree-expand = Дерево: развернуть
+cmd-ui-tree-collapse = Дерево: свернуть
+cmd-ui-tree-enter = Дерево: открыть
+cmd-ui-tree-select = Дерево: выбрать
