@@ -135,8 +135,11 @@ fn conflict_banner_takes_120_and_jobs_32_each() {
     };
     let _ = s.prompts.open(spec, None);
     let with_conflict = Layout::compute(screen(1280.0, 768.0), &t, &s, &ui);
-    // Баннер 48 + 3×24 и зазор 8 под ним.
-    assert_eq!(with_conflict.banners[0].height(), 120.0);
+    // Баннер 48 + 3×24 над cmdline (S2 §2: job-бар → вопрос → cmdline) и зазор 8.
+    let bar = with_conflict.prompt.expect("prompt bar");
+    assert_eq!(bar.height(), 120.0);
+    assert_eq!(bar.bottom(), with_conflict.cmdline.top() - 8.0);
+    assert_eq!(with_conflict.banners.len(), 0);
     assert_eq!(h0 - with_conflict.panels[0].unwrap().height(), 128.0);
 
     let two_jobs = Layout::compute_with(screen(1280.0, 768.0), &t, &state(), &ui, 2);

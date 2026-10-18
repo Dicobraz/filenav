@@ -2,7 +2,7 @@
 //! job-бара, cmdline. Виджеты (табы, строки, кнопки) рисуются поверх в своих регионах.
 //! Порядок — слои S0 v5 №3: терминал → панели → cmdline → оверлеи.
 
-use urfin_core::{AppState, Level, PromptDetail, Side};
+use urfin_core::{AppState, Level, Side};
 
 use crate::canvas::Canvas;
 use crate::fonts::Font;
@@ -40,20 +40,6 @@ pub fn paint(
             Level::Error => Role::CriticalBg,
             Level::Warn => Role::CautionBg,
             Level::Info => Role::InfoBg,
-        };
-        c.rect(*rect, bg, overlay);
-        c.stroke(*rect, Role::StrokeCard, overlay, thin);
-    }
-    if let Some(p) = s
-        .prompts
-        .active()
-        .filter(|p| !ui.prompt_hidden.contains(&p.id))
-        && let Some(rect) = banners.next()
-    {
-        c.region("prompt", *rect);
-        let bg = match p.spec.detail {
-            Some(PromptDetail::Conflict { .. }) => Role::CautionBg,
-            None => Role::InfoBg,
         };
         c.rect(*rect, bg, overlay);
         c.stroke(*rect, Role::StrokeCard, overlay, thin);

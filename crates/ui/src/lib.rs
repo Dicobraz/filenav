@@ -25,6 +25,7 @@ pub mod keybar;
 pub mod layout;
 pub mod menu;
 mod panel;
+mod prompt_bar;
 pub mod state;
 pub mod sys;
 mod tabs;
@@ -37,12 +38,11 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use egui::{Align2, Sense};
-use urfin_core::{
-    AppState, Command, CommandRegistry, ConfigWarning, Core, Level, Side, UiEvent, Value,
-};
+use urfin_core::{AppState, Command, CommandRegistry, ConfigWarning, Core, Level, Side, UiEvent};
 use urfin_i18n::I18n;
 
 pub use handler::UiHandler;
+pub use prompt_bar::prompt_takes_keys;
 pub use state::{Draft, ThemeMode, UiState};
 
 use crate::config::UiCfg;
@@ -107,6 +107,8 @@ pub struct UrfinUi {
     /// Меню F9 (S2-14): из `menu.toml`, текущий пункт.
     menus: Vec<menu::MenuDef>,
     menu_memo: menu::MenuMemo,
+    /// Баннер-вопрос и черновик (S2-15).
+    bar: prompt_bar::BarMemo,
 }
 
 impl UrfinUi {
@@ -153,6 +155,7 @@ impl UrfinUi {
         Self {
             menus,
             menu_memo: menu::MenuMemo::default(),
+            bar: prompt_bar::BarMemo::default(),
             toasts,
             cards: [CardMemo::default(), CardMemo::default()],
             keybar: keybar::Keybar::default(),
@@ -299,6 +302,7 @@ impl UrfinUi {
         self.rows.sync_epochs(urfin_i18n::epoch(), self.style_epoch);
         self.tokens.set_theme(ctx.theme());
         self.take_toasts(&ctx, ev);
+        self.take_drafts(ev, out);
         let epoch = urfin_i18n::epoch();
         self.keybar
             .refresh(&i18n, epoch, &self.registered, self.hints.as_ref());
@@ -354,6 +358,32 @@ impl UrfinUi {
             top_bars(&mut ui, &i18n, &self.tokens, &self.fonts, s, st, out);
         }
         self.paint_jobs(root, &regions, &i18n, s);
+        if let (Some(r), Some(b)) = (regions.prompt, prompt_bar::bar(s, st)) {
+            let mut c = canvas::EguiCanvas {
+                painter: root.painter().clone(),
+                tokens: &self.tokens,
+                fonts: &self.fonts,
+                i18n: &i18n,
+            };
+            let mut ui = root.new_child(egui::UiBuilder::new().max_rect(r));
+            prompt_bar::show(
+                &mut c,
+                &mut prompt_bar::BarCx {
+                    ui: &mut ui,
+                    i18n: &i18n,
+                    tokens: &self.tokens,
+                    fonts: &self.fonts,
+                    fmt: &self.fmt.1,
+                    memo: &mut self.bar,
+                },
+                r,
+                b,
+                s,
+                out,
+            );
+        } else if st.draft.is_none() {
+            self.bar.ops = None;
+        }
         // Меню breadcrumb — до карточек: клик по другому `›` закрывает его и открывает новое.
         breadcrumb::menu(
             &ctx,
@@ -428,6 +458,33 @@ impl UrfinUi {
         ctx.set_zoom_factor(f32::from(st.zoom) / 100.0);
     }
 
+    /// `ops.draft` (S0 v3 №15): операция без подтверждения — черновик внизу.
+    fn take_drafts(&mut self, ev: &[UiEvent], out: &mut Vec<Command>) {
+        for e in ev {
+            let UiEvent::Ext { id, args } = e else {
+                continue;
+            };
+            if id.as_str() != "ops.draft" {
+                continue;
+            }
+            let command = args.str("command").unwrap_or_default().to_owned();
+            let arg = match command.as_str() {
+                "ops.copy" | "ops.move" => "dest",
+                "ops.mkdir" => "name",
+                _ => "confirmed",
+            };
+            out.push(
+                Command::new("ui.draft")
+                    .arg("command", command.as_str())
+                    .arg("arg", arg),
+            );
+            self.bar.ops = Some(prompt_bar::OpsDraft {
+                command,
+                permanent: args.bool("permanent").unwrap_or(false),
+            });
+        }
+    }
+
     fn take_toasts(&mut self, ctx: &egui::Context, ev: &[UiEvent]) {
         let now = Instant::now();
         for e in ev {
@@ -482,6 +539,9 @@ impl UrfinUi {
             widths: &mut self.widths,
             st,
             keys: s.ext.get::<urfin_keymap::KeymapView>(),
+            conflict: prompt_bar::conflict_dst(s, st)
+                .filter(|(dst_side, _)| *dst_side == side)
+                .map(|(_, name)| name),
         };
         file_list::show(&mut c, r, p.tab(), side, s.active == side, &mut cx, out);
     }
@@ -623,7 +683,7 @@ fn atlas_fill(ctx: &egui::Context) -> f32 {
     ctx.fonts(|f| f.font_atlas_fill_ratio())
 }
 
-/// Баннер core и активный вопрос над карточками. Тексты и подписи уже переведены core.
+/// Баннер core над карточками (вопросы — `prompt_bar` внизу). Тексты уже переведены core.
 fn top_bars(
     ui: &mut egui::Ui,
     i18n: &I18n,
@@ -650,32 +710,7 @@ fn top_bars(
         });
         ui.add_space(4.0);
     }
-    if let Some(p) = s
-        .prompts
-        .active()
-        .filter(|p| !st.prompt_hidden.contains(&p.id))
-    {
-        ui.horizontal_wrapped(|ui| {
-            text::label_styled(
-                ui,
-                i18n,
-                &Tx::user(p.spec.title.as_str()),
-                None,
-                Some(strong.clone()),
-            );
-            text::label(ui, i18n, &Tx::user(p.spec.body.as_str()));
-            for c in &p.spec.choices {
-                if text::button(ui, i18n, &Tx::user(c.label.as_str())).clicked() {
-                    out.push(
-                        Command::new("prompt.reply")
-                            .arg("id", Value::Int(i64::try_from(p.id.0).unwrap_or(i64::MAX)))
-                            .arg("choice", c.id.as_str()),
-                    );
-                }
-            }
-        });
-        ui.add_space(4.0);
-    }
+    let _ = (strong, st);
 }
 
 /// Версия крейта из `Cargo.toml`.

@@ -1,12 +1,12 @@
 //! Раскладка окна (S2 §2, S2-07): регионы в логических единицах на сетке 4 px.
 //!
-//! Сверху вниз: заголовок 40 → баннеры (48, конфликт — 48 + 3×24) → карточки панелей
-//! (зазоры 8, сплиттер) → job-бар (32 на задачу) → cmdline 32 → keybar 24 (обязательна,
-//! «Принцип»). Слои (S0 v5 №3): терминал → панели → cmdline → вьювер/редактор →
+//! Сверху вниз: заголовок 40 → баннер core (48) → карточки панелей (зазоры 8,
+//! сплиттер) → job-бар (32 на задачу) → баннер-вопрос или черновик (48, конфликт —
+//! 48 + 3×24; S2 §2, §2.7–2.8) → cmdline 32 → keybar 24 (обязательна, «Принцип»). Слои (S0 v5 №3): терминал → панели → cmdline → вьювер/редактор →
 //! оверлеи. Область терминала не зависит от Ctrl+O — размер PTY не меняется.
 
 use egui::{Rect, pos2};
-use urfin_core::{AppState, PromptDetail, Side};
+use urfin_core::{Anchor, AppState, Side};
 
 use crate::state::UiState;
 use crate::tokens::{Metric, Tokens};
@@ -24,8 +24,11 @@ pub const JOB_ROWS_MAX: usize = 4;
 #[derive(Clone, Debug, PartialEq)]
 pub struct Regions {
     pub titlebar: Rect,
-    /// Баннеры core и вопросы (сверху вниз).
+    /// Баннеры core (сверху).
     pub banners: Vec<Rect>,
+    /// Баннер-вопрос или черновик над cmdline; у вопроса `Anchor::Panel` — в ширину
+    /// его карточки.
+    pub prompt: Option<Rect>,
     /// Карточки панелей; `None` — скрыта (`panel.toggle`, узкое окно, Ctrl+O).
     pub panels: [Option<Rect>; 2],
     /// Зазор между карточками — тянется мышью (S2-10), двойной клик — сброс.
@@ -95,7 +98,10 @@ impl Layout {
         // Не больше JOB_ROWS_MAX строк — в u8 без потерь.
         let active_jobs = u8::try_from(active_jobs.min(JOB_ROWS_MAX)).unwrap_or(0);
         let row = m(Metric::HJobRow);
-        let jobs_top = cmdline.top() - row * f32::from(active_jobs);
+        let bar = crate::prompt_bar::bar(s, ui);
+        let bar_h = bar.map_or(0.0, |b| crate::prompt_bar::height(t, b) + gap);
+        let bar_bottom = cmdline.top() - gap;
+        let jobs_top = cmdline.top() - bar_h - row * f32::from(active_jobs);
         let jobs = (0..active_jobs)
             .map(|i| {
                 let top = jobs_top + row * f32::from(i);
@@ -112,18 +118,6 @@ impl Layout {
         };
         if s.banner.is_some() {
             banner(m(Metric::HBanner), &mut y);
-        }
-        if let Some(p) = s
-            .prompts
-            .active()
-            .filter(|p| !ui.prompt_hidden.contains(&p.id))
-        {
-            let h = match p.spec.detail {
-                // Конфликт: заголовок 48 + три строки сравнения по 24 (S2 §2.8).
-                Some(PromptDetail::Conflict { .. }) => m(Metric::HBanner) + 3.0 * m(Metric::HRow),
-                None => m(Metric::HBanner),
-            };
-            banner(h, &mut y);
         }
 
         // Карточки.
@@ -149,9 +143,23 @@ impl Layout {
                 ([false, false], _) => {}
             }
         }
+        let prompt = bar.map(|b| {
+            let h = crate::prompt_bar::height(t, b);
+            let (left, right) = match b {
+                crate::prompt_bar::Bar::Prompt(p, _) => match p.spec.anchor {
+                    Anchor::Panel(side) => {
+                        panels[side.idx()].map_or((l + gap, r - gap), |c| (c.left(), c.right()))
+                    }
+                    Anchor::JobBar | Anchor::Cmdline => (l + gap, r - gap),
+                },
+                crate::prompt_bar::Bar::Draft(_) => (l + gap, r - gap),
+            };
+            rect(left, bar_bottom - h, right, bar_bottom)
+        });
         Regions {
             titlebar,
             banners,
+            prompt,
             panels,
             splitter,
             jobs,
