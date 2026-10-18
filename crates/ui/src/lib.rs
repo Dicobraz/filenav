@@ -21,6 +21,7 @@ mod fs_tasks;
 mod handler;
 pub mod highlight;
 pub mod icons;
+mod job_bar;
 pub mod keybar;
 pub mod layout;
 pub mod menu;
@@ -38,7 +39,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use egui::{Align2, Sense};
-use urfin_core::{AppState, Command, CommandRegistry, ConfigWarning, Core, Level, Side, UiEvent};
+use urfin_core::{AppState, Command, CommandRegistry, ConfigWarning, Core, Side, UiEvent};
 use urfin_i18n::I18n;
 
 pub use handler::UiHandler;
@@ -109,6 +110,8 @@ pub struct UrfinUi {
     menu_memo: menu::MenuMemo,
     /// Баннер-вопрос и черновик (S2-15).
     bar: prompt_bar::BarMemo,
+    /// Скорость задач для job-бара (S2-17).
+    speeds: rustc_hash::FxHashMap<urfin_core::JobId, job_bar::JobSpeed>,
 }
 
 impl UrfinUi {
@@ -156,6 +159,7 @@ impl UrfinUi {
             menus,
             menu_memo: menu::MenuMemo::default(),
             bar: prompt_bar::BarMemo::default(),
+            speeds: rustc_hash::FxHashMap::default(),
             toasts,
             cards: [CardMemo::default(), CardMemo::default()],
             keybar: keybar::Keybar::default(),
@@ -318,7 +322,6 @@ impl UrfinUi {
             c.sync_dark(ctx.theme() == egui::Theme::Dark);
         }
         let t = &self.tokens;
-        let gap = t.m(Metric::GapPanels);
         // Регионы окна (S2-07) и базовый слой через Canvas; виджеты — в регионах.
         let screen = root.max_rect();
         let regions = layout::Layout::compute(screen, t, s, st);
@@ -353,11 +356,30 @@ impl UrfinUi {
         };
         title.show(&mut child(regions.titlebar), s, out);
         self.paint_keybar(&mut child(regions.keybar), &i18n, out);
-        if let (Some(first), Some(last)) = (regions.banners.first(), regions.banners.last()) {
-            let mut ui = child(first.union(*last).shrink(gap));
-            top_bars(&mut ui, &i18n, &self.tokens, &self.fonts, s, st, out);
+        if let (Some(b), Some(r)) = (&s.banner, regions.banners.first()) {
+            let mut c = canvas::EguiCanvas {
+                painter: root.painter().clone(),
+                tokens: &self.tokens,
+                fonts: &self.fonts,
+                i18n: &i18n,
+            };
+            let mut ui = root.new_child(egui::UiBuilder::new().max_rect(*r));
+            prompt_bar::app_banner(
+                &mut c,
+                &mut prompt_bar::BarCx {
+                    ui: &mut ui,
+                    i18n: &i18n,
+                    tokens: &self.tokens,
+                    fonts: &self.fonts,
+                    fmt: &self.fmt.1,
+                    memo: &mut self.bar,
+                },
+                *r,
+                b,
+                out,
+            );
         }
-        self.paint_jobs(root, &regions, &i18n, s);
+        self.paint_jobs(root, &regions, &i18n, s, st, out);
         if let (Some(r), Some(b)) = (regions.prompt, prompt_bar::bar(s, st)) {
             let mut c = canvas::EguiCanvas {
                 painter: root.painter().clone(),
@@ -546,21 +568,47 @@ impl UrfinUi {
         file_list::show(&mut c, r, p.tab(), side, s.active == side, &mut cx, out);
     }
 
-    fn paint_jobs(&self, root: &egui::Ui, regions: &layout::Regions, i18n: &I18n, s: &AppState) {
-        let t = &self.tokens;
-        let font = self.fonts.id(Font::Caption, t.m(Metric::TypeCaption));
-        let active = s.jobs.iter().filter(|j| j.state.is_active());
-        for (job, row) in active.zip(&regions.jobs) {
-            text::paint_clipped(
-                root.painter(),
-                i18n,
-                row.left_center() + egui::vec2(t.m(Metric::PadRowX), 0.0),
-                row.width() - 2.0 * t.m(Metric::PadRowX),
-                &Tx::user(job.title.as_str()),
-                font.clone(),
-                t.c(Role::TextPrimary),
-            );
+    /// Job-бар (S2-17): строки задач, скорость по снапшотам, завершённые — 5 с.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "кадр: ui, регионы, состояние, вывод"
+    )]
+    fn paint_jobs(
+        &mut self,
+        root: &egui::Ui,
+        regions: &layout::Regions,
+        i18n: &I18n,
+        s: &AppState,
+        st: &UiState,
+        out: &mut Vec<Command>,
+    ) {
+        let now = Instant::now();
+        let jobs = job_bar::visible(s, now);
+        job_bar::track(&mut self.speeds, &jobs, now);
+        // Только чтобы убрать завершённые; без задач — ничего (0% CPU в простое).
+        if let Some(d) = job_bar::next_expiry(&jobs, now) {
+            root.ctx().request_repaint_after(d);
         }
+        let views: Vec<job_bar::RowView> = jobs
+            .iter()
+            .map(|j| job_bar::RowView::of(j, st, s, self.speeds.get(&j.id)))
+            .collect();
+        let mut c = canvas::EguiCanvas {
+            painter: root.painter().clone(),
+            tokens: &self.tokens,
+            fonts: &self.fonts,
+            i18n,
+        };
+        job_bar::show(
+            &mut c,
+            root,
+            i18n,
+            &self.tokens,
+            &regions.jobs,
+            &views,
+            st.jobs_expanded,
+            out,
+        );
     }
 
     /// Выпадающий список меню F9 и щит под ним: клик мимо закрывает меню и не уходит в
@@ -659,7 +707,11 @@ impl UrfinUi {
                 Align2::RIGHT_BOTTOM,
                 egui::vec2(
                     -self.tokens.m(Metric::SpaceM),
-                    -(self.tokens.m(Metric::HKeybar) + self.tokens.m(Metric::SpaceL)),
+                    // Над cmdline (S2 §3 Toasts).
+                    -(self.tokens.m(Metric::HKeybar)
+                        + self.tokens.m(Metric::HCmdline)
+                        + self.tokens.m(Metric::GapPanels)
+                        + self.tokens.m(Metric::SpaceM)),
                 ),
             )
             .order(egui::Order::Foreground)
@@ -681,36 +733,6 @@ impl UrfinUi {
 )]
 fn atlas_fill(ctx: &egui::Context) -> f32 {
     ctx.fonts(|f| f.font_atlas_fill_ratio())
-}
-
-/// Баннер core над карточками (вопросы — `prompt_bar` внизу). Тексты уже переведены core.
-fn top_bars(
-    ui: &mut egui::Ui,
-    i18n: &I18n,
-    t: &Tokens,
-    fonts: &FontSet,
-    s: &AppState,
-    st: &UiState,
-    out: &mut Vec<Command>,
-) {
-    let strong = fonts.id(Font::Strong, t.m(Metric::TypeBody));
-    if let Some(b) = &s.banner {
-        let fg = match b.level {
-            Level::Error => Role::CriticalFg,
-            Level::Warn => Role::CautionFg,
-            Level::Info => Role::TextPrimary,
-        };
-        ui.horizontal_wrapped(|ui| {
-            text::label_styled(ui, i18n, &Tx::user(b.text.as_str()), Some(t.c(fg)), None);
-            for (label, cmd) in &b.actions {
-                if text::button(ui, i18n, &Tx::user(label.as_str())).clicked() {
-                    out.push(cmd.clone());
-                }
-            }
-        });
-        ui.add_space(4.0);
-    }
-    let _ = (strong, st);
 }
 
 /// Версия крейта из `Cargo.toml`.

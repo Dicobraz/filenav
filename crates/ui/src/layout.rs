@@ -63,11 +63,11 @@ pub struct Layout;
 impl Layout {
     /// Регионы для окна `screen`.
     pub fn compute(screen: Rect, t: &Tokens, s: &AppState, ui: &UiState) -> Regions {
-        let jobs = s.jobs.iter().filter(|j| j.state.is_active()).count();
-        Self::compute_with(screen, t, s, ui, jobs)
+        let n = crate::job_bar::visible(s, std::time::Instant::now()).len();
+        Self::compute_with(screen, t, s, ui, crate::job_bar::rows(n, ui.jobs_expanded))
     }
 
-    /// [`Layout::compute`] с заданным числом активных задач.
+    /// [`Layout::compute`] с заданным числом строк job-бара.
     #[allow(clippy::many_single_char_names, reason = "геометрия: l, r, m, s, t")]
     pub fn compute_with(
         screen: Rect,
