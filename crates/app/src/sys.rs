@@ -8,6 +8,22 @@ mod windows;
 #[allow(unsafe_code, reason = "WinAPI: mutex, named pipe, SID (S1-15)")]
 pub(crate) mod ipc_win;
 
+#[cfg(windows)]
+#[allow(unsafe_code, reason = "WinAPI: MSG хука, GetKeyState (S3-07)")]
+mod key_notes;
+
+/// Записки клавиш для keymap (S3-07): на Windows — хук сообщений цикла событий, на
+/// других ОС — ничего (их egui-winit различает и так или keymap даёт альтернативы).
+pub fn install_key_notes(
+    builder: &mut eframe::EventLoopBuilder<eframe::UserEvent>,
+    notes: urfin_keymap::KeyNotes,
+) {
+    #[cfg(windows)]
+    key_notes::install(builder, notes);
+    #[cfg(not(windows))]
+    let _ = (builder, notes);
+}
+
 use raw_window_handle::HasWindowHandle;
 
 /// Скрыть окно средствами DWM (cloak) или вернуть его. Скрытое так окно для

@@ -125,11 +125,14 @@ pub fn run(launch: Launch) -> anyhow::Result<()> {
     // Mica (Win11, прозрачность включена) решается до окна: от неё зависит swapchain.
     let mica = urfin_ui::sys::mica_wanted(&ui_cfg.backdrop);
     let config_dir = launch.boot.paths.config_dir.clone();
+    // Записки клавиш (S3-07): хук ставится на каждый цикл событий, читает KeyInput.
+    let notes = urfin_keymap::KeyNotes::default();
     let pending: Pending = Rc::new(RefCell::new(Some(Start {
         from: Origin::Launch(Box::new(launch)),
         probe: spawn_probe(&ui_cfg, &config_dir)?,
         ui_cfg: ui_cfg.clone(),
         warnings: plan_warning.into_iter().collect(),
+        notes: notes.clone(),
     })));
     let restart: Restart = Rc::default();
     let mut queue: VecDeque<Gpu> = plan.iter().copied().collect();
@@ -141,7 +144,7 @@ pub fn run(launch: Launch) -> anyhow::Result<()> {
             // Не то, что выбрано настройкой, — откат: тост (S0-decisions №50).
             fallback: gpu != plan[0],
         };
-        match run_with(attempt, &pending, &restart) {
+        match run_with(attempt, &pending, &restart, &notes) {
             Ok(()) => {
                 let Some(resume) = restart.borrow_mut().take() else {
                     return Ok(());
@@ -159,6 +162,7 @@ pub fn run(launch: Launch) -> anyhow::Result<()> {
                     probe: spawn_probe(&ui_cfg, &config_dir)?,
                     ui_cfg: ui_cfg.clone(),
                     warnings: Vec::new(),
+                    notes: notes.clone(),
                 });
             }
             // App не создан — значит, не поднялся рендер: следующая попытка.
@@ -219,6 +223,7 @@ struct Start {
     ui_cfg: urfin_ui::config::UiCfg,
     /// Предупреждения настроек окна — тостами в первом кадре.
     warnings: Vec<String>,
+    notes: urfin_keymap::KeyNotes,
 }
 
 enum Origin {
@@ -244,7 +249,12 @@ struct Attempt {
     fallback: bool,
 }
 
-fn run_with(attempt: Attempt, pending: &Pending, restart: &Restart) -> eframe::Result {
+fn run_with(
+    attempt: Attempt,
+    pending: &Pending,
+    restart: &Restart,
+    notes: &urfin_keymap::KeyNotes,
+) -> eframe::Result {
     let Attempt { gpu, mica, .. } = attempt;
     let geom = pending.borrow().as_ref().and_then(|s| match &s.from {
         Origin::Launch(l) => l.boot.session.as_ref().and_then(|s| s.window),
@@ -266,9 +276,12 @@ fn run_with(attempt: Attempt, pending: &Pending, restart: &Restart) -> eframe::R
         viewport,
         renderer: eframe::Renderer::Wgpu,
         wgpu_options: gpu::wgpu_options(gpu, mica),
-        // Хук сообщений Windows (KeyNotes, numpad, Ctrl+Ins/Shift+Del) поставит
-        // keymap S3 (S0 v3 №10); winit — ровно версия eframe.
-        event_loop_builder: Some(Box::new(|_builder| {})),
+        // Хук сообщений Windows: numpad, Ctrl+Ins/Shift+Ins/Shift+Del, стороны
+        // модификаторов (S0 v3 №10, S3-07); winit — ровно версия eframe.
+        event_loop_builder: Some(Box::new({
+            let notes = notes.clone();
+            move |builder| crate::sys::install_key_notes(builder, notes)
+        })),
         // Запасные шрифты — свои (`ui::fonts`); провайдер eframe без фичи
         // `system_fonts` только пишет в лог предупреждение.
         system_font_fallback: false,
@@ -309,6 +322,7 @@ fn create_app(
         probe,
         ui_cfg,
         warnings,
+        notes,
     } = start;
     let Attempt {
         gpu,
@@ -341,7 +355,8 @@ fn create_app(
                 startup.core = t.elapsed();
                 core
             };
-            let (keys, kw) = load_keys(&config, &paths, core.registry());
+            let (mut keys, kw) = load_keys(&config, &paths, core.registry());
+            keys.set_notes(notes);
             for c in open {
                 core.dispatch(c);
             }

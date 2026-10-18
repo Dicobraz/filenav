@@ -156,6 +156,9 @@ pub struct KeyInput {
     tap: Option<(Mods, Instant)>,
     /// Начатый аккорд, о котором уже сообщено (`keymap.pending`).
     shown_pending: Option<CompactString>,
+    /// Сочетание без уточнения запиской (`Enter` для `NumEnter`): ищется, если у
+    /// уточнённого нет привязки. Живёт один `feed`.
+    fallback: Option<Stroke>,
     chord_timeout: Duration,
     mods: ModTracker,
     pending: Option<(ChordState, Instant)>,
@@ -182,6 +185,7 @@ impl KeyInput {
             alt_tap: Duration::from_millis(u64::from(cfg.alt_tap_ms)),
             tap: None,
             shown_pending: None,
+            fallback: None,
             chord_timeout: Duration::from_millis(u64::from(cfg.chord_timeout_ms)),
             mods: ModTracker::default(),
             pending: None,
@@ -196,6 +200,11 @@ impl KeyInput {
     /// Очередь записок для хука Windows.
     pub fn notes(&self) -> KeyNotes {
         self.notes.clone()
+    }
+
+    /// Общая очередь с хуком, поставленным до создания `KeyInput` (app, S3-07).
+    pub fn set_notes(&mut self, notes: KeyNotes) {
+        self.notes = notes;
     }
 
     /// Новая раскладка (`keymap.reload`): незавершённый аккорд сбрасывается.
@@ -355,9 +364,12 @@ impl KeyInput {
         self.tap = None;
         let i = self.down.iter().position(|d| d.key == key);
         let repeat = i.is_some();
-        let code = self.code(key, physical);
-        let stroke = Stroke::new(code, self.mods.with_sides(mods_of(modifiers)));
-        let pass = !self.feed(stroke, repeat, st, now, out, None);
+        let (code, base) = self.code(key, physical);
+        let mods = self.mods.with_sides(mods_of(modifiers));
+        // `NumEnter` без своей привязки — это `Enter`, `GrayMinus` — `Minus`.
+        self.fallback = (code != base).then(|| Stroke::new(base, mods));
+        let pass = !self.feed(Stroke::new(code, mods), repeat, st, now, out, None);
+        self.fallback = None;
         match i {
             Some(i) => self.down[i].passed |= pass,
             None => self.down.push(Down { key, passed: pass }),
@@ -372,11 +384,11 @@ impl KeyInput {
         }
     }
 
-    /// Клавиша события, уточнённая запиской хука.
-    fn code(&mut self, key: Key, physical: Option<Key>) -> KeyCode {
+    /// Клавиша события, уточнённая запиской хука, и она же без уточнения.
+    fn code(&mut self, key: Key, physical: Option<Key>) -> (KeyCode, KeyCode) {
         if physical == Some(Key::Plus) {
             self.pair(vk::ADD);
-            return KeyCode::GrayPlus;
+            return (KeyCode::GrayPlus, KeyCode::Key(key));
         }
         let key = match (self.r#match, physical) {
             (MatchMode::Physical, Some(p)) => p,
@@ -391,7 +403,7 @@ impl KeyInput {
             Key::Enter => (vk::RETURN, KeyCode::NumEnter),
             Key::Insert => (vk::INSERT, KeyCode::Key(key)),
             Key::Delete => (vk::DELETE, KeyCode::Key(key)),
-            _ => return KeyCode::Key(key),
+            _ => return (KeyCode::Key(key), KeyCode::Key(key)),
         };
         let found = if own.0 == vk::RETURN {
             self.pair_with(|n| n.vk == vk::RETURN && n.extended)
@@ -399,9 +411,9 @@ impl KeyInput {
             self.pair(own.0)
         };
         if found.is_some() {
-            own.1
+            (own.1, KeyCode::Key(key))
         } else {
-            KeyCode::Key(key)
+            (KeyCode::Key(key), KeyCode::Key(key))
         }
     }
 
@@ -472,7 +484,14 @@ impl KeyInput {
             return true;
         }
         let pending = self.pending.as_ref().map(|(c, _)| c);
-        match self.km.lookup(pending, stroke, st) {
+        let km = Arc::clone(&self.km);
+        let mut found = km.lookup(pending, stroke, st);
+        if matches!(found, Lookup::Miss)
+            && let Some(f) = self.fallback
+        {
+            found = km.lookup(pending, f, st);
+        }
+        match found {
             Lookup::Hit(cmds, repeatable) => {
                 self.suppress_text = true;
                 if repeat && !repeatable {
@@ -497,8 +516,14 @@ impl KeyInput {
                 if self.km.has_command("keymap.qs.cancel") {
                     out.push(Command::new("keymap.qs.cancel").from(Origin::Key));
                 }
-                let km = Arc::clone(&self.km);
-                if let Lookup::Hit(cmds, _) = km.lookup_as(None, stroke, st, Focus::Panel) {
+                let as_panel = |s| km.lookup_as(None, s, st, Focus::Panel);
+                let mut again = as_panel(stroke);
+                if matches!(again, Lookup::Miss)
+                    && let Some(f) = self.fallback
+                {
+                    again = as_panel(f);
+                }
+                if let Lookup::Hit(cmds, _) = again {
                     self.suppress_text = true;
                     emit(&km, cmds, text, out);
                 }
