@@ -128,3 +128,5 @@ ui-draft-mkdir-hint = a\b\c is fine
 ui-draft-sel-add = Select by mask
 ui-draft-sel-remove = Deselect by mask
 ui-draft-panel-filter = Filter
+# Переименование по месту (S2-16)
+ui-rename-hint = Enter — rename · Esc — cancel

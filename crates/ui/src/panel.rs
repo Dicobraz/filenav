@@ -62,6 +62,8 @@ pub(crate) struct CardMemo {
     pub wheel_acc: f32,
     /// Breadcrumb: сегменты пути, поле ввода, точка меню.
     pub crumbs: crate::breadcrumb::CrumbMemo,
+    /// Переименование по месту (S2-16): исходное имя и вводимый текст.
+    pub rename: Option<(compact_str::CompactString, String)>,
     footer_key: Option<FooterKey>,
 }
 

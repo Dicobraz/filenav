@@ -138,3 +138,5 @@ ui-draft-mkdir-hint = можно a\b\c
 ui-draft-sel-add = Пометить по маске
 ui-draft-sel-remove = Снять пометку по маске
 ui-draft-panel-filter = Фильтр
+# Переименование по месту (S2-16)
+ui-rename-hint = Enter — переименовать · Esc — отмена
