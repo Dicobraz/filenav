@@ -1,4 +1,5 @@
 //! Natural sort (S4-04): `natural_cmp` на ASCII-именах — цель ≥ 100 M сравнений/с.
+//! Пересортировка, фильтр (S4-05, S4-11): цели S4 §7.
 
 use std::hint::black_box;
 
@@ -78,6 +79,23 @@ fn bench(c: &mut Criterion) {
         let opts = ArrangeOpts::default();
         g.bench_function(format!("name {n}"), |b| {
             b.iter(|| black_box(arrange(black_box(&entries), &spec, opts)));
+        });
+        // S4-11 (§7): расширение и размер, фильтр по маске — 100k < 4 мс, 1M < 35 мс.
+        for (label, key) in [("ext", SortKey::Ext), ("size", SortKey::Size)] {
+            let spec = ArrangeSpec {
+                sort: SortSpec { key, ..spec.sort },
+                ..spec.clone()
+            };
+            g.bench_function(format!("{label} {n}"), |b| {
+                b.iter(|| black_box(arrange(black_box(&entries), &spec, opts)));
+            });
+        }
+        let filtered = ArrangeSpec {
+            filter: Some(urfin_core::Mask::parse("*.rs,*.toml").unwrap()),
+            ..spec.clone()
+        };
+        g.bench_function(format!("filter {n}"), |b| {
+            b.iter(|| black_box(arrange(black_box(&entries), &filtered, opts)));
         });
     }
     g.finish();

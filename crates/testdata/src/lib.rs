@@ -1,6 +1,200 @@
 //! Urfin — генераторы тестовых данных. Только `[dev-dependencies]`, в граф `urfin-app` не входит.
 //!
-//! Заглушка S1-01, владелец — S9.
+//! [`gen_tree`] (S4 §7, S4-11; по S0 v5 №13 живёт здесь): дерево для бенчей листинга.
+//! Состав: пустые и мелкие файлы, имена «слово + число» (natural-кейсы), 10% длиннее
+//! 24 байт, 3% Unicode (кириллица, эмодзи), 2% скрытых, 1% каталогов, 0,5% ссылок.
+//! Детерминирован по `seed`: одинаковые аргументы — одинаковое дерево.
+
+use std::io;
+use std::path::{Path, PathBuf};
+
+/// Раскладка дерева.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Layout {
+    /// Один каталог на `n` записей (кейсы 1 × 100k, 1 × 1M).
+    Flat,
+    /// `dirs` каталогов по `n / dirs` записей (навигация: 1000 × 100).
+    Nav { dirs: usize },
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct TreeSpec {
+    pub n: usize,
+    pub seed: u64,
+    pub layout: Layout,
+}
+
+/// Что создано.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Report {
+    pub files: usize,
+    pub dirs: usize,
+    pub hidden: usize,
+    pub links: usize,
+    /// Ссылки, которые ОС не дала создать (Windows без режима разработчика).
+    pub links_skipped: usize,
+    pub bytes: u64,
+}
+
+/// Детерминированный генератор (SplitMix64): без внешних зависимостей.
+#[derive(Clone, Debug)]
+pub struct Rng(u64);
+
+impl Rng {
+    pub fn new(seed: u64) -> Self {
+        Rng(seed)
+    }
+
+    pub fn next_u64(&mut self) -> u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    }
+
+    /// `0..n`.
+    pub fn below(&mut self, n: u64) -> u64 {
+        self.next_u64() % n.max(1)
+    }
+}
+
+const WORDS: [&str; 24] = [
+    "report", "file", "photo", "invoice", "backup", "notes", "draft", "image", "data", "log",
+    "build", "main", "test", "readme", "config", "index", "summary", "archive", "scan", "budget",
+    "plan", "video", "track", "chapter",
+];
+const WORDS_RU: [&str; 8] = [
+    "отчёт",
+    "договор",
+    "фото",
+    "счёт",
+    "заметки",
+    "черновик",
+    "архив",
+    "смета",
+];
+const EMOJI: [&str; 4] = ["📁", "🎉", "✅", "🚀"];
+const EXTS: [&str; 10] = [
+    "txt", "md", "rs", "jpg", "png", "pdf", "docx", "zip", "log", "json",
+];
+
+/// Имя записи `i`: уникально (содержит `i`), с числом для natural-сортировки.
+pub fn name(rng: &mut Rng, i: usize, dir: bool) -> String {
+    let pick = |rng: &mut Rng, list: &[&str]| -> String {
+        list[usize::try_from(rng.below(list.len() as u64)).unwrap_or(0)].to_owned()
+    };
+    let roll = rng.below(1000);
+    let mut stem = if roll < 30 {
+        // 3% Unicode.
+        if roll < 22 {
+            pick(rng, &WORDS_RU)
+        } else {
+            format!("{}{}", pick(rng, &EMOJI), pick(rng, &WORDS))
+        }
+    } else {
+        pick(rng, &WORDS)
+    };
+    if rng.below(10) == 0 {
+        // 10% длиннее 24 байт.
+        for _ in 0..3 {
+            stem.push('_');
+            stem.push_str(&pick(rng, &WORDS));
+        }
+    }
+    let num = i;
+    if dir {
+        format!("{stem} {num}")
+    } else {
+        format!("{stem}{num}.{}", pick(rng, &EXTS))
+    }
+}
+
+/// Создать дерево в `root` (каталог создаётся; существующие файлы перезаписываются).
+pub fn gen_tree(root: &Path, spec: &TreeSpec) -> io::Result<Report> {
+    std::fs::create_dir_all(root)?;
+    let mut rng = Rng::new(spec.seed);
+    let mut report = Report::default();
+    let dirs: Vec<PathBuf> = match spec.layout {
+        Layout::Flat => vec![root.to_path_buf()],
+        Layout::Nav { dirs } => (0..dirs.max(1))
+            .map(|d| root.join(format!("dir {d:04}")))
+            .collect(),
+    };
+    for d in &dirs {
+        std::fs::create_dir_all(d)?;
+    }
+    let per = spec.n.div_ceil(dirs.len());
+    let mut last_file: Option<PathBuf> = None;
+    for i in 0..spec.n {
+        let dir = &dirs[i / per];
+        let roll = rng.below(1000);
+        if roll < 10 {
+            // 1% каталогов.
+            std::fs::create_dir_all(dir.join(name(&mut rng, i, true)))?;
+            report.dirs += 1;
+            continue;
+        }
+        if roll < 15
+            && let Some(target) = &last_file
+        {
+            // 0,5% ссылок на файл.
+            let link = dir.join(format!("link {i}"));
+            if make_link(target, &link).is_ok() {
+                report.links += 1;
+            } else {
+                report.links_skipped += 1;
+            }
+            continue;
+        }
+        let hidden = rng.below(50) == 0;
+        let mut file_name = name(&mut rng, i, false);
+        if hidden && !cfg!(windows) {
+            file_name.insert(0, '.');
+        }
+        let path = dir.join(file_name);
+        // 70% пустые, остальные — до 512 байт.
+        let size = if rng.below(10) < 7 {
+            0
+        } else {
+            rng.below(512) + 1
+        };
+        write_file(&path, usize::try_from(size).unwrap_or(0), hidden)?;
+        report.files += 1;
+        report.bytes += size;
+        report.hidden += usize::from(hidden);
+        last_file = Some(path);
+    }
+    Ok(report)
+}
+
+fn write_file(path: &Path, size: usize, hidden: bool) -> io::Result<()> {
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    #[cfg(windows)]
+    if hidden {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_ATTRIBUTE_HIDDEN: u32 = 2;
+        opts.attributes(FILE_ATTRIBUTE_HIDDEN);
+    }
+    #[cfg(not(windows))]
+    let _ = hidden;
+    let mut f = opts.open(path)?;
+    if size > 0 {
+        io::Write::write_all(&mut f, &vec![b'x'; size])?;
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn make_link(target: &Path, link: &Path) -> io::Result<()> {
+    std::os::windows::fs::symlink_file(target, link)
+}
+
+#[cfg(not(windows))]
+fn make_link(target: &Path, link: &Path) -> io::Result<()> {
+    std::os::unix::fs::symlink(target, link)
+}
 
 /// Версия крейта из `Cargo.toml`.
 pub fn version() -> &'static str {
@@ -9,9 +203,37 @@ pub fn version() -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn version_smoke() {
         assert_eq!(super::version(), env!("CARGO_PKG_VERSION"));
         assert_ne!(super::version(), "");
+    }
+
+    /// Детерминирован и даёт заявленный состав (на 2000 записей — с допуском).
+    #[test]
+    fn composition() {
+        let tmp = std::env::temp_dir().join(format!("urfin-gen-tree-{}", std::process::id()));
+        let spec = TreeSpec {
+            n: 2000,
+            seed: 1,
+            layout: Layout::Flat,
+        };
+        let r = gen_tree(&tmp, &spec).unwrap();
+        assert_eq!(r.files + r.dirs + r.links + r.links_skipped, 2000);
+        assert!((8..=40).contains(&r.dirs), "{r:?}");
+        assert!(r.hidden > 10 && r.hidden < 90, "{r:?}");
+        let names: Vec<String> = std::fs::read_dir(&tmp)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert!(names.iter().any(|n| n.len() > 24));
+        assert!(names.iter().any(|n| !n.is_ascii()));
+        // Те же аргументы — те же имена.
+        let mut a = Rng::new(7);
+        let mut b = Rng::new(7);
+        assert_eq!(name(&mut a, 5, false), name(&mut b, 5, false));
+        std::fs::remove_dir_all(&tmp).ok();
     }
 }

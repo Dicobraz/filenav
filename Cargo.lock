@@ -3490,6 +3490,7 @@ dependencies = [
  "thiserror 2.0.21",
  "tracing",
  "urfin-core",
+ "urfin-testdata",
  "windows-sys 0.61.2",
 ]
 
