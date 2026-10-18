@@ -25,6 +25,10 @@ impl SortRec {
     pub const HIDDEN_EFFECTIVE: u8 = 1;
     /// Имя экранировано (`Attrs::ESCAPED_NAME`).
     pub const ESCAPED: u8 = 2;
+    /// Сортировка по расширению: `prefix` кодирует его целиком (≤ 7 байт ASCII, в
+    /// natural-режиме без цифр) — равный `prefix` значит равное расширение без учёта
+    /// регистра, строки сравнивать не нужно.
+    pub const EXT_EXACT: u8 = 4;
 
     pub fn new(idx: u32, group: u8, prefix: u64, aux: u64, flags: u8) -> SortRec {
         SortRec {

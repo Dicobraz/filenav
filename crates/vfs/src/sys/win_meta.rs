@@ -302,3 +302,24 @@ pub fn volume(p: &Path) -> Result<crate::volume::VolumeInfo, VfsError> {
         cluster,
     })
 }
+
+/// Пик памяти процесса: рабочий набор и private (байт) — для бенчей (S4-11).
+pub fn peak_memory() -> Option<(u64, u64)> {
+    use windows_sys::Win32::System::ProcessStatus::{
+        GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS_EX,
+    };
+    use windows_sys::Win32::System::Threading::GetCurrentProcess;
+    let mut c = MaybeUninit::<PROCESS_MEMORY_COUNTERS_EX>::zeroed();
+    let cb = u32::try_from(size_of::<PROCESS_MEMORY_COUNTERS_EX>()).ok()?;
+    // SAFETY: псевдохэндл текущего процесса, буфер нужного размера.
+    let ok = unsafe { GetProcessMemoryInfo(GetCurrentProcess(), c.as_mut_ptr().cast(), cb) };
+    if ok == 0 {
+        return None;
+    }
+    // SAFETY: при успехе структура заполнена.
+    let c = unsafe { c.assume_init() };
+    Some((
+        u64::try_from(c.PeakWorkingSetSize).unwrap_or(0),
+        u64::try_from(c.PeakPagefileUsage).unwrap_or(0),
+    ))
+}

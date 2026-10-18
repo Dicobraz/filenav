@@ -4,6 +4,7 @@
 
 mod api;
 pub mod batch;
+pub mod diag;
 pub mod icons;
 mod local;
 pub mod name;

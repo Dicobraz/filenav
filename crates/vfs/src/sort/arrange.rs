@@ -82,7 +82,11 @@ pub fn record(idx: u32, e: &Entry, spec: &ArrangeSpec, opts: ArrangeOpts) -> Sor
     let group = u8::from(!(spec.sort.dirs_first && e.kind.is_dir_like()));
     let (prefix, aux) = match spec.sort.key {
         SortKey::Name | SortKey::Unsorted => (prefix_key(&e.name, opts.natural), 0),
-        SortKey::Ext => (prefix_key(ext(&e.name), opts.natural), 0),
+        // Ничьи по расширению (тысячи `.txt`) решает префикс имени, без строк.
+        SortKey::Ext => (
+            prefix_key(ext(&e.name), opts.natural),
+            prefix_key(&e.name, opts.natural),
+        ),
         SortKey::Size => (0, e.size),
         SortKey::Mtime => (0, mtime_key(e.mtime)),
     };
@@ -92,6 +96,13 @@ pub fn record(idx: u32, e: &Entry, spec: &ArrangeSpec, opts: ArrangeOpts) -> Sor
     }
     if e.attrs.has(Attrs::ESCAPED_NAME) {
         flags |= SortRec::ESCAPED;
+    }
+    if spec.sort.key == SortKey::Ext {
+        let x = ext(&e.name);
+        if x.len() <= 7 && x.is_ascii() && !(opts.natural && x.bytes().any(|b| b.is_ascii_digit()))
+        {
+            flags |= SortRec::EXT_EXACT;
+        }
     }
     SortRec::new(idx, group, prefix, aux, flags)
 }
@@ -143,8 +154,26 @@ fn key_cmp(
             }
             Ordering::Equal
         }
-        SortKey::Ext => by_prefix
-            .then_with(|| cmp_with(ext(names.name(a.idx)), ext(names.name(b.idx)), natural)),
+        SortKey::Ext => {
+            if by_prefix != Ordering::Equal {
+                return by_prefix;
+            }
+            // Равный префикс у пары: оба `EXT_EXACT` или оба нет (короткое и длинное
+            // расширения дают разные префиксы) — порядок остаётся полным.
+            let exact = a.flags & b.flags & SortRec::EXT_EXACT != 0;
+            if !exact {
+                let by_ext = cmp_with(ext(names.name(a.idx)), ext(names.name(b.idx)), natural);
+                if by_ext != Ordering::Equal {
+                    return by_ext;
+                }
+            }
+            // Префикс имени упорядочен как полное сравнение — разные префиксы решают.
+            let by_name = a.aux.cmp(&b.aux);
+            if by_name != Ordering::Equal {
+                return by_name;
+            }
+            Ordering::Equal
+        }
         SortKey::Size | SortKey::Mtime => a.aux.cmp(&b.aux),
     };
     primary.then_with(|| {
