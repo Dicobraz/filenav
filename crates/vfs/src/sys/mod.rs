@@ -10,3 +10,10 @@ pub(crate) mod windows;
     reason = "WinAPI: метаданные по хэндлу, место, тома (S4-10)"
 )]
 pub(crate) mod win_meta;
+
+#[cfg(windows)]
+#[allow(
+    unsafe_code,
+    reason = "WinAPI: ReadDirectoryChangesExW и порт завершения (S4-12)"
+)]
+pub(crate) mod win_watch;

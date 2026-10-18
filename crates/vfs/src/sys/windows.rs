@@ -40,13 +40,13 @@ const IO_REPARSE_TAG_APPEXECLINK: u32 = 0x8000_001B;
 const NAME_SURROGATE: u32 = 0x2000_0000;
 
 /// Каталог как verbatim UTF-16 с NUL.
-fn verbatim(dir: &Path) -> SmallVec<[u16; 264]> {
+pub(super) fn verbatim(dir: &Path) -> SmallVec<[u16; 264]> {
     let mut b = SmallVec::new();
     crate::path::to_verbatim(dir, &mut b);
     b
 }
 
-fn os_err(dir: &Path, code: u32) -> VfsError {
+pub(super) fn os_err(dir: &Path, code: u32) -> VfsError {
     VfsError::from_io(dir, io::Error::from_raw_os_error(code.cast_signed()))
 }
 
@@ -328,7 +328,7 @@ fn is_dot(name: &[u16]) -> bool {
 }
 
 /// Запись из полей каталога ОС: те же правила, что `std_fs` (эталон).
-fn entry(name: &[u16], fa: u32, tag: Option<u32>, size: u64, filetime: i64) -> Entry {
+pub(super) fn entry(name: &[u16], fa: u32, tag: Option<u32>, size: u64, filetime: i64) -> Entry {
     let (name, escaped) = decode_name(name);
     let kind = kind(fa, tag);
     let mut attrs = crate::local::std_fs::windows_attrs(&name, fa).0;
@@ -349,7 +349,7 @@ fn entry(name: &[u16], fa: u32, tag: Option<u32>, size: u64, filetime: i64) -> E
 }
 
 /// Имя: ASCII fast path, иначе UTF-16 с экранированием (S4-02).
-fn decode_name(units: &[u16]) -> (CompactString, bool) {
+pub(super) fn decode_name(units: &[u16]) -> (CompactString, bool) {
     if units.iter().all(|&u| u < 0x80) {
         let bytes: SmallVec<[u8; 64]> = units
             .iter()
