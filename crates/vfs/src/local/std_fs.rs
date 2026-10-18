@@ -218,30 +218,52 @@ pub(crate) fn stat(p: &Path, follow: bool) -> Result<Metadata, VfsError> {
         .file_name()
         .map_or_else(|| (CompactString::default(), false), crate::name::from_os);
     let kind = kind_of(&md, || fs::metadata(p), true);
+    // Битая ссылка — только здесь, не в листинге (S4 §3.1): цель может быть медленной.
+    let kind = if !follow
+        && matches!(kind, EntryKind::LinkDir | EntryKind::LinkFile)
+        && fs::metadata(p).is_err_and(|e| e.kind() == io::ErrorKind::NotFound)
+    {
+        EntryKind::LinkBroken
+    } else {
+        kind
+    };
     let e = entry(name, &md, kind);
     let link_target = (!follow && md.file_type().is_symlink())
         .then(|| fs::read_link(p).ok())
         .flatten();
+    let extra = platform_meta(&md, p, follow);
     Ok(Metadata {
         kind,
         attrs: e.attrs,
         size: e.size,
-        alloc_size: None,
+        alloc_size: extra.alloc_size,
         mtime: e.mtime,
         atime: md.accessed().map_or(i64::MIN, nanos),
         btime: md.created().ok().map(nanos),
         link_target,
-        ..platform_meta(&md)
+        ..extra
     })
 }
 
+/// Windows: по хэндлу — время изменения метаданных, размер на диске, жёсткие ссылки,
+/// тег reparse, `FileId` (S4 §3.1).
 #[cfg(windows)]
-fn platform_meta(_md: &fs::Metadata) -> Metadata {
-    empty_meta()
+fn platform_meta(_md: &fs::Metadata, p: &Path, follow: bool) -> Metadata {
+    match crate::sys::win_meta::stat_extra(p, follow) {
+        Some(x) => Metadata {
+            ctime: (x.change != i64::MIN).then_some(x.change),
+            alloc_size: Some(x.alloc),
+            nlink: Some(x.nlink),
+            reparse_tag: x.reparse_tag,
+            file_id: Some((x.file_id.0, x.file_id.1)),
+            ..empty_meta()
+        },
+        None => empty_meta(),
+    }
 }
 
 #[cfg(not(windows))]
-fn platform_meta(md: &fs::Metadata) -> Metadata {
+fn platform_meta(md: &fs::Metadata, _p: &Path, _follow: bool) -> Metadata {
     use std::os::unix::fs::MetadataExt;
     Metadata {
         ctime: Some(md.ctime() * 1_000_000_000 + md.ctime_nsec()),

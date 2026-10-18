@@ -3,3 +3,10 @@
 #[cfg(windows)]
 #[allow(unsafe_code, reason = "WinAPI/NT: листинг каталогов")]
 pub(crate) mod windows;
+
+#[cfg(windows)]
+#[allow(
+    unsafe_code,
+    reason = "WinAPI: метаданные по хэндлу, место, тома (S4-10)"
+)]
+pub(crate) mod win_meta;

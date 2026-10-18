@@ -13,7 +13,7 @@ pub mod sort;
 mod sys;
 
 pub use api::*;
-pub use local::{ListMode, LocalFs};
+pub use local::{ListMode, LocalFs, ROOTS_TIMEOUT};
 pub use service::{VfsCfg, VfsListing};
 
 /// Версия крейта из `Cargo.toml`.
