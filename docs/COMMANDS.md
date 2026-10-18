@@ -132,10 +132,10 @@
 
 | Команда | Аргументы | EN | RU | Клавиши (Far) | Меню F9 |
 |---|---|---|---|---|---|
-| `keymap.reload` | — | Reload key bindings | Перечитать раскладку клавиш | — | — |
+| `keymap.reload` | — | Reload key bindings | Перечитать раскладку клавиш | — | options |
 | `keymap.preset` | `name:str` | Key bindings preset | Пресет раскладки клавиш | — | — |
 | `keymap.show` | — | Key bindings | Раскладка клавиш | — | — |
-| `keymap.dump` | `path?:str` | Export key bindings | Выгрузить раскладку клавиш | — | — |
+| `keymap.dump` | `path?:str` | Export key bindings | Выгрузить раскладку клавиш | — | options |
 | `keymap.qs.start` | `text?:str` | Quick search | Быстрый поиск | — | — |
 | `keymap.qs.input` | `text:str` | Quick search: type | Быстрый поиск: ввод | — | — |
 | `keymap.qs.next` | — | Quick search: next match | Быстрый поиск: следующее | — | — |
