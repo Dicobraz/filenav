@@ -199,6 +199,9 @@ fn deleted_directory_goes_up() {
 }
 
 /// Шторм в видимом каталоге: не больше ~1 перечитывания в секунду (S4 §7).
+/// Только Windows: на Linux/macOS наблюдение пока опросом (inotify/FSEvents —
+/// S4-08/S4-09), а приёмка шторма — про поток событий watcher'а.
+#[cfg(windows)]
 #[test]
 fn storm_is_rate_limited() {
     let a = tempfile::tempdir().unwrap();
