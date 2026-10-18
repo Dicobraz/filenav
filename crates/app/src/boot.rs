@@ -15,8 +15,8 @@ use tracing::field::{Field, Visit};
 use tracing::{Event, Level, Subscriber};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
-use tracing_subscriber::EnvFilter;
 use tracing_subscriber::Layer;
+use tracing_subscriber::filter::Targets;
 use tracing_subscriber::layer::{Context as LayerContext, SubscriberExt};
 use tracing_subscriber::util::SubscriberInitExt;
 use urfin_core::{LogCfg, Paths};
@@ -41,11 +41,15 @@ const EVENT_LOG_PER_MINUTE: u32 = 20;
 /// (S1 §1: ошибка конфигурации не блокирует) — предупреждение в лог. Guard
 /// держать до выхода: он дописывает буфер.
 pub fn init_tracing(paths: &Paths, cfg: &LogCfg) -> anyhow::Result<WorkerGuard> {
-    let config_filter =
-        || EnvFilter::try_new(cfg.level.as_str()).or_else(|_| EnvFilter::try_new("info"));
+    // `Targets` (`info,urfin_keymap=debug`) вместо `EnvFilter`: без regex в бинаре.
+    let config_filter = || {
+        cfg.level
+            .parse::<Targets>()
+            .or_else(|_| "info".parse::<Targets>())
+    };
     let mut bad_env = None;
     let filter = match std::env::var(LOG_ENV) {
-        Ok(v) if !v.trim().is_empty() => EnvFilter::try_new(&v).or_else(|e| {
+        Ok(v) if !v.trim().is_empty() => v.parse::<Targets>().or_else(|e| {
             bad_env = Some((v, e.to_string()));
             config_filter()
         })?,
