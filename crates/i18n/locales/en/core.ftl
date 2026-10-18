@@ -11,3 +11,5 @@ core-config-warnings = Settings file has problems ({ $count }): { $first }
 core-crashed = Urfin closed unexpectedly last time. Details: { $file }
 core-action-show-logs = Show logs
 core-action-dismiss = Dismiss
+vfs-job-dir-size = Directory sizes
+vfs-dir-size-none = No folders to measure: put the cursor on a folder or select folders

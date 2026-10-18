@@ -55,6 +55,8 @@ items = [
     { cmd = "tab.new" },
     { cmd = "tab.dup" },
     { cmd = "tab.close" },
+    { sep = true },
+    { cmd = "vfs.dir_size" },
 ]
 
 [[menu]]

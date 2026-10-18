@@ -1,6 +1,6 @@
 # Реестр команд Urfin
 
-> Генерируется из реестра команд (core + ui) тестом `commands_doc_is_current`
+> Генерируется из реестра команд (core + ui + vfs) тестом `commands_doc_is_current`
 > (`crates/ui/src/tests.rs`). Руками не править. Обновить:
 > `URFIN_UPDATE_DOCS=1 cargo nextest run -p urfin-ui commands_doc`.
 
@@ -137,6 +137,12 @@
 | `ui.tree.collapse` | — | Tree: collapse | Дерево: свернуть | — | — |
 | `ui.tree.enter` | — | Tree: open | Дерево: открыть | — | — |
 | `ui.tree.select` | `n:int` | Tree: select | Дерево: выбрать | — | — |
+
+## `vfs` (1)
+
+| Команда | Аргументы | EN | RU | Клавиши (Far) | Меню F9 |
+|---|---|---|---|---|---|
+| `vfs.dir_size` | `all?:bool` | Directory sizes | Размер папок | — | commands |
 
 ## `keymap` (11)
 
