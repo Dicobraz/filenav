@@ -49,8 +49,6 @@ pub struct UiState {
     pub draft: Option<Draft>,
     /// Rename по месту: таб и исходное имя.
     pub rename: Option<(TabId, CompactString)>,
-    /// Быстрый поиск: панель и введённый текст.
-    pub qsearch: Option<(Side, CompactString)>,
     pub path_edit: Option<Side>,
     /// Поколение проверки введённого пути (`ui.path_edit path=`), пока она идёт.
     pub path_check: Option<u64>,
@@ -88,7 +86,6 @@ impl UiState {
             subdirs: None,
             draft: None,
             rename: None,
-            qsearch: None,
             path_edit: None,
             path_check: None,
             next_gen: 0,
@@ -108,7 +105,6 @@ impl UiState {
         self.subdirs = None;
         self.draft = None;
         self.rename = None;
-        self.qsearch = None;
         self.path_edit = None;
         self.path_check = None;
     }

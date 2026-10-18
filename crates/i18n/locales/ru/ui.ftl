@@ -86,3 +86,6 @@ menu-lang-ru = Русский
     .menu-key = р
 menu-about = О программе Úrfionn
     .menu-key = п
+# Быстрый поиск и начатый аккорд в подвале панели (S3-06)
+ui-qs-matches = Найдено: { $count }
+ui-chord-pending = { $chord } … (ждёт следующую клавишу)

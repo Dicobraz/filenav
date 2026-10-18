@@ -7,12 +7,14 @@
 //! ([`KeyInput::process`]).
 
 pub mod compile;
+pub mod handler;
 pub mod input;
 pub mod key;
 pub mod keymap;
 pub mod when;
 
 pub use compile::{ChordState, EffectiveBinding, KeybarItem, Lookup, Strokes};
+pub use handler::{KeymapView, QuickSearch, register};
 pub use input::{InputOutcome, KeyInput, KeyNote, KeyNotes};
 pub use key::{Chord, KeyCode, KeyError, KeyErrorKind, Mods, Os, Stroke};
 pub use keymap::{

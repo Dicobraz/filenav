@@ -15,7 +15,9 @@ use std::sync::Arc;
 use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
-use urfin_core::{AppState, CmdError, Command, CommandRegistry, ConfigWarning, Paths, Value};
+use urfin_core::{
+    AppState, CmdError, Command, CommandRegistry, ConfigWarning, Focus, Paths, Value,
+};
 
 use crate::compile::{
     ChordState, Compiled, EffectiveBinding, KeybarItem, Lookup, fkey_stroke, label_key,
@@ -307,7 +309,18 @@ impl Keymap {
 
     /// Нажатие `s` (после начатого аккорда `pending`) в состоянии `st`. 0 аллокаций.
     pub fn lookup(&self, pending: Option<&ChordState>, s: Stroke, st: &AppState) -> Lookup<'_> {
-        self.compiled.lookup(pending, s, st)
+        self.compiled.lookup(pending, s, st, st.focus)
+    }
+
+    /// Поиск так, будто фокус — `focus` (флаги — по `st`).
+    pub fn lookup_as(
+        &self,
+        pending: Option<&ChordState>,
+        s: Stroke,
+        st: &AppState,
+        focus: Focus,
+    ) -> Lookup<'_> {
+        self.compiled.lookup(pending, s, st, focus)
     }
 
     /// Сочетания, которые сейчас вызывают ровно `cmd` (меню и палитра S2).

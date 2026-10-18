@@ -9,6 +9,7 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use compact_str::CompactString;
 use egui::{Event, ImeEvent, Key};
 use smallvec::SmallVec;
 use urfin_core::{AppState, Command, Focus, Origin, OverlayKind};
@@ -148,8 +149,13 @@ pub struct KeyInput {
     km: Arc<Keymap>,
     os: Os,
     r#match: MatchMode,
-    /// Быстрый поиск Far: `Alt+буква` при фокусе на панели.
-    qs_alt: bool,
+    /// Как начинается быстрый поиск (`auto` уже разрешён по пресету).
+    qs_mode: QsMode,
+    alt_tap: Duration,
+    /// Нажат один модификатор (`ALT` или `CTRL`) — кандидат в `AltTap`/`CtrlTap`.
+    tap: Option<(Mods, Instant)>,
+    /// Начатый аккорд, о котором уже сообщено (`keymap.pending`).
+    shown_pending: Option<CompactString>,
     chord_timeout: Duration,
     mods: ModTracker,
     pending: Option<(ChordState, Instant)>,
@@ -162,16 +168,20 @@ pub struct KeyInput {
 
 impl KeyInput {
     pub fn new(km: Arc<Keymap>, cfg: &KeymapCfg) -> Self {
-        let qs_alt = match cfg.quick_search {
-            QsMode::Alt => true,
-            QsMode::Auto => cfg.preset != "dn",
-            QsMode::AltTap | QsMode::CtrlTap | QsMode::Off => false,
+        // Far — Alt+буква, DN — одиночный Alt (S3 §1.3).
+        let qs_mode = match cfg.quick_search {
+            QsMode::Auto if cfg.preset == "dn" => QsMode::AltTap,
+            QsMode::Auto => QsMode::Alt,
+            m => m,
         };
         KeyInput {
             os: km.os(),
             km,
             r#match: cfg.r#match,
-            qs_alt,
+            qs_mode,
+            alt_tap: Duration::from_millis(u64::from(cfg.alt_tap_ms)),
+            tap: None,
+            shown_pending: None,
             chord_timeout: Duration::from_millis(u64::from(cfg.chord_timeout_ms)),
             mods: ModTracker::default(),
             pending: None,
@@ -227,6 +237,7 @@ impl KeyInput {
             }
         }
         self.unpaired_notes(raw, st, now, out);
+        self.sync_pending(out);
         InputOutcome {
             wake_at: self.pending.as_ref().map(|(_, d)| *d),
         }
@@ -248,10 +259,24 @@ impl KeyInput {
                 self.pending = None;
                 self.suppress_text = false;
                 self.down.clear();
+                self.tap = None;
                 return true;
             }
             Event::ModifiersChanged(m) => {
+                self.modifiers_changed(mods_of(*m), st, now, out);
                 self.mods.set(*m);
+                return true;
+            }
+            Event::PointerButton { pressed: true, .. } => {
+                self.tap = None;
+                // Клик закрывает быстрый поиск (сам клик — виджетам).
+                if is_qs(st) && self.km.has_command("keymap.qs.cancel") {
+                    out.push(Command::new("keymap.qs.cancel").from(Origin::Key));
+                }
+                return true;
+            }
+            Event::MouseWheel { .. } => {
+                self.tap = None;
                 return true;
             }
             _ => {}
@@ -273,6 +298,16 @@ impl KeyInput {
                 } else {
                     self.release(*key)
                 }
+            }
+            // Вставка в быстрый поиск: символы, пока есть совпадения (Far).
+            Event::Paste(t) if is_qs(st) && self.km.has_command("keymap.qs.input") => {
+                self.suppress_text = false;
+                out.push(
+                    Command::new("keymap.qs.input")
+                        .arg("text", t.as_str())
+                        .from(Origin::Key),
+                );
+                false
             }
             Event::Copy | Event::Cut | Event::Paste(_) => {
                 self.suppress_text = false;
@@ -317,6 +352,7 @@ impl KeyInput {
         out: &mut Vec<Command>,
     ) -> bool {
         self.suppress_text = false;
+        self.tap = None;
         let i = self.down.iter().position(|d| d.key == key);
         let repeat = i.is_some();
         let code = self.code(key, physical);
@@ -404,7 +440,7 @@ impl KeyInput {
         let id = match st.focus {
             Focus::Overlay(OverlayKind::QuickSearch) => "keymap.qs.input",
             Focus::Panel
-                if self.qs_alt
+                if self.qs_mode == QsMode::Alt
                     && self.mods.held.contains(Mods::ALT)
                     && !self.mods.held.intersects(Mods::CTRL | Mods::CMD) =>
             {
@@ -443,16 +479,7 @@ impl KeyInput {
                     return true;
                 }
                 self.pending = None;
-                for c in cmds {
-                    let mut c = c.clone().from(Origin::Key);
-                    if let Some(t) = text
-                        && c.args.get("text").is_none()
-                        && self.km.takes_text(c.id.as_str())
-                    {
-                        c = c.arg("text", t);
-                    }
-                    out.push(c);
-                }
+                emit(&self.km, cmds, text, out);
                 true
             }
             Lookup::Prefix => {
@@ -463,8 +490,85 @@ impl KeyInput {
                 }
                 true
             }
-            Lookup::Miss => self.pending.take().is_some(),
+            Lookup::Miss if self.pending.take().is_some() => true,
+            // Быстрый поиск: непривязанная клавиша (не печать) закрывает его и
+            // выполняется как на панели (Far, S3 §1.3).
+            Lookup::Miss if is_qs(st) && !texty(stroke) => {
+                if self.km.has_command("keymap.qs.cancel") {
+                    out.push(Command::new("keymap.qs.cancel").from(Origin::Key));
+                }
+                let km = Arc::clone(&self.km);
+                if let Lookup::Hit(cmds, _) = km.lookup_as(None, stroke, st, Focus::Panel) {
+                    self.suppress_text = true;
+                    emit(&km, cmds, text, out);
+                }
+                true
+            }
+            Lookup::Miss => false,
         }
+    }
+
+    /// Одиночный Alt/Ctrl (S3 §1.4): нажат один модификатор и отпущен за `alt_tap_ms`,
+    /// между ними не было клавиш, кнопок мыши, колеса и других модификаторов.
+    fn modifiers_changed(
+        &mut self,
+        new: Mods,
+        st: &AppState,
+        now: Instant,
+        out: &mut Vec<Command>,
+    ) {
+        let prev = self.mods.held;
+        self.tap = match self.tap {
+            Some((k, t0)) if new.is_empty() && prev == k => {
+                if now.duration_since(t0) <= self.alt_tap && !self.ime {
+                    self.fire_tap(k, st, now, out);
+                }
+                None
+            }
+            _ if prev.is_empty() && (new == Mods::ALT || new == Mods::CTRL) => Some((new, now)),
+            _ => None,
+        };
+    }
+
+    /// `AltTap`/`CtrlTap`: привязка, иначе — начало быстрого поиска в режиме
+    /// `alt_tap`/`ctrl_tap`. В самом поиске одиночный модификатор ничего не делает.
+    fn fire_tap(&mut self, kind: Mods, st: &AppState, now: Instant, out: &mut Vec<Command>) {
+        if is_qs(st) {
+            return;
+        }
+        let (code, mode) = if kind == Mods::ALT {
+            (KeyCode::AltTap, QsMode::AltTap)
+        } else {
+            (KeyCode::CtrlTap, QsMode::CtrlTap)
+        };
+        if self.feed(Stroke::new(code, Mods::empty()), false, st, now, out, None) {
+            return;
+        }
+        if self.qs_mode == mode
+            && st.focus == Focus::Panel
+            && self.km.has_command("keymap.qs.start")
+        {
+            out.push(Command::new("keymap.qs.start").from(Origin::Key));
+        }
+    }
+
+    /// Сообщить handler `keymap` о начатом или сброшенном аккорде (строка статуса).
+    fn sync_pending(&mut self, out: &mut Vec<Command>) {
+        let shown = self
+            .pending
+            .as_ref()
+            .map(|(c, _)| Chord(c.strokes.clone()).display(self.os));
+        if shown == self.shown_pending {
+            return;
+        }
+        if self.km.has_command("keymap.pending") {
+            let mut c = Command::new("keymap.pending").from(Origin::Key);
+            if let Some(s) = &shown {
+                c = c.arg("chord", s.as_str());
+            }
+            out.push(c);
+        }
+        self.shown_pending = shown;
     }
 
     /// Записка без события egui (`Num5` без `NumLock`, `Shift+Ins` при пустом буфере,
@@ -505,6 +609,63 @@ impl KeyInput {
                 raw.events.push(Event::Text(ch.into()));
             }
         }
+    }
+}
+
+/// Команды привязки с `Origin::Key`; текст вставки — в `text`, если команда его берёт.
+fn emit(km: &Keymap, cmds: &[Command], text: Option<&str>, out: &mut Vec<Command>) {
+    for c in cmds {
+        let mut c = c.clone().from(Origin::Key);
+        if let Some(t) = text
+            && c.args.get("text").is_none()
+            && km.takes_text(c.id.as_str())
+        {
+            c = c.arg("text", t);
+        }
+        out.push(c);
+    }
+}
+
+fn is_qs(st: &AppState) -> bool {
+    st.focus == Focus::Overlay(OverlayKind::QuickSearch)
+}
+
+/// Нажатие печатает символ (за ним придёт `Text`): без Ctrl/Cmd, клавиша символа,
+/// пробел или серые `+-*/`. Alt допускается — Far продолжает поиск по Alt+буква.
+fn texty(s: Stroke) -> bool {
+    if s.mods
+        .intersects(Mods::CTRL | Mods::LCTRL | Mods::RCTRL | Mods::CMD)
+    {
+        return false;
+    }
+    match s.key {
+        KeyCode::GrayPlus | KeyCode::GrayMinus | KeyCode::GrayStar | KeyCode::GraySlash => true,
+        KeyCode::Key(k) => {
+            k == Key::Space
+                || k.name().chars().count() == 1
+                || matches!(
+                    k,
+                    Key::Minus
+                        | Key::Plus
+                        | Key::Equals
+                        | Key::OpenBracket
+                        | Key::CloseBracket
+                        | Key::Backslash
+                        | Key::Semicolon
+                        | Key::Quote
+                        | Key::Comma
+                        | Key::Period
+                        | Key::Slash
+                        | Key::Backtick
+                        | Key::Colon
+                        | Key::Pipe
+                        | Key::Questionmark
+                        | Key::Exclamationmark
+                        | Key::OpenCurlyBracket
+                        | Key::CloseCurlyBracket
+                )
+        }
+        _ => false,
     }
 }
 

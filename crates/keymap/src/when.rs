@@ -256,7 +256,13 @@ impl When {
     /// Специфичность сработавшей конъюнкции, если выражение истинно: число атомов в
     /// ней (`global` — 0, `*` — 0).
     pub fn matches(&self, st: &AppState) -> Option<u8> {
-        self.run(focus_bit(st.focus), |f, _| f(st))
+        self.matches_as(st, st.focus)
+    }
+
+    /// Как [`When::matches`], но атомы фокуса — для `focus`, а не `st.focus` (выход из
+    /// быстрого поиска: клавиша выполняется так, будто фокус уже на панели).
+    pub fn matches_as(&self, st: &AppState, focus: Focus) -> Option<u8> {
+        self.run(focus_bit(focus), |f, _| f(st))
     }
 
     /// Вычисление при фокусе `bit`; значение флага даёт `flag` (функция и номер).

@@ -144,6 +144,7 @@ struct Fx {
     memo: CardMemo,
     widths: Widths,
     st: crate::state::UiState,
+    keys: Option<urfin_keymap::KeymapView>,
 }
 
 impl Fx {
@@ -163,6 +164,7 @@ impl Fx {
             memo: CardMemo::default(),
             widths: Widths::default(),
             st: crate::state::UiState::new(),
+            keys: None,
         }
     }
 
@@ -190,6 +192,7 @@ impl Fx {
                 memo: &mut self.memo,
                 widths: &mut self.widths,
                 st: &self.st,
+                keys: self.keys.as_ref(),
             };
             show(&mut c, card, t, Side::Left, active, &mut cx, &mut out);
             yaml = c.to_yaml();
@@ -452,4 +455,39 @@ fn hold_down_on_100k_is_incremental() {
         );
     }
     assert!(worst.as_millis() < 50, "кадр {worst:?}");
+}
+
+/// Быстрый поиск (S3-06, ADR-0016): поле вместо подвала — маска и число совпадений;
+/// на другой панели — обычный подвал. Начатый аккорд — в подвале активной панели.
+#[test]
+fn quick_search_footer() {
+    let mut fx = Fx::new();
+    let t = mockup_tab();
+    fx.keys = Some(urfin_keymap::KeymapView {
+        qs: Some(urfin_keymap::QuickSearch {
+            side: Side::Left,
+            mask: "doc".into(),
+            matches: 3,
+            miss_at: None,
+        }),
+        pending: None,
+    });
+    let (yaml, _) = fx.frame(&t, true, Vec::new());
+    assert!(yaml.contains("doc"), "{yaml}");
+    assert!(yaml.contains("Найдено: 3"), "{yaml}");
+    assert!(yaml.contains("fill.control.input"), "{yaml}");
+    // Не на этой панели — подвал как обычно.
+    if let Some(q) = fx.keys.as_mut().and_then(|k| k.qs.as_mut()) {
+        q.side = Side::Right;
+    }
+    let (yaml, _) = fx.frame(&t, true, Vec::new());
+    assert!(!yaml.contains("Найдено"), "{yaml}");
+    fx.keys = Some(urfin_keymap::KeymapView {
+        qs: None,
+        pending: Some("Ctrl+K".into()),
+    });
+    let (yaml, _) = fx.frame(&t, true, Vec::new());
+    assert!(yaml.contains("Ctrl+K …"), "{yaml}");
+    let (yaml, _) = fx.frame(&t, false, Vec::new());
+    assert!(!yaml.contains("Ctrl+K"), "only on the active panel");
 }

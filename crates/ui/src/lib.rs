@@ -481,6 +481,7 @@ impl UrfinUi {
             memo: &mut self.cards[side.idx()],
             widths: &mut self.widths,
             st,
+            keys: s.ext.get::<urfin_keymap::KeymapView>(),
         };
         file_list::show(&mut c, r, p.tab(), side, s.active == side, &mut cx, out);
     }
