@@ -68,10 +68,13 @@ fn changes_are_seen_within_one_interval() {
     fs::remove_file(d.join("gone")).unwrap();
     fs::write(d.join("new"), b"").unwrap();
     fs::create_dir(d.join("sub")).unwrap();
+    // Интервал, по которому назначен этот опрос (после опроса он пересчитается
+    // по времени листинга).
+    let interval = p.interval();
     let changed = Instant::now();
     wait_due(&p);
     let ev = p.poll(&CancelToken::new(), Instant::now()).unwrap();
-    assert!(changed.elapsed() <= p.interval() + Duration::from_millis(50));
+    assert!(changed.elapsed() <= interval + Duration::from_millis(50));
     assert_eq!(summary(&ev), ["+new", "+sub", "-gone", "~grow"]);
 
     // Снимок обновлён: повторный опрос пуст.

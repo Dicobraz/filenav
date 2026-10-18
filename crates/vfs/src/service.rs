@@ -6,7 +6,7 @@
 //! пересорт по ходу — S4-06), затем `Done`. Ошибка → `Failed`. Отмена (навигация)
 //! — тихий выход, после неё ничего не отправляется.
 
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::time::{Duration, Instant};
 
 use serde::Deserialize;
@@ -17,6 +17,7 @@ use urfin_core::{
 
 use crate::api::{ListOpts, VfsError, VfsRegistry};
 use crate::batch::{Batcher, Resort};
+use crate::cache::DirCache;
 use crate::hub::{Hub, HubCfg};
 use crate::sort::{ArrangeOpts, arrange, visible};
 
@@ -70,14 +71,17 @@ pub struct VfsListing {
     cfg: VfsCfg,
     /// Поток наблюдения поднимается с первым листингом (нужен рантайм).
     hub: OnceLock<Arc<Hub>>,
+    cache: Arc<Mutex<DirCache>>,
 }
 
 impl VfsListing {
     pub fn new(reg: Arc<VfsRegistry>, cfg: VfsCfg) -> VfsListing {
+        let cache = DirCache::new(cfg.cache_dirs.into(), cfg.cache_entries as usize);
         VfsListing {
             reg,
             cfg,
             hub: OnceLock::new(),
+            cache: Arc::new(Mutex::new(cache)),
         }
     }
 
@@ -93,8 +97,18 @@ impl VfsListing {
                     patch_threshold: self.cfg.patch_threshold,
                     opts: self.cfg.arrange_opts(),
                 },
+                Arc::clone(&self.cache),
             ))
         }))
+    }
+
+    /// Каталогов и записей в кэше (тесты, диагностика).
+    #[doc(hidden)]
+    pub fn cache_stats(&self) -> (usize, usize) {
+        self.cache
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .stats()
     }
 
     /// Табы, за каталогами которых сейчас наблюдают (тесты, диагностика).
@@ -117,11 +131,12 @@ impl ListingService for VfsListing {
         let reg = Arc::clone(&self.reg);
         let opts = self.cfg.arrange_opts();
         let hub = self.hub(rt);
+        let cache = Arc::clone(&self.cache);
         rt.spawn(
             urfin_core::Lane::Interactive,
             "vfs.list",
             req.cancel.clone(),
-            move |cx| load(&reg, &req, opts, &cx, &hub),
+            move |cx| load(&reg, &req, opts, &cx, &hub, &cache),
         );
     }
 
@@ -151,17 +166,38 @@ impl ListingService for VfsListing {
 }
 
 /// Поток листинга. Ошибки — `Failed`, отмена — молча.
-fn load(reg: &VfsRegistry, req: &LoadReq, opts: ArrangeOpts, cx: &TaskCx, hub: &Hub) {
+fn load(
+    reg: &VfsRegistry,
+    req: &LoadReq,
+    opts: ArrangeOpts,
+    cx: &TaskCx,
+    hub: &Hub,
+    cache: &Mutex<DirCache>,
+) {
     let t0 = Instant::now();
     // Наблюдение — до чтения: изменения во время листинга придут после `Done`.
-    if let Ok(fs) = reg.get(&req.loc) {
-        hub.prepare(fs, req.tab, req.generation, &req.loc);
-    }
+    let reread = reg
+        .get(&req.loc)
+        .is_ok_and(|fs| hub.prepare(fs, req.tab, req.generation, &req.loc));
     let send = |u: ListingUpdate| {
         cx.sink
             .send(listing_msg(req.tab, req.generation, u), &cx.cancel)
             .is_ok()
     };
+    // Refresh своего каталога кэш не берёт: он старше показанного листинга.
+    let cached = if reread {
+        None
+    } else {
+        cache
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take(&req.loc)
+    };
+    if let Some((entries, fresh, guard)) = cached {
+        drop(guard);
+        from_cache(req, opts, cx, hub, &send, entries, fresh, t0);
+        return;
+    }
     match stream(reg, req, opts, cx, &send, t0) {
         Ok(Some((all, resort))) => {
             if req.view.sort.key != SortKey::Unsorted
@@ -173,7 +209,7 @@ fn load(reg: &VfsRegistry, req: &LoadReq, opts: ArrangeOpts, cx: &TaskCx, hub: &
             tracing::debug!(target: "list.sorted", elapsed = ?t0.elapsed(), entries = all.len());
             if send(ListingUpdate::Done) {
                 tracing::debug!(target: "list.done", elapsed = ?t0.elapsed(), entries = all.len(), loc = %req.loc.path.display());
-                hub.activate(req.tab, req.generation, all, t0.elapsed());
+                hub.activate(req.tab, req.generation, Arc::new(all), t0.elapsed());
             }
         }
         // Отменено: ничего не отправляем.
@@ -184,6 +220,46 @@ fn load(reg: &VfsRegistry, req: &LoadReq, opts: ArrangeOpts, cx: &TaskCx, hub: &
                 send(ListingUpdate::Failed(e.to_string().into()));
             }
         }
+    }
+}
+
+/// Каталог из кэша (S4-16): одним отсортированным чанком, без чтения. Устаревший —
+/// затем `panel.refresh`: перечитывание с подменой листинга целиком, курсор и
+/// выделение — по именам (решение №9: «кэш мгновенно + тихое обновление»).
+#[allow(clippy::too_many_arguments, reason = "контекст задачи листинга")]
+fn from_cache(
+    req: &LoadReq,
+    opts: ArrangeOpts,
+    cx: &TaskCx,
+    hub: &Hub,
+    send: &impl Fn(ListingUpdate) -> bool,
+    entries: Arc<Vec<Entry>>,
+    fresh: bool,
+    t0: Instant,
+) {
+    // Обычно `Arc` единственный (таб ушёл) — без копии.
+    let entries = Arc::try_unwrap(entries).unwrap_or_else(|a| (*a).clone());
+    let visible = arrange(&entries, &req.view, opts);
+    let n = entries.len();
+    if !send(ListingUpdate::Chunk { entries, visible }) || !send(ListingUpdate::Done) {
+        return;
+    }
+    tracing::debug!(target: "list.cache", fresh, elapsed = ?t0.elapsed(), entries = n, loc = %req.loc.path.display());
+    // Снимок для опроса не нужен: свежий кэш бывает только у наблюдаемых
+    // каталогов, а устаревший сейчас же перечитается (и снимок придёт с ним).
+    hub.activate(req.tab, req.generation, Arc::default(), Duration::ZERO);
+    if !fresh {
+        let (tab, generation) = (req.tab, req.generation);
+        let m = urfin_core::msg("vfs.cache_stale", move |cx| {
+            if cx
+                .state
+                .tab(tab)
+                .is_some_and(|(_, t)| t.listing.generation == generation)
+            {
+                cx.dispatch(urfin_core::Command::new("panel.refresh").arg("tab", i64::from(tab.0)));
+            }
+        });
+        let _ = cx.sink.send(m, &cx.cancel);
     }
 }
 

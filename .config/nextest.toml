@@ -2,3 +2,13 @@
 retries = 1
 fail-fast = false
 slow-timeout = "30s"
+
+# Перф-тест шторма наблюдения (S4-14): мерит частоту перечитываний под потоком
+# созданий файлов — без соседей, иначе пишущий поток голодает.
+[[profile.default.overrides]]
+filter = "test(storm_is_rate_limited)"
+threads-required = "num-test-threads"
+
+[[profile.ci.overrides]]
+filter = "test(storm_is_rate_limited)"
+threads-required = "num-test-threads"

@@ -4,6 +4,7 @@
 
 mod api;
 pub mod batch;
+pub mod cache;
 pub mod diag;
 pub mod hub;
 pub mod icons;

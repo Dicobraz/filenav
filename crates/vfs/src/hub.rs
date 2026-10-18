@@ -30,6 +30,7 @@ use urfin_core::{
 };
 
 use crate::api::{Entry, Vfs, VfsError, WatchEvent, WatchGuard, WatchId, WatchTx};
+use crate::cache::DirCache;
 use crate::patch::{Changes, DirIndex, build_patch};
 use crate::poll::Poller;
 use crate::sort::ArrangeOpts;
@@ -166,6 +167,11 @@ impl Debouncer {
         }
     }
 
+    /// Есть ли несброшенные изменения.
+    pub fn has_pending(&self, id: WatchId) -> bool {
+        self.w.get(&id).is_some_and(WState::has_pending)
+    }
+
     /// Копить события наблюдения, не сбрасывая (`true`), или сбрасывать как обычно.
     pub fn hold(&mut self, id: WatchId, held: bool) {
         self.w.entry(id).or_default().held = held;
@@ -272,7 +278,7 @@ enum Ctrl {
     Activate {
         tab: TabId,
         generation: Gen,
-        entries: Vec<Entry>,
+        entries: Arc<Vec<Entry>>,
         list_time: Duration,
     },
     Tab(TabEvent),
@@ -300,7 +306,7 @@ pub(crate) struct Hub {
 }
 
 impl Hub {
-    pub(crate) fn start(rt: &Runtime, cfg: &HubCfg) -> Hub {
+    pub(crate) fn start(rt: &Runtime, cfg: &HubCfg, cache: Arc<Mutex<DirCache>>) -> Hub {
         let (debounce, max_latency, poll) = (cfg.debounce, cfg.max_latency, cfg.poll);
         let (ctrl, ctrl_rx) = crossbeam_channel::unbounded();
         let (events, events_rx) = crossbeam_channel::unbounded();
@@ -313,6 +319,10 @@ impl Hub {
             hidden: FxHashSet::default(),
             dirty: FxHashSet::default(),
             current: Arc::clone(&current),
+            events: events.clone(),
+            cache,
+            next_cache_id: CACHE_IDS,
+            left: FxHashMap::default(),
             patch: Arc::new(PatchCx {
                 threshold: cfg.patch_threshold,
                 opts: cfg.opts,
@@ -342,7 +352,14 @@ impl Hub {
     }
 
     /// До чтения каталога (поток задачи листинга: открытие наблюдения — I/O).
-    pub(crate) fn prepare(&self, vfs: &Arc<dyn Vfs>, tab: TabId, generation: Gen, loc: &Location) {
+    /// `true` — таб перечитывает свой же каталог (refresh): кэш тогда не нужен.
+    pub(crate) fn prepare(
+        &self,
+        vfs: &Arc<dyn Vfs>,
+        tab: TabId,
+        generation: Gen,
+        loc: &Location,
+    ) -> bool {
         let same = self
             .current
             .lock()
@@ -351,7 +368,7 @@ impl Hub {
             .is_some_and(|(l, _)| l == loc);
         if same {
             let _ = self.ctrl.send(Ctrl::Reload { tab, generation });
-            return;
+            return true;
         }
         let id = WatchId(self.next_id.fetch_add(1, Ordering::Relaxed));
         let tx = WatchTx {
@@ -364,7 +381,7 @@ impl Hub {
             Err(e) => {
                 tracing::debug!(error = %e, loc = %loc.path.display(), "watch failed");
                 let _ = self.ctrl.send(Ctrl::Unsubscribe { tab });
-                return;
+                return false;
             }
         };
         let _ = self.ctrl.send(Ctrl::Subscribe {
@@ -375,6 +392,7 @@ impl Hub {
             guard,
             vfs: Arc::clone(vfs),
         });
+        false
     }
 
     /// После `Done`: сбрасывать накопленное; `entries` — снимок для опроса.
@@ -382,7 +400,7 @@ impl Hub {
         &self,
         tab: TabId,
         generation: Gen,
-        entries: Vec<Entry>,
+        entries: Arc<Vec<Entry>>,
         list_time: Duration,
     ) {
         let _ = self.ctrl.send(Ctrl::Activate {
@@ -394,9 +412,7 @@ impl Hub {
     }
 
     pub(crate) fn tab_event(&self, ev: TabEvent) {
-        if !matches!(ev, TabEvent::Left { .. }) {
-            let _ = self.ctrl.send(Ctrl::Tab(ev));
-        }
+        let _ = self.ctrl.send(Ctrl::Tab(ev));
     }
 
     /// Табы с наблюдением (тесты, диагностика).
@@ -427,8 +443,17 @@ struct Worker {
     hidden: FxHashSet<TabId>,
     dirty: FxHashSet<TabId>,
     current: Current,
+    /// Для наблюдений кэша (их события идут в тот же канал).
+    events: Sender<(WatchId, WatchEvent)>,
+    cache: Arc<Mutex<DirCache>>,
+    next_cache_id: u64,
+    /// `Left` до подтверждения, что таб ушёл.
+    left: FxHashMap<TabId, (Location, Arc<Vec<Entry>>)>,
     patch: Arc<PatchCx>,
 }
+
+/// Номера наблюдений кэша — в старшей половине, чтобы не пересечься с табами.
+const CACHE_IDS: u64 = 1 << 63;
 
 /// Параметры хаба из `[vfs]`.
 pub(crate) struct HubCfg {
@@ -478,6 +503,15 @@ impl Worker {
                 Got::Event(Some((id, ev))) if self.by_id.contains_key(&id) => {
                     self.deb.push(id, ev, Instant::now());
                 }
+                Got::Event(Some((id, _))) if id.0 >= CACHE_IDS => {
+                    // Каталог в кэше изменился: устарел, наблюдение снять (вне блокировки).
+                    let dropped = self
+                        .cache
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner)
+                        .invalidate(id);
+                    drop(dropped);
+                }
                 Got::Ctrl(Some(c)) => self.control(c, sink, cancel),
                 // `VfsListing` уничтожен.
                 Got::Ctrl(None) => return,
@@ -490,6 +524,7 @@ impl Worker {
         }
     }
 
+    #[allow(clippy::too_many_lines, reason = "диспетчер управляющих сообщений")]
     fn control(&mut self, c: Ctrl, sink: &MsgSink, cancel: &CancelToken) {
         match c {
             Ctrl::Subscribe {
@@ -500,6 +535,8 @@ impl Worker {
                 guard,
                 vfs,
             } => {
+                // Таб ушёл в другой каталог: прежний — в кэш, пока его наблюдение живо.
+                self.commit_left(tab);
                 self.drop_sub(tab);
                 if self.hidden.contains(&tab) {
                     self.dirty.insert(tab);
@@ -525,13 +562,18 @@ impl Worker {
                 );
             }
             Ctrl::Reload { tab, generation } => {
+                // Тот же каталог перечитывается — таб никуда не ушёл.
+                self.left.remove(&tab);
                 if let Some(s) = self.subs.get_mut(&tab) {
                     s.generation = generation;
                     s.active = false;
                     self.deb.hold(s.id, true);
                 }
             }
-            Ctrl::Unsubscribe { tab } => self.drop_sub(tab),
+            Ctrl::Unsubscribe { tab } => {
+                self.commit_left(tab);
+                self.drop_sub(tab);
+            }
             Ctrl::Activate {
                 tab,
                 generation,
@@ -559,6 +601,7 @@ impl Worker {
                 self.deb.hold(s.id, false);
             }
             Ctrl::Tab(TabEvent::Hidden(tab)) => {
+                self.left.remove(&tab);
                 self.hidden.insert(tab);
                 if self.subs.contains_key(&tab) {
                     self.drop_sub(tab);
@@ -577,6 +620,7 @@ impl Worker {
                 }
             }
             Ctrl::Tab(TabEvent::Closed(tab)) => {
+                self.commit_left(tab);
                 self.drop_sub(tab);
                 self.patch
                     .indexes
@@ -586,8 +630,53 @@ impl Worker {
                 self.hidden.remove(&tab);
                 self.dirty.remove(&tab);
             }
-            Ctrl::Tab(TabEvent::Left { .. }) => {}
+            Ctrl::Tab(TabEvent::Left { tab, loc, entries }) => {
+                // `Left` приходит и на refresh (тот же каталог); в кэш — только когда
+                // таб правда ушёл: следующая подписка, отписка или закрытие.
+                let ok = self
+                    .subs
+                    .get(&tab)
+                    .is_some_and(|s| s.loc == loc && s.active);
+                if ok {
+                    self.left.insert(tab, (loc, entries));
+                } else {
+                    self.left.remove(&tab);
+                }
+            }
         }
+    }
+
+    /// Таб ушёл из каталога: завершённый листинг — в кэш (S4-16). Свежесть —
+    /// своё наблюдение, если каталог локальный и за время показа не менялся
+    /// (открывается до снятия наблюдения таба — без окна, где событие потеряется).
+    fn commit_left(&mut self, tab: TabId) {
+        let Some((loc, entries)) = self.left.remove(&tab) else {
+            return;
+        };
+        let Some(s) = self.subs.get(&tab) else {
+            return;
+        };
+        if s.loc != loc {
+            return;
+        }
+        let clean = !self.deb.has_pending(s.id);
+        let watch = if clean && crate::cache::watchable(&loc) {
+            let id = WatchId(self.next_cache_id);
+            self.next_cache_id += 1;
+            let tx = WatchTx {
+                id,
+                tx: self.events.clone(),
+            };
+            s.vfs.watch(&loc, tx).ok().map(|g| (id, g))
+        } else {
+            None
+        };
+        let dropped = self
+            .cache
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .put(loc, entries, watch);
+        drop(dropped);
     }
 
     fn drop_sub(&mut self, tab: TabId) {
