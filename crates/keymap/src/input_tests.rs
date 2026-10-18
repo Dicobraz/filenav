@@ -704,3 +704,108 @@ fn pending_chord_is_reported() {
     let f = run(&mut ki, &st, vec![press(Key::C, ctrl)]);
     assert_eq!(f.cmds, ["a.chord", "keymap.pending"]);
 }
+
+// ---- S3-07: записки хука Windows ----
+
+static WIN_METAS: &[CommandMeta] = &[
+    meta("w.enter", &[], false),
+    meta("w.invert", &[], false),
+    meta("w.permanent", &[], false),
+    meta("w.names", &[], false),
+    meta("w.slash", &[], false),
+];
+
+const WIN_PRESET: &str = r#"format = 1
+name = "win"
+extends = "far"
+[context.panel]
+"Enter" = "w.enter"
+"GrayStar" = "w.invert"
+"Shift+Delete" = "w.permanent"
+"Ctrl+Insert" = "w.names"
+"Ctrl+GraySlash" = "w.slash"
+"#;
+
+fn input_win() -> KeyInput {
+    let mut reg = CommandRegistry::new();
+    reg.register(METAS).unwrap();
+    reg.register(WIN_METAS).unwrap();
+    let (km, w) = Keymap::from_str_layers(
+        &[(PRESET, Layer::Preset), (WIN_PRESET, Layer::User)],
+        &reg,
+        &FlagRegistry::with_builtin(),
+        Os::Windows,
+    );
+    assert_eq!(w, Vec::new());
+    KeyInput::new(km, &KeymapCfg::default())
+}
+
+fn ext_note(code: u16, mods: Mods) -> KeyNote {
+    KeyNote {
+        vk: code,
+        extended: true,
+        mods,
+        down: true,
+    }
+}
+
+/// `NumEnter` без своей привязки работает как `Enter`.
+#[test]
+fn num_enter_falls_back_to_enter() {
+    let mut ki = input_win();
+    let st = state(Focus::Panel);
+    ki.notes().push(ext_note(vk::RETURN, Mods::empty()));
+    let f = run(&mut ki, &st, vec![press(Key::Enter, Modifiers::NONE)]);
+    assert_eq!(f.cmds, ["w.enter"]);
+}
+
+/// Серая `*` — команда, `*` основного ряда (Shift+8) — печать в cmdline.
+#[test]
+fn gray_star_versus_main_row() {
+    let mut ki = input_win();
+    let st = state(Focus::Panel);
+    ki.notes().push(note(vk::MULTIPLY, Mods::empty()));
+    let f = run(&mut ki, &st, vec![Event::Text("*".into())]);
+    assert_eq!(f.cmds, ["w.invert"]);
+    assert_eq!(f.events, []);
+    let f = run(
+        &mut ki,
+        &st,
+        vec![press(Key::Num8, Modifiers::SHIFT), Event::Text("*".into())],
+    );
+    assert_eq!(f.cmds, ["cmdline.insert text=*"]);
+}
+
+/// `Shift+Del` и `Ctrl+Ins` приходят от egui как `Cut`/`Copy` — сочетание по записке.
+#[test]
+fn shift_del_and_ctrl_ins() {
+    let mut ki = input_win();
+    let st = state(Focus::Panel);
+    ki.notes().push(ext_note(vk::DELETE, Mods::SHIFT));
+    let f = run(&mut ki, &st, vec![Event::Cut]);
+    assert_eq!(f.cmds, ["w.permanent"]);
+    assert_eq!(f.events, []);
+    ki.notes()
+        .push(ext_note(vk::INSERT, Mods::CTRL | Mods::LCTRL));
+    let f = run(&mut ki, &st, vec![Event::Copy]);
+    assert_eq!(f.cmds, ["w.names"]);
+    // Без записки (не Windows) Copy — это Ctrl+C: не привязано — виджетам.
+    let f = run(&mut ki, &st, vec![Event::Copy]);
+    assert_eq!(f.events, [Event::Copy]);
+}
+
+/// Серый `/` с Ctrl: по записке — `Ctrl+GraySlash`, иначе — обычный `/`.
+#[test]
+fn gray_slash() {
+    let mut ki = input_win();
+    let st = state(Focus::Panel);
+    ki.notes().push(note(vk::DIVIDE, Mods::CTRL));
+    let f = run(&mut ki, &st, vec![press(Key::Slash, Modifiers::CTRL)]);
+    assert_eq!(f.cmds, ["w.slash"]);
+    let f = run(&mut ki, &st, vec![press(Key::Slash, Modifiers::CTRL)]);
+    assert_eq!(
+        f.cmds,
+        Vec::<String>::new(),
+        "repeat of the same held key is ignored"
+    );
+}
