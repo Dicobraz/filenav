@@ -211,16 +211,23 @@ fn storm_is_rate_limited() {
     });
     let generation = |c: &Core| c.state().panel(Side::Left).tab().listing.generation;
     let g0 = generation(&core);
-    let t0 = Instant::now();
-    let mut i = 0u32;
-    // 3 с непрерывных созданий.
-    while t0.elapsed() < Duration::from_secs(3) {
-        for _ in 0..20 {
-            fs::write(a.path().join(format!("s{i}")), b"").unwrap();
+    // 3 с непрерывных созданий из другого потока (как чужой процесс); core
+    // качается здесь же.
+    let dir = a.path().to_path_buf();
+    let writer = std::thread::spawn(move || {
+        let t0 = Instant::now();
+        let mut i = 0u32;
+        while t0.elapsed() < Duration::from_secs(3) {
+            fs::write(dir.join(format!("s{i}")), b"").unwrap();
             i += 1;
         }
+        i
+    });
+    while !writer.is_finished() {
         core.pump(Duration::from_millis(1));
+        std::thread::sleep(Duration::from_millis(1));
     }
+    let i = writer.join().unwrap();
     let refreshes = generation(&core).0 - g0.0;
     eprintln!("storm: {i} files in 3 s, {refreshes} refreshes");
     // Первые ~0,75 с — по max_latency (до 3), дальше — не чаще раза в секунду.

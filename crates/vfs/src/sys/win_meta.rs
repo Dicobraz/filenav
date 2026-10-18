@@ -169,6 +169,24 @@ pub fn drives() -> Vec<(String, RootKind)> {
         .collect()
 }
 
+/// Можно ли наблюдать каталог ради кэша: только локальные несъёмные диски
+/// (`DRIVE_FIXED`, `DRIVE_RAMDISK`); UNC, сеть, съёмные — нет (S4 §5.5).
+pub fn cache_watchable(p: &Path) -> bool {
+    use std::path::{Component, Prefix};
+    let Some(Component::Prefix(pre)) = p.components().next() else {
+        return false;
+    };
+    let (Prefix::Disk(letter) | Prefix::VerbatimDisk(letter)) = pre.kind() else {
+        return false;
+    };
+    let root: Vec<u16> = format!("{}:\\", char::from(letter))
+        .encode_utf16()
+        .chain(Some(0))
+        .collect();
+    // SAFETY: NUL-терминированная строка корня; вызов не ходит на диск.
+    matches!(unsafe { GetDriveTypeW(root.as_ptr()) }, 3 | 6)
+}
+
 /// Метка тома (может ждать: сеть, оптический привод) — вызывается в своём потоке.
 pub fn label(root: &Path) -> Option<String> {
     let path = dir_wide(root);
