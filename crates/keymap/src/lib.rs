@@ -14,7 +14,7 @@ pub mod keymap;
 pub mod when;
 
 pub use compile::{ChordState, EffectiveBinding, KeybarItem, Lookup, Strokes};
-pub use handler::{KeymapView, QuickSearch, register};
+pub use handler::{ActiveKeymap, KeymapView, QuickSearch, register};
 pub use input::{InputOutcome, KeyInput, KeyNote, KeyNotes};
 pub use key::{Chord, KeyCode, KeyError, KeyErrorKind, Mods, Os, Stroke};
 pub use keymap::{

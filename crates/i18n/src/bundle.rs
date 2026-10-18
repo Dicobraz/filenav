@@ -21,11 +21,13 @@ pub const EMBEDDED: &[(&str, &str, &str)] = &[
     ("en", "core.ftl", include_str!("../locales/en/core.ftl")),
     ("en", "fmt.ftl", include_str!("../locales/en/fmt.ftl")),
     ("en", "keybar.ftl", include_str!("../locales/en/keybar.ftl")),
+    ("en", "keymap.ftl", include_str!("../locales/en/keymap.ftl")),
     ("en", "ui.ftl", include_str!("../locales/en/ui.ftl")),
     ("ru", "cmd.ftl", include_str!("../locales/ru/cmd.ftl")),
     ("ru", "core.ftl", include_str!("../locales/ru/core.ftl")),
     ("ru", "fmt.ftl", include_str!("../locales/ru/fmt.ftl")),
     ("ru", "keybar.ftl", include_str!("../locales/ru/keybar.ftl")),
+    ("ru", "keymap.ftl", include_str!("../locales/ru/keymap.ftl")),
     ("ru", "ui.ftl", include_str!("../locales/ru/ui.ftl")),
 ];
 

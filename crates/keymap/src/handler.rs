@@ -1,18 +1,25 @@
-//! Handler `keymap`: быстрый поиск (S3 §1.3, S3-06, ADR-0016) и начатый аккорд.
+//! Handler `keymap`: быстрый поиск (S3 §1.3, S3-06, ADR-0016), начатый аккорд,
+//! перезагрузка и выгрузка раскладки (S3-10).
 //!
 //! Состояние — [`KeymapView`] в `AppState.ext`; меняет его только этот handler, ui
 //! рисует. Ввод поиска приходит командами из [`crate::KeyInput`], курсор ставит
 //! `panel.cursor.to` (имя найдено здесь же: нет совпадения — символ не принимается и
 //! тоста нет).
 
+use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Instant;
 
 use compact_str::CompactString;
 use smallvec::SmallVec;
 use urfin_core::{
-    ArgSpec, CmdError, Command, CommandMeta, Core, Cx, Focus, Gen, Handler, Mask, OverlayKind, Row,
-    Side, Tab, TabId, UiEvent, ValueKind,
+    ArgSpec, Banner, CmdError, Command, CommandMeta, CommandRegistry, Config, Core, Cx, Focus, Gen,
+    Handler, Lane, Level, Mask, OverlayKind, Paths, Row, Side, Tab, TabId, UiEvent, Value,
+    ValueKind, msg,
 };
+use urfin_i18n::FluentArgs;
+
+use crate::{FlagRegistry, KeyInput, Keymap, KeymapCfg, KeymapWarning, Os, WarnKind};
 
 /// Строка быстрого поиска на панели `side`.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -24,6 +31,17 @@ pub struct QuickSearch {
     pub matches: u32,
     /// Последний не принятый символ: ui подсвечивает поле 300 мс (S2 §576).
     pub miss_at: Option<Instant>,
+}
+
+/// Действующая раскладка. App отдаёт её `KeyInput`, когда растёт `generation`
+/// (`keymap.reload`, `keymap.preset`, `app.reload_config`).
+#[derive(Debug)]
+pub struct ActiveKeymap {
+    pub generation: u64,
+    pub keymap: Arc<Keymap>,
+    pub cfg: KeymapCfg,
+    /// Баннер о проблемах раскладки, если показан он (снимается чистой загрузкой).
+    banner: Option<String>,
 }
 
 /// Состояние keymap для ui (S3 §5).
@@ -57,7 +75,21 @@ const fn meta(
     }
 }
 
-static COMMANDS: [CommandMeta; 7] = [
+static COMMANDS: [CommandMeta; 11] = [
+    meta("keymap.reload", "Reload key bindings", &[], false),
+    meta(
+        "keymap.preset",
+        "Key bindings preset",
+        &[arg("name", ValueKind::Str, true)],
+        false,
+    ),
+    meta("keymap.show", "Key bindings", &[], false),
+    meta(
+        "keymap.dump",
+        "Export key bindings",
+        &[arg("path", ValueKind::Str, false)],
+        false,
+    ),
     meta(
         "keymap.qs.start",
         "Quick search",
@@ -82,16 +114,55 @@ static COMMANDS: [CommandMeta; 7] = [
     ),
 ];
 
-/// Регистрирует handler `keymap` (S3 §5 `register`; загрузку раскладки и `KeyInput`
-/// делает app, перезагрузка — S3-10).
-pub fn register(core: &mut Core) {
-    core.register(Box::new(KeymapHandler::default()));
+/// Регистрирует handler `keymap`, загружает раскладку (`config_dir/keymaps/`) и
+/// возвращает конвейер ввода для `raw_input_hook` (S3 §5). Регистрировать последним:
+/// раскладка проверяется по командам уже зарегистрированных handler'ов.
+/// Предупреждения раскладки — баннером в первом pump.
+pub fn register(core: &mut Core, paths: Paths, cfg: KeymapCfg, flags: FlagRegistry) -> KeyInput {
+    let mut metas: Vec<&'static CommandMeta> = core.registry().iter().collect();
+    metas.extend(COMMANDS.iter());
+    let os = Os::current();
+    let (keymap, warnings) = Keymap::load(&paths, &cfg, &registry_of(&metas), &flags, os);
+    let input = KeyInput::new(Arc::clone(&keymap), &cfg);
+    core.register(Box::new(KeymapHandler {
+        cache: None,
+        reload: Arc::new(Reload {
+            paths,
+            metas,
+            flags,
+            os,
+        }),
+        init: Some((keymap, cfg, warnings)),
+        config: None,
+    }));
+    input
 }
 
-#[derive(Default)]
 struct KeymapHandler {
     /// Строки, подходящие под текущую маску: следующий символ проверяет только их.
     cache: Option<Cands>,
+    reload: Arc<Reload>,
+    /// Раскладка из `register` — в `AppState.ext` первым pump.
+    init: Option<(Arc<Keymap>, KeymapCfg, Vec<KeymapWarning>)>,
+    /// Последний виденный конфиг: новый (`app.reload_config`) — перечитать раскладку.
+    config: Option<Arc<Config>>,
+}
+
+/// Всё для загрузки раскладки вне UI-потока.
+struct Reload {
+    paths: Paths,
+    metas: Vec<&'static CommandMeta>,
+    flags: FlagRegistry,
+    os: Os,
+}
+
+fn registry_of(metas: &[&'static CommandMeta]) -> CommandRegistry {
+    let mut r = CommandRegistry::new();
+    for m in metas {
+        // Id уже проверены при первой регистрации.
+        let _ = r.register(std::slice::from_ref(*m));
+    }
+    r
 }
 
 /// Кандидаты маски `mask` в табе `key`.
@@ -181,6 +252,35 @@ impl Handler for KeymapHandler {
                     set_focus(cx, Focus::Panel);
                 }
             }
+            "keymap.reload" => {
+                let cfg = active(cx).map(|a| a.cfg.clone()).unwrap_or_default();
+                self.load(cx, cfg);
+                cx.keep_rev();
+            }
+            "keymap.preset" => {
+                let mut cfg = active(cx).map(|a| a.cfg.clone()).unwrap_or_default();
+                cfg.preset = a.str("name").unwrap_or_default().into();
+                self.load(cx, cfg);
+                cx.keep_rev();
+            }
+            "keymap.show" => show(cx),
+            "keymap.dump" => {
+                let Some(km) = active(cx).map(|a| Arc::clone(&a.keymap)) else {
+                    return Ok(());
+                };
+                let path = a.str("path").map_or_else(
+                    || {
+                        self.reload
+                            .paths
+                            .config_dir
+                            .join("keymaps")
+                            .join("dump.toml")
+                    },
+                    PathBuf::from,
+                );
+                dump(cx, &km, path);
+                cx.keep_rev();
+            }
             "keymap.pending" => {
                 let chord = a.str("chord").map(CompactString::from);
                 let v = view(cx);
@@ -195,8 +295,32 @@ impl Handler for KeymapHandler {
         Ok(())
     }
 
-    /// Фокус ушёл из поиска (клик, меню, `ui.cancel`) — поиск закрыт.
+    /// Первый pump — раскладка из `register` в `AppState.ext`; новый конфиг —
+    /// перечитать раскладку; фокус ушёл из поиска (клик, меню, `ui.cancel`) — поиск
+    /// закрыт.
     fn on_pump(&mut self, cx: &mut Cx<'_>) {
+        if let Some((keymap, cfg, warnings)) = self.init.take() {
+            cx.state.ext.insert(ActiveKeymap {
+                generation: 0,
+                keymap,
+                cfg,
+                banner: None,
+            });
+            apply_banner(cx, &warnings, false);
+            cx.state.touch();
+        }
+        match &self.config {
+            None => self.config = Some(Arc::clone(&cx.state.config)),
+            Some(seen) if !Arc::ptr_eq(seen, &cx.state.config) => {
+                self.config = Some(Arc::clone(&cx.state.config));
+                let (cfg, warning) = cx.state.config.section::<KeymapCfg>("keymap");
+                if let Some(w) = warning {
+                    tracing::warn!(key = %w.key, msg = %w.msg, "[keymap] section ignored");
+                }
+                self.load(cx, cfg);
+            }
+            Some(_) => {}
+        }
         let open = cx
             .state
             .ext
@@ -211,6 +335,20 @@ impl Handler for KeymapHandler {
 }
 
 impl KeymapHandler {
+    /// Загрузка раскладки на `Lane::Bulk`; применяет её Msg в следующем pump.
+    fn load(&self, cx: &mut Cx<'_>, cfg: KeymapCfg) {
+        let r = Arc::clone(&self.reload);
+        cx.rt
+            .spawn(Lane::Bulk, "keymap.reload", cx.rt.token(), move |tcx| {
+                let (keymap, warnings) =
+                    Keymap::load(&r.paths, &cfg, &registry_of(&r.metas), &r.flags, r.os);
+                let apply = msg("keymap.loaded", move |cx| {
+                    loaded(cx, keymap, cfg, &warnings);
+                });
+                let _ = tcx.sink.send(apply, &tcx.cancel);
+            });
+    }
+
     /// Строка для маски `text` — текущая, если подходит, иначе первая сверху — и число
     /// совпадений. Если `text` продолжает прошлую маску, проверяются только её
     /// кандидаты. Кэш меняется только при попадании.
@@ -278,6 +416,172 @@ impl KeymapHandler {
             }
         }
     }
+}
+
+/// Битый файл или пресет: прежняя раскладка остаётся (S3-10).
+fn broken(w: &KeymapWarning) -> bool {
+    matches!(
+        w.kind,
+        WarnKind::BadFile(_)
+            | WarnKind::BadFormat(_)
+            | WarnKind::ExtendsMissing(_)
+            | WarnKind::ExtendsCycle(_)
+            | WarnKind::ExtendsTooDeep(_)
+    )
+}
+
+/// Применить загруженную раскладку (или оставить прежнюю) и баннер.
+fn loaded(cx: &mut Cx<'_>, keymap: Arc<Keymap>, cfg: KeymapCfg, warnings: &[KeymapWarning]) {
+    let kept = warnings.iter().any(broken);
+    if !kept {
+        if let Some(a) = cx.state.ext.get_mut::<ActiveKeymap>() {
+            a.generation += 1;
+            a.keymap = keymap;
+            a.cfg = cfg;
+        } else {
+            cx.state.ext.insert(ActiveKeymap {
+                generation: 1,
+                keymap,
+                cfg,
+                banner: None,
+            });
+        }
+    }
+    apply_banner(cx, warnings, kept);
+}
+
+/// Баннер о проблемах раскладки (кроме команд сессий, которых нет в сборке); чистая
+/// загрузка снимает только свой баннер.
+fn apply_banner(cx: &mut Cx<'_>, warnings: &[KeymapWarning], kept: bool) {
+    let shown: Vec<&KeymapWarning> = warnings.iter().filter(|w| !w.missing_provider()).collect();
+    let ours = cx
+        .state
+        .ext
+        .get::<ActiveKeymap>()
+        .and_then(|a| a.banner.clone());
+    let text = shown.first().map(|first| {
+        let mut args = FluentArgs::new();
+        args.set("count", shown.len());
+        args.set("first", first.to_string());
+        let key = if kept {
+            "keymap-kept"
+        } else {
+            "keymap-warnings"
+        };
+        urfin_i18n::current().fmt(key, &args)
+    });
+    match &text {
+        Some(t) => {
+            cx.state.banner = Some(Banner {
+                level: Level::Warn,
+                text: t.clone(),
+                actions: SmallVec::new(),
+            });
+        }
+        None if ours.is_some() && cx.state.banner.as_ref().map(|b| &b.text) == ours.as_ref() => {
+            cx.state.banner = None;
+        }
+        None => {}
+    }
+    if let Some(a) = cx.state.ext.get_mut::<ActiveKeymap>() {
+        a.banner = text;
+    }
+}
+
+fn active<'a>(cx: &'a Cx<'_>) -> Option<&'a ActiveKeymap> {
+    cx.state.ext.get::<ActiveKeymap>()
+}
+
+/// Строки `keymap.show`: `[контекст] сочетание = команды (слой)`.
+pub fn effective_lines(km: &Keymap) -> Vec<String> {
+    km.effective()
+        .map(|e| {
+            let cmds: Vec<String> = e.binding.cmds.iter().map(ToString::to_string).collect();
+            format!(
+                "[{}] {} = {} ({:?})",
+                e.binding.src.context,
+                e.chord.display(km.os()),
+                cmds.join(", "),
+                e.binding.layer
+            )
+        })
+        .collect()
+}
+
+/// Действующая раскладка как файл keymap (S3 §2.2): можно положить в
+/// `keymaps/user.toml` и править. Поздняя привязка того же сочетания в том же
+/// контексте перекрывает раннюю — как при загрузке.
+pub fn dump_toml(km: &Keymap) -> String {
+    let mut contexts = toml::Table::new();
+    for e in km.effective() {
+        let b = e.binding;
+        let one = |c: &Command| toml::Value::String(c.to_string());
+        let value = match (b.cmds.as_ref(), b.repeat) {
+            ([c], None) => one(c),
+            ([c], Some(r)) => {
+                let mut t = toml::Table::new();
+                t.insert("cmd".into(), one(c));
+                t.insert("_repeat".into(), toml::Value::Boolean(r));
+                toml::Value::Table(t)
+            }
+            (cmds, _) => toml::Value::Array(cmds.iter().map(one).collect()),
+        };
+        let ctx = contexts
+            .entry(b.src.context.to_string())
+            .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+        if let toml::Value::Table(t) = ctx {
+            t.insert(e.chord.display(km.os()).to_string(), value);
+        }
+    }
+    let mut root = toml::Table::new();
+    root.insert("format".into(), toml::Value::Integer(1));
+    root.insert("name".into(), toml::Value::String("dump".into()));
+    root.insert("context".into(), toml::Value::Table(contexts));
+    let body = toml::to_string(&root).unwrap_or_default();
+    format!(
+        "# Действующая раскладка Urfin (keymap.dump). Свои правки — в keymaps/user.toml.\n{body}"
+    )
+}
+
+/// `keymap.show`: таблица действующих привязок для ui (`UiEvent::Ext`).
+fn show(cx: &mut Cx<'_>) {
+    let lines: Vec<Value> = active(cx)
+        .map(|a| effective_lines(&a.keymap))
+        .unwrap_or_default()
+        .into_iter()
+        .map(|l| Value::Str(l.into()))
+        .collect();
+    let c = Command::new("keymap.show").arg("lines", Value::List(lines.into()));
+    cx.ui(UiEvent::Ext {
+        id: c.id,
+        args: c.args,
+    });
+    cx.keep_rev();
+}
+
+/// `keymap.dump`: запись на `Lane::Bulk`, итог — тостом.
+fn dump(cx: &mut Cx<'_>, km: &Keymap, path: PathBuf) {
+    let text = dump_toml(km);
+    cx.rt
+        .spawn(Lane::Bulk, "keymap.dump", cx.rt.token(), move |tcx| {
+            let res = path
+                .parent()
+                .map_or(Ok(()), std::fs::create_dir_all)
+                .and_then(|()| std::fs::write(&path, text));
+            let done = msg("keymap.dumped", move |cx| {
+                let mut args = FluentArgs::new();
+                args.set("path", path.display().to_string());
+                let (level, key) = match res {
+                    Ok(()) => (Level::Info, "keymap-dumped"),
+                    Err(e) => {
+                        args.set("error", e.to_string());
+                        (Level::Warn, "keymap-dump-failed")
+                    }
+                };
+                cx.toast(level, urfin_i18n::current().fmt(key, &args));
+            });
+            let _ = tcx.sink.send(done, &tcx.cancel);
+        });
 }
 
 /// Сопоставление строки поиска: введённое + неявная `*`. Без `*`, `?` и `>` — префикс

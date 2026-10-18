@@ -128,10 +128,14 @@
 | `ui.panels.toggle_all` | — | Hide or show panels | Скрыть или показать панели | Ctrl+O | commands |
 | `ui.about` | — | About | О программе | — | options |
 
-## `keymap` (7)
+## `keymap` (11)
 
 | Команда | Аргументы | EN | RU | Клавиши (Far) | Меню F9 |
 |---|---|---|---|---|---|
+| `keymap.reload` | — | Reload key bindings | Перечитать раскладку клавиш | — | — |
+| `keymap.preset` | `name:str` | Key bindings preset | Пресет раскладки клавиш | — | — |
+| `keymap.show` | — | Key bindings | Раскладка клавиш | — | — |
+| `keymap.dump` | `path?:str` | Export key bindings | Выгрузить раскладку клавиш | — | — |
 | `keymap.qs.start` | `text?:str` | Quick search | Быстрый поиск | — | — |
 | `keymap.qs.input` | `text:str` | Quick search: type | Быстрый поиск: ввод | — | — |
 | `keymap.qs.next` | — | Quick search: next match | Быстрый поиск: следующее | — | — |

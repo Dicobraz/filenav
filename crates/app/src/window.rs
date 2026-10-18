@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 
 use eframe::egui;
 use urfin_core::{Boot, Command, Core, Focus, OverlayKind, Session, WindowGeom};
-use urfin_keymap::{FlagRegistry, KeyInput, Keymap, KeymapCfg, Os};
+use urfin_keymap::{ActiveKeymap, FlagRegistry, KeyInput, KeymapCfg};
 use urfin_ui::UrfinUi;
 
 use crate::Startup;
@@ -58,31 +58,22 @@ const JOBS_REPAINT: Duration = Duration::from_millis(33);
 /// табами — без мигания пустыми панелями; но не позже этого срока.
 const SHOW_AT_LATEST: Duration = Duration::from_millis(300);
 
-/// Раскладка из `[keymap]` и `config_dir/keymaps/` (S3-05; перезагрузка — S3-10).
-/// Предупреждения — в лог и строками для тостов.
-fn load_keys(
-    cfg: &urfin_core::Config,
-    paths: &urfin_core::Paths,
-    reg: &urfin_core::CommandRegistry,
+/// Handler `keymap` и конвейер ввода (S3-10): раскладка из `[keymap]` и
+/// `config_dir/keymaps/`, её предупреждения — баннером (handler). Здесь — только
+/// ошибка самой секции `[keymap]`, строкой для тоста. Регистрировать последним.
+fn register_keys(
+    core: &mut Core,
+    config: &urfin_core::Config,
+    paths: urfin_core::Paths,
 ) -> (KeyInput, Vec<String>) {
-    let (km_cfg, cfg_warning) = cfg.section::<KeymapCfg>("keymap");
+    let (cfg, warning) = config.section::<KeymapCfg>("keymap");
     let mut out = Vec::new();
-    if let Some(w) = cfg_warning {
+    if let Some(w) = warning {
         tracing::warn!(key = %w.key, msg = %w.msg, "[keymap] section ignored");
         out.push(format!("keymap: {}", w.msg));
     }
-    let flags = FlagRegistry::with_builtin();
-    let (km, warnings) = Keymap::load(paths, &km_cfg, reg, &flags, Os::current());
-    // Команды сессий, которых ещё нет в сборке, пресеты пропускают молча (лог — в keymap).
-    // Тостов — не больше трёх: остальное в логе.
-    out.extend(
-        warnings
-            .iter()
-            .filter(|w| !w.missing_provider())
-            .take(3)
-            .map(|w| format!("keymap: {w}")),
-    );
-    (KeyInput::new(km, &km_cfg), out)
+    let keys = urfin_keymap::register(core, paths, cfg, FlagRegistry::with_builtin());
+    (keys, out)
 }
 
 /// IME: в полях ввода (cmdline, терминал, оверлеи с вводом, редактор) включён,
@@ -351,11 +342,10 @@ fn create_app(
                 let t = Instant::now();
                 let mut core = Core::new(boot, services, waker.clone());
                 urfin_ui::register(&mut core);
-                urfin_keymap::register(&mut core);
                 startup.core = t.elapsed();
                 core
             };
-            let (mut keys, kw) = load_keys(&config, &paths, core.registry());
+            let (mut keys, kw) = register_keys(&mut core, &config, paths);
             keys.set_notes(notes);
             for c in open {
                 core.dispatch(c);
@@ -670,6 +660,12 @@ impl eframe::App for App {
             return;
         };
         let s = core.state();
+        // Перечитанная раскладка (`keymap.reload`, `app.reload_config`) — в конвейер.
+        if let Some(a) = s.ext.get::<ActiveKeymap>()
+            && a.generation != keys.generation()
+        {
+            keys.apply(Arc::clone(&a.keymap), &a.cfg, a.generation);
+        }
         if s.prompts.active().is_some() {
             return;
         }
@@ -696,6 +692,8 @@ impl eframe::App for App {
 
 #[cfg(test)]
 mod tests {
+    use urfin_keymap::{Keymap, Os};
+
     use super::*;
 
     struct NoWake;
@@ -705,14 +703,15 @@ mod tests {
         fn wake_after(&self, _d: Duration) {}
     }
 
-    fn core() -> (Core, urfin_core::Config, urfin_core::Paths) {
+    fn core() -> (Core, KeyInput, urfin_core::Paths) {
         let loc = urfin_core::Location::local(std::env::temp_dir().join("urfin-app-keys"));
         let boot = Boot::new(loc.clone(), loc);
         let (config, paths) = (boot.config.clone(), boot.paths.clone());
         let mut core = Core::new(boot, urfin_core::Services::null(), Arc::new(NoWake));
         urfin_ui::register(&mut core);
-        urfin_keymap::register(&mut core);
-        (core, config, paths)
+        let (keys, w) = register_keys(&mut core, &config, paths.clone());
+        assert_eq!(w, Vec::<String>::new());
+        (core, keys, paths)
     }
 
     /// Встроенные пресеты против настоящего реестра (core + ui), на всех ОС: только
@@ -752,9 +751,7 @@ mod tests {
 
     /// Ввод кадра при фокусе на панели: остаток для egui и команды.
     fn run(events: Vec<egui::Event>) -> (Vec<egui::Event>, Vec<String>) {
-        let (core, config, paths) = core();
-        let (mut keys, w) = load_keys(&config, &paths, core.registry());
-        assert_eq!(w, Vec::<String>::new());
+        let (core, mut keys, _) = core();
         let mut raw = egui::RawInput {
             events,
             ..Default::default()

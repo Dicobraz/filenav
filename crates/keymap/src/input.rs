@@ -156,6 +156,8 @@ pub struct KeyInput {
     tap: Option<(Mods, Instant)>,
     /// Начатый аккорд, о котором уже сообщено (`keymap.pending`).
     shown_pending: Option<CompactString>,
+    /// Поколение `ActiveKeymap`, с которым собран конвейер.
+    generation: u64,
     /// Сочетание без уточнения запиской (`Enter` для `NumEnter`): ищется, если у
     /// уточнённого нет привязки. Живёт один `feed`.
     fallback: Option<Stroke>,
@@ -186,6 +188,7 @@ impl KeyInput {
             tap: None,
             shown_pending: None,
             fallback: None,
+            generation: 0,
             chord_timeout: Duration::from_millis(u64::from(cfg.chord_timeout_ms)),
             mods: ModTracker::default(),
             pending: None,
@@ -200,6 +203,20 @@ impl KeyInput {
     /// Очередь записок для хука Windows.
     pub fn notes(&self) -> KeyNotes {
         self.notes.clone()
+    }
+
+    /// Поколение раскладки (`ActiveKeymap::generation`), с которым работает конвейер.
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    /// Новая раскладка и настройки `[keymap]` (`ActiveKeymap`): аккорд, одиночный Alt
+    /// и записки сбрасываются, очередь хука остаётся.
+    pub fn apply(&mut self, km: Arc<Keymap>, cfg: &KeymapCfg, generation: u64) {
+        let notes = self.notes.clone();
+        *self = KeyInput::new(km, cfg);
+        self.notes = notes;
+        self.generation = generation;
     }
 
     /// Общая очередь с хуком, поставленным до создания `KeyInput` (app, S3-07).
