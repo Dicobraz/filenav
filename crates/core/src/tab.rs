@@ -214,6 +214,8 @@ pub struct Tab {
     pub(crate) cols: u32,
     /// Таб из сессии: если каталога нет, подниматься к родителю (осталось шагов).
     pub(crate) restore_up: u8,
+    /// Пришёл `DoneUnsorted`: `Complete` — с финальным `Order` (ADR-0017).
+    pub(crate) final_order: bool,
 }
 
 /// Перечитываемый листинг до замены текущего.
@@ -221,6 +223,8 @@ pub struct Tab {
 pub(crate) struct Incoming {
     pub(crate) listing: Listing,
     pub(crate) started: Instant,
+    /// Пришёл `DoneUnsorted`: подмена — с финальным `Order` (ADR-0017).
+    pub(crate) final_order: bool,
 }
 
 impl Tab {
@@ -247,6 +251,7 @@ impl Tab {
             load_seq: 0,
             cols: 1,
             restore_up: 0,
+            final_order: false,
         }
     }
 

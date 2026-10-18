@@ -278,7 +278,6 @@ enum Ctrl {
     Activate {
         tab: TabId,
         generation: Gen,
-        entries: Arc<Vec<Entry>>,
         list_time: Duration,
     },
     Tab(TabEvent),
@@ -310,6 +309,8 @@ impl Hub {
         let (debounce, max_latency, poll) = (cfg.debounce, cfg.max_latency, cfg.poll);
         let (ctrl, ctrl_rx) = crossbeam_channel::unbounded();
         let (events, events_rx) = crossbeam_channel::unbounded();
+        // Свой канал: копия отправителя `ctrl` в потоке не дала бы ему закрыться.
+        let (snap_tx, snap_rx) = crossbeam_channel::unbounded();
         let current = Current::default();
         let mut worker = Worker {
             deb: Debouncer::new(debounce, max_latency),
@@ -323,6 +324,7 @@ impl Hub {
             cache,
             next_cache_id: CACHE_IDS,
             left: FxHashMap::default(),
+            snap_tx,
             patch: Arc::new(PatchCx {
                 threshold: cfg.patch_threshold,
                 opts: cfg.opts,
@@ -334,7 +336,7 @@ impl Hub {
             .name("watch-hub".into())
             .spawn(move || {
                 let run = std::panic::AssertUnwindSafe(|| {
-                    worker.run(&ctrl_rx, &events_rx, &sink, &cancel);
+                    worker.run(&ctrl_rx, &events_rx, &snap_rx, &sink, &cancel);
                 });
                 if std::panic::catch_unwind(run).is_err() {
                     tracing::error!("watch hub panicked; directory watching stopped");
@@ -395,18 +397,11 @@ impl Hub {
         false
     }
 
-    /// После `Done`: сбрасывать накопленное; `entries` — снимок для опроса.
-    pub(crate) fn activate(
-        &self,
-        tab: TabId,
-        generation: Gen,
-        entries: Arc<Vec<Entry>>,
-        list_time: Duration,
-    ) {
+    /// После `Done`: сбрасывать накопленное.
+    pub(crate) fn activate(&self, tab: TabId, generation: Gen, list_time: Duration) {
         let _ = self.ctrl.send(Ctrl::Activate {
             tab,
             generation,
-            entries,
             list_time,
         });
     }
@@ -432,7 +427,15 @@ impl Hub {
 enum Got {
     Event(Option<(WatchId, WatchEvent)>),
     Ctrl(Option<Ctrl>),
+    Snap(Option<Snapshot>),
     Timeout,
+}
+
+/// Записи таба из core — снимок для опроса (у сервиса копии нет, ADR-0017).
+struct Snapshot {
+    tab: TabId,
+    generation: Gen,
+    entries: Arc<Vec<Entry>>,
 }
 
 struct Worker {
@@ -449,6 +452,7 @@ struct Worker {
     next_cache_id: u64,
     /// `Left` до подтверждения, что таб ушёл.
     left: FxHashMap<TabId, (Location, Arc<Vec<Entry>>)>,
+    snap_tx: Sender<Snapshot>,
     patch: Arc<PatchCx>,
 }
 
@@ -477,6 +481,7 @@ impl Worker {
         &mut self,
         ctrl: &Receiver<Ctrl>,
         events: &Receiver<(WatchId, WatchEvent)>,
+        snaps: &Receiver<Snapshot>,
         sink: &MsgSink,
         cancel: &CancelToken,
     ) {
@@ -491,12 +496,14 @@ impl Worker {
                 select! {
                     recv(events) -> m => Got::Event(m.ok()),
                     recv(ctrl) -> m => Got::Ctrl(m.ok()),
+                    recv(snaps) -> m => Got::Snap(m.ok()),
                     default(w.saturating_duration_since(now)) => Got::Timeout,
                 }
             } else {
                 select! {
                     recv(events) -> m => Got::Event(m.ok()),
                     recv(ctrl) -> m => Got::Ctrl(m.ok()),
+                    recv(snaps) -> m => Got::Snap(m.ok()),
                 }
             };
             match got {
@@ -513,9 +520,10 @@ impl Worker {
                     drop(dropped);
                 }
                 Got::Ctrl(Some(c)) => self.control(c, sink, cancel),
+                Got::Snap(Some(snap)) => self.snapshot(&snap),
                 // `VfsListing` уничтожен.
                 Got::Ctrl(None) => return,
-                Got::Event(_) | Got::Timeout => {}
+                Got::Event(_) | Got::Snap(None) | Got::Timeout => {}
             }
             self.run_polls(cancel);
             for (id, change) in self.deb.take_due(Instant::now()) {
@@ -577,7 +585,6 @@ impl Worker {
             Ctrl::Activate {
                 tab,
                 generation,
-                entries,
                 list_time,
             } => {
                 let poll = self.poll;
@@ -589,14 +596,32 @@ impl Worker {
                 }
                 s.active = true;
                 if s.guard.is_none() {
-                    s.poller = Some(Poller::new(
+                    // Копии записей у сервиса нет (ADR-0017): снимок — записи core
+                    // (сообщением из UI-потока); пока не пришёл — базовая линия первым
+                    // опросом.
+                    s.poller = Some(Poller::baseline(
                         Arc::clone(&s.vfs),
                         s.loc.clone(),
-                        &entries,
                         poll,
                         list_time,
                         Instant::now(),
                     ));
+                    let (tx, loc) = (self.snap_tx.clone(), s.loc.clone());
+                    let m = msg("vfs.poll_snapshot", move |cx| {
+                        cx.keep_rev();
+                        // Тот же каталог: при refresh до подмены — прежние записи; лишние
+                        // изменения первого опроса безвредны, потерянных нет.
+                        if let Some((_, t)) = cx.state.tab(tab)
+                            && t.loc == loc
+                        {
+                            let _ = tx.send(Snapshot {
+                                tab,
+                                generation,
+                                entries: Arc::clone(&t.listing.entries),
+                            });
+                        }
+                    });
+                    let _ = sink.send(m, cancel);
                 }
                 self.deb.hold(s.id, false);
             }
@@ -677,6 +702,16 @@ impl Worker {
             .unwrap_or_else(PoisonError::into_inner)
             .put(loc, entries, watch);
         drop(dropped);
+    }
+
+    /// Снимок записей таба для опроса; `Arc` отпускается сразу (снимок — копия).
+    fn snapshot(&mut self, snap: &Snapshot) {
+        if let Some(s) = self.subs.get_mut(&snap.tab)
+            && s.generation == snap.generation
+            && let Some(p) = s.poller.as_mut()
+        {
+            p.prime(&snap.entries);
+        }
     }
 
     fn drop_sub(&mut self, tab: TabId) {

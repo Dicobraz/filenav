@@ -18,6 +18,7 @@
 | 0014 | [Ввод пути и меню подкаталогов breadcrumb — через handler `ui`](0014-breadcrumb-io-commands.md) |
 | 0015 | [Где действует контекст `global` keymap](0015-global-context.md) |
 | 0016 | [Быстрый поиск ведёт keymap (S3), ui рисует](0016-quick-search-owner.md) |
+| 0017 | [Финальный порядок большого листинга считает core](0017-core-final-order.md) |
 
 Новые ADR — со следующего свободного номера: `NNNN-кратко.md`.
 

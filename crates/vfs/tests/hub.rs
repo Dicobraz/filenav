@@ -326,3 +326,89 @@ fn big_directory_is_patched_in_place() {
     });
     assert_eq!(names(&core, Side::Left), patched);
 }
+
+/// `LocalFs` без уведомлений: путь опроса (как на Linux/macOS до S4-08/09).
+struct NoWatch(urfin_vfs::LocalFs);
+
+impl urfin_vfs::Vfs for NoWatch {
+    fn scheme(&self) -> &'static str {
+        "local"
+    }
+    fn caps(&self, at: &urfin_vfs::VfsPath) -> urfin_vfs::Caps {
+        self.0.caps(at)
+    }
+    fn list(
+        &self,
+        dir: &urfin_vfs::VfsPath,
+        opts: &urfin_vfs::ListOpts,
+    ) -> Result<Box<dyn urfin_vfs::ListStream>, urfin_vfs::VfsError> {
+        self.0.list(dir, opts)
+    }
+    fn stat(
+        &self,
+        p: &urfin_vfs::VfsPath,
+        follow: bool,
+    ) -> Result<urfin_vfs::Metadata, urfin_vfs::VfsError> {
+        self.0.stat(p, follow)
+    }
+    fn stat_entry(
+        &self,
+        d: &urfin_vfs::VfsPath,
+        n: &str,
+        a: urfin_core::Attrs,
+    ) -> Result<urfin_core::Entry, urfin_vfs::VfsError> {
+        self.0.stat_entry(d, n, a)
+    }
+    fn open_read(
+        &self,
+        p: &urfin_vfs::VfsPath,
+    ) -> Result<Box<dyn urfin_vfs::VfsRead>, urfin_vfs::VfsError> {
+        self.0.open_read(p)
+    }
+    fn space(&self, at: &urfin_vfs::VfsPath) -> Result<urfin_vfs::Space, urfin_vfs::VfsError> {
+        self.0.space(at)
+    }
+    fn local_path(&self, p: &urfin_vfs::VfsPath) -> Option<std::path::PathBuf> {
+        self.0.local_path(p)
+    }
+    fn watch(
+        &self,
+        _dir: &urfin_vfs::VfsPath,
+        _tx: urfin_vfs::WatchTx,
+    ) -> Result<urfin_vfs::WatchGuard, urfin_vfs::VfsError> {
+        Err(urfin_vfs::VfsError::Unsupported("test: poll"))
+    }
+}
+
+/// Опрос: файл, созданный сразу после листинга, не теряется (снимок — записи
+/// core, а не первый опрос).
+#[test]
+fn polled_directory_sees_changes_right_after_listing() {
+    let a = tempfile::tempdir().unwrap();
+    let b = tempfile::tempdir().unwrap();
+    let mut reg = VfsRegistry::default();
+    reg.register(Arc::new(NoWatch(urfin_vfs::LocalFs::new())));
+    let cfg = VfsCfg {
+        poll_interval_ms: 100,
+        ..VfsCfg::default()
+    };
+    let listing = Arc::new(VfsListing::new(Arc::new(reg), cfg));
+    let services = Services {
+        listing: listing.clone(),
+        open_resolvers: Vec::new(),
+    };
+    let mut core = Core::new(
+        Boot::new(Location::local(a.path()), Location::local(b.path())),
+        services,
+        Arc::new(NoWake),
+    );
+    pump_until(&mut core, "initial", |c| complete(c, Side::Left));
+    let left = tab_id(&core, Side::Left);
+    pump_until(&mut core, "watched", |_| {
+        listing.watched_tabs().contains(&left)
+    });
+    fs::write(a.path().join("early.txt"), b"x").unwrap();
+    pump_until(&mut core, "early file", |c| has(c, Side::Left, "early.txt"));
+    fs::write(a.path().join("later.txt"), b"x").unwrap();
+    pump_until(&mut core, "later file", |c| has(c, Side::Left, "later.txt"));
+}

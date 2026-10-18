@@ -156,6 +156,7 @@ fn load_into(
     tab.incoming = None;
     tab.loc = loc.clone();
     tab.listing = loading(generation);
+    tab.final_order = false;
     tab.selection.clear();
     tab.cursor.row = 0;
     tab.cursor.top = top;
@@ -202,6 +203,7 @@ pub(crate) fn refresh(cx: &mut Cx<'_>, id: TabId) {
     tab.incoming = Some(Incoming {
         listing,
         started: Instant::now(),
+        final_order: false,
     });
     tab.cancel = Some(cancel.clone());
     let req = LoadReq {
@@ -314,10 +316,22 @@ fn apply_incoming(cx: &mut Cx<'_>, id: TabId, u: ListingUpdate) {
             seq,
         } => {
             let l = &mut inc.listing;
-            if l.entries.len() as u32 == for_len && seq == l.arrange_seq {
+            let fits = l.entries.len() as u32 == for_len && seq == l.arrange_seq;
+            if fits {
                 l.order = order;
             }
-            false
+            if fits && inc.final_order {
+                inc.final_order = false;
+                inc.listing.status = ListingStatus::Complete;
+                true
+            } else {
+                false
+            }
+        }
+        ListingUpdate::DoneUnsorted => {
+            inc.final_order = true;
+            arrange_incoming(cx, id);
+            return;
         }
         // Патч к ещё не показанному листингу не применяется: следующий flush S4
         // сделает refresh.
@@ -359,6 +373,7 @@ fn swap_incoming(cx: &mut Cx<'_>, id: TabId) {
     let shown_seq = tab.listing.arrange_seq;
     tab.listing = inc.listing;
     tab.listing.arrange_seq = shown_seq;
+    tab.final_order = inc.final_order;
     tab.selection = Selection::restore(&names, &tab.listing);
     tab.cursor.row = if on_parent {
         0
@@ -368,9 +383,35 @@ fn swap_incoming(cx: &mut Cx<'_>, id: TabId) {
     tab.clamp_cursor();
     tab.touch();
     let done = matches!(tab.listing.status, ListingStatus::Complete);
-    if done && tab.load_seq != tab.listing.arrange_seq {
+    // Подменили до финального порядка (прошло 150 мс): досчитать его по уже
+    // показанному листингу, прежний запрос отбросится по `seq`.
+    if tab.final_order || (done && tab.load_seq != tab.listing.arrange_seq) {
         arrange(cx, id);
     }
+}
+
+/// Финальный порядок перечитываемого листинга по его записям (ADR-0017): `seq` тот
+/// же — `Order` примет `apply_incoming`.
+fn arrange_incoming(cx: &mut Cx<'_>, id: TabId) {
+    let (rt, services) = (cx.rt, cx.services);
+    let Some(tab) = cx.state.tab_mut(id) else {
+        return;
+    };
+    let view = arrange_spec(tab);
+    let cancel = tab.cancel.clone().unwrap_or_else(|| rt.token());
+    let Some(inc) = tab.incoming.as_ref() else {
+        return;
+    };
+    let req = ArrangeReq {
+        tab: id,
+        generation: inc.listing.generation,
+        seq: inc.listing.arrange_seq,
+        entries: inc.listing.entries.clone(),
+        cancel,
+        view,
+    };
+    cx.keep_rev();
+    services.listing.arrange(req, rt);
 }
 
 fn add_stats(s: &mut ListingStats, e: &Entry, sign: i8) {
@@ -437,6 +478,15 @@ fn apply_shown(tab: &mut Tab, u: ListingUpdate) -> Follow {
             let keep = cursor_idx(tab);
             tab.listing.order = order;
             restore_cursor(tab, keep);
+            if tab.final_order {
+                tab.final_order = false;
+                complete(tab);
+            }
+        }
+        ListingUpdate::DoneUnsorted => {
+            tab.final_order = true;
+            tab.touch();
+            return Follow::Arrange;
         }
         ListingUpdate::Patch(p) => {
             if !apply_patch(tab, p) {
@@ -444,10 +494,7 @@ fn apply_shown(tab: &mut Tab, u: ListingUpdate) -> Follow {
             }
         }
         ListingUpdate::Done => {
-            tab.listing.status = ListingStatus::Complete;
-            tab.pending_focus = None;
-            tab.restore_up = 0;
-            tab.touch();
+            complete(tab);
             return if tab.load_seq == tab.listing.arrange_seq {
                 Follow::Nothing
             } else {
@@ -465,6 +512,14 @@ fn apply_shown(tab: &mut Tab, u: ListingUpdate) -> Follow {
     }
     tab.touch();
     Follow::Nothing
+}
+
+/// Листинг загружен и упорядочен.
+fn complete(tab: &mut Tab) {
+    tab.listing.status = ListingStatus::Complete;
+    tab.pending_focus = None;
+    tab.restore_up = 0;
+    tab.touch();
 }
 
 /// После смены порядка: `pending_focus`, иначе та же запись, иначе кламп.
