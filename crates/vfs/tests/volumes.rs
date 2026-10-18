@@ -86,11 +86,14 @@ fn link_target_and_broken_link() {
     assert_eq!(md.kind, EntryKind::LinkBroken);
     let listed = list_all(tmp.path()).unwrap();
     let e = listed.iter().find(|e| e.name == "link").unwrap();
-    assert_ne!(
-        e.kind,
-        EntryKind::LinkBroken,
-        "listing does not resolve links"
-    );
+    // Windows: листинг цели не открывает — `LinkBroken` только из `stat` (S4 §3.1);
+    // unix: `resolve_links` (fstatat) определяет его и в листинге (S4 §2.1).
+    let expected = if cfg!(windows) {
+        EntryKind::LinkDir
+    } else {
+        EntryKind::LinkBroken
+    };
+    assert_eq!(e.kind, expected);
 }
 
 #[cfg(windows)]
