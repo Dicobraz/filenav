@@ -12,6 +12,7 @@ repository.workspace = true
 compact_str.workspace = true
 crossbeam-channel.workspace = true
 urfin-core.workspace = true
+urfin-i18n.workspace = true
 rayon.workspace = true
 serde.workspace = true
 rustc-hash.workspace = true
@@ -27,6 +28,7 @@ windows-sys = { workspace = true, features = [
     "Win32_Security",
     "Win32_Storage_FileSystem",
     "Win32_System_IO",
+    "Win32_System_Ioctl",
     "Win32_System_ProcessStatus",
     "Win32_System_Threading",
 ] }
@@ -55,6 +57,10 @@ harness = false
 
 [[bench]]
 name = "patch"
+harness = false
+
+[[bench]]
+name = "walk"
 harness = false
 
 [lints]

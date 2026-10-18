@@ -247,15 +247,29 @@ fn home_dir() -> Location {
 }
 
 /// Листинг настоящей ФС (S4): `VfsListing` с секцией `[vfs]` конфига.
-pub(crate) fn vfs_services(config: &Config) -> Services {
+pub(crate) fn vfs_cfg(config: &Config) -> VfsCfg {
     let (cfg, warning) = config.section::<VfsCfg>("vfs");
     if let Some(w) = warning {
         tracing::warn!(warning = ?w, "[vfs] config section ignored");
     }
+    cfg
+}
+
+pub(crate) fn vfs_services(config: &Config) -> Services {
     Services {
-        listing: Arc::new(VfsListing::new(Arc::new(VfsRegistry::with_local()), cfg)),
+        listing: Arc::new(VfsListing::new(
+            Arc::new(VfsRegistry::with_local()),
+            vfs_cfg(config),
+        )),
         open_resolvers: Vec::new(),
     }
+}
+
+/// Handlers сессий поверх core: ui, vfs (keymap регистрируется последним — ему
+/// нужен полный реестр команд).
+pub(crate) fn register_handlers(core: &mut Core, config: &Config) {
+    urfin_ui::register(core);
+    urfin_vfs::register(core, Arc::new(VfsRegistry::with_local()), vfs_cfg(config));
 }
 
 /// Корень демо-дерева `FakeListing` для `--smoke`: детерминированный прогон без ФС.
@@ -337,8 +351,9 @@ fn smoke(
     boot.config = config;
     boot.warnings = warnings;
     boot.crashed_last_time = crashed;
+    let smoke_config = boot.config.clone();
     let mut core = Core::new(boot, demo_services(), Arc::new(NoWake));
-    urfin_ui::register(&mut core);
+    register_handlers(&mut core, &smoke_config);
     let _ = urfin_keymap::register(
         &mut core,
         Paths::in_dir(std::env::temp_dir().join("urfin-smoke-keymap")),

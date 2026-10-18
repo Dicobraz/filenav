@@ -169,22 +169,95 @@ pub fn drives() -> Vec<(String, RootKind)> {
         .collect()
 }
 
-/// Можно ли наблюдать каталог ради кэша: только локальные несъёмные диски
-/// (`DRIVE_FIXED`, `DRIVE_RAMDISK`); UNC, сеть, съёмные — нет (S4 §5.5).
-pub fn cache_watchable(p: &Path) -> bool {
+/// Буква диска пути (`C:\\…`, `\\\\?\\C:\\…`); UNC и прочее — `None`.
+fn drive_letter(p: &Path) -> Option<u8> {
     use std::path::{Component, Prefix};
     let Some(Component::Prefix(pre)) = p.components().next() else {
-        return false;
+        return None;
     };
-    let (Prefix::Disk(letter) | Prefix::VerbatimDisk(letter)) = pre.kind() else {
-        return false;
-    };
+    match pre.kind() {
+        Prefix::Disk(l) | Prefix::VerbatimDisk(l) => Some(l),
+        _ => None,
+    }
+}
+
+/// `GetDriveTypeW` корня диска пути (2 съёмный, 3 несъёмный, 4 сеть, 6 RAM).
+/// Вызов не ходит на диск.
+fn drive_type(p: &Path) -> Option<u32> {
+    let letter = drive_letter(p)?;
     let root: Vec<u16> = format!("{}:\\", char::from(letter))
         .encode_utf16()
         .chain(Some(0))
         .collect();
-    // SAFETY: NUL-терминированная строка корня; вызов не ходит на диск.
-    matches!(unsafe { GetDriveTypeW(root.as_ptr()) }, 3 | 6)
+    // SAFETY: NUL-терминированная строка корня.
+    Some(unsafe { GetDriveTypeW(root.as_ptr()) })
+}
+
+/// Можно ли наблюдать каталог ради кэша: только локальные несъёмные диски
+/// (`DRIVE_FIXED`, `DRIVE_RAMDISK`); UNC, сеть, съёмные — нет (S4 §5.5).
+pub fn cache_watchable(p: &Path) -> bool {
+    matches!(drive_type(p), Some(3 | 6))
+}
+
+/// Сеть: UNC или сетевой диск.
+pub fn is_remote(p: &Path) -> bool {
+    drive_letter(p).is_none() || drive_type(p) == Some(4)
+}
+
+/// Штраф позиционирования тома пути (`true` — HDD), по
+/// `IOCTL_STORAGE_QUERY_PROPERTY(StorageDeviceSeekPenaltyProperty)`. Хэндл тома
+/// без прав доступа — администратор не нужен. `None` — не узнать (сеть, RAID).
+pub fn seek_penalty(p: &Path) -> Option<bool> {
+    use windows_sys::Win32::System::IO::DeviceIoControl;
+    use windows_sys::Win32::System::Ioctl::{
+        DEVICE_SEEK_PENALTY_DESCRIPTOR, IOCTL_STORAGE_QUERY_PROPERTY, PropertyStandardQuery,
+        STORAGE_PROPERTY_QUERY, StorageDeviceSeekPenaltyProperty,
+    };
+    let letter = drive_letter(p)?;
+    let dev: Vec<u16> = format!("\\\\.\\{}:", char::from(letter))
+        .encode_utf16()
+        .chain(Some(0))
+        .collect();
+    // SAFETY: NUL-терминированное имя устройства; хэндл закрывается ниже.
+    let h = unsafe {
+        CreateFileW(
+            dev.as_ptr(),
+            0,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            ptr::null(),
+            OPEN_EXISTING,
+            0,
+            ptr::null_mut(),
+        )
+    };
+    if h == INVALID_HANDLE_VALUE {
+        return None;
+    }
+    let query = STORAGE_PROPERTY_QUERY {
+        PropertyId: StorageDeviceSeekPenaltyProperty,
+        QueryType: PropertyStandardQuery,
+        AdditionalParameters: [0],
+    };
+    // SAFETY: POD.
+    let mut desc: DEVICE_SEEK_PENALTY_DESCRIPTOR = unsafe { std::mem::zeroed() };
+    let mut got = 0u32;
+    // SAFETY: буферы на стеке с верными размерами; синхронный вызов.
+    let ok = unsafe {
+        DeviceIoControl(
+            h,
+            IOCTL_STORAGE_QUERY_PROPERTY,
+            (&raw const query).cast(),
+            u32::try_from(size_of::<STORAGE_PROPERTY_QUERY>()).unwrap_or(0),
+            (&raw mut desc).cast(),
+            u32::try_from(size_of::<DEVICE_SEEK_PENALTY_DESCRIPTOR>()).unwrap_or(0),
+            &raw mut got,
+            ptr::null_mut(),
+        )
+    };
+    // SAFETY: хэндл открыт выше.
+    unsafe { CloseHandle(h) };
+    (ok != 0 && got as usize >= size_of::<DEVICE_SEEK_PENALTY_DESCRIPTOR>())
+        .then_some(desc.IncursSeekPenalty)
 }
 
 /// Метка тома (может ждать: сеть, оптический привод) — вызывается в своём потоке.

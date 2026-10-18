@@ -11,3 +11,5 @@ core-config-warnings = В файле настроек ошибки ({ $count }):
 core-crashed = Прошлый запуск Урфина завершился сбоем. Подробности: { $file }
 core-action-show-logs = Открыть логи
 core-action-dismiss = Скрыть
+vfs-job-dir-size = Размер папок
+vfs-dir-size-none = Нечего считать: встаньте на папку или выделите папки

@@ -6,6 +6,7 @@ mod api;
 pub mod batch;
 pub mod cache;
 pub mod diag;
+pub mod dir_size;
 pub mod hub;
 pub mod icons;
 mod local;
@@ -17,11 +18,17 @@ pub mod service;
 pub mod sort;
 mod sys;
 pub mod volume;
+pub mod walk;
 
 pub use api::*;
 pub use local::{ListMode, LocalFs, ROOTS_TIMEOUT};
 pub use poll::Poller;
 pub use service::{VfsCfg, VfsListing};
+
+/// Регистрирует handler `vfs` (`vfs.dir_size`, S4-17).
+pub fn register(core: &mut urfin_core::Core, reg: std::sync::Arc<VfsRegistry>, cfg: VfsCfg) {
+    core.register(Box::new(dir_size::VfsHandler::new(reg, cfg)));
+}
 
 /// Версия крейта из `Cargo.toml`.
 pub fn version() -> &'static str {

@@ -106,3 +106,5 @@ cmd-ui-tree-expand = Tree: expand
 cmd-ui-tree-collapse = Tree: collapse
 cmd-ui-tree-enter = Tree: open
 cmd-ui-tree-select = Tree: select
+cmd-vfs-dir_size = Directory sizes
+    .menu-key = z

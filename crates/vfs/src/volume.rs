@@ -106,6 +106,27 @@ pub fn of(p: &Path) -> Result<VolumeInfo, VfsError> {
     }
 }
 
+/// Потоков обхода для размера каталогов (S4 §5.6, решение №6): задано в
+/// конфиге (`configured` больше нуля) — как задано; иначе сеть и HDD — 1, SSD и
+/// неизвестное — 4. Ходит в ОС (IOCTL тома) — только из фоновой задачи.
+pub fn walk_threads(configured: u8, loc: &urfin_core::Location) -> usize {
+    if configured > 0 {
+        return configured.into();
+    }
+    if loc.backend != "local" {
+        return 1;
+    }
+    #[cfg(windows)]
+    {
+        let p = &loc.path;
+        if crate::sys::win_meta::is_remote(p) || crate::sys::win_meta::seek_penalty(p) == Some(true)
+        {
+            return 1;
+        }
+    }
+    4
+}
+
 /// Место на томе пути `p` (то же, что `Vfs::space` у локальной ФС).
 pub fn space(p: &Path) -> Result<Space, VfsError> {
     crate::local::space_of(p)

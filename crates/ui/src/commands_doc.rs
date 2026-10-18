@@ -115,7 +115,7 @@ fn dash(s: &str) -> &str {
 
 const HEADER: &str = r#"# Реестр команд Urfin
 
-> Генерируется из реестра команд (core + ui) тестом `commands_doc_is_current`
+> Генерируется из реестра команд (core + ui + vfs) тестом `commands_doc_is_current`
 > (`crates/ui/src/tests.rs`). Руками не править. Обновить:
 > `URFIN_UPDATE_DOCS=1 cargo nextest run -p urfin-ui commands_doc`.
 

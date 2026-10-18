@@ -1,0 +1,1 @@
+{"task":"S4-17","os":"windows","fs":"ntfs","bench":"cargo bench -p urfin-vfs --bench walk","tree":{"files":100000,"dirs":5000,"gen":"gen_tree --n 100000 --seed 1 --nav 5000"},"walk_1_thread_ms":467,"walk_4_threads_ms":143}

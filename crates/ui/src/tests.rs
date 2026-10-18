@@ -286,6 +286,12 @@ fn core_with(entries: Vec<Entry>) -> Core {
         Arc::new(NoWake),
     );
     register(&mut core);
+    // Как в приложении: handler `vfs` (`vfs.dir_size` есть в меню F9).
+    urfin_vfs::register(
+        &mut core,
+        Arc::new(urfin_vfs::VfsRegistry::with_local()),
+        urfin_vfs::VfsCfg::default(),
+    );
     let _ = urfin_keymap::register(
         &mut core,
         urfin_core::Paths::in_dir(std::env::temp_dir().join("urfin-ui-test-keymap")),
@@ -732,7 +738,7 @@ fn subdirs_menu_lists_dirs_only() {
     assert_eq!(ui_state(&c).subdirs, None);
 }
 
-/// `docs/COMMANDS.md` совпадает с реестром команд (core + ui) и вшитым меню.
+/// `docs/COMMANDS.md` совпадает с реестром команд (core + ui + vfs) и вшитым меню.
 /// Обновить: `URFIN_UPDATE_DOCS=1 cargo nextest run -p urfin-ui commands_doc`.
 #[test]
 fn commands_doc_is_current() {

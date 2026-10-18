@@ -106,3 +106,5 @@ cmd-ui-tree-expand = Дерево: развернуть
 cmd-ui-tree-collapse = Дерево: свернуть
 cmd-ui-tree-enter = Дерево: открыть
 cmd-ui-tree-select = Дерево: выбрать
+cmd-vfs-dir_size = Размер папок
+    .menu-key = р

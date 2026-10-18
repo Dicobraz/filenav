@@ -130,6 +130,31 @@ pub fn build_patch(
     })
 }
 
+/// Патч только из `update` по известным индексам (размеры каталогов, S4-17):
+/// записи на местах, порядок — перестановкой изменённых.
+pub fn update_patch(
+    entries: &[Entry],
+    order: &[u32],
+    update: Vec<(u32, Entry)>,
+    spec: &ArrangeSpec,
+    opts: ArrangeOpts,
+    seq: u32,
+) -> Patch {
+    let n = u32::try_from(entries.len()).unwrap_or(u32::MAX);
+    let new_order = {
+        let model = Model::new(n, &[], &update, &[]);
+        reorder(entries, order, &model, spec, opts)
+    };
+    Patch {
+        base_len: n,
+        seq,
+        update,
+        remove: Vec::new(),
+        append: Vec::new(),
+        order: Arc::new(new_order),
+    }
+}
+
 /// Записи после патча без копирования: индекс → запись.
 struct Model<'a> {
     /// Удалённые (старые индексы).
