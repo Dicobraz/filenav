@@ -437,7 +437,7 @@ fn script() -> Vec<Step> {
 
 /// PNG без сжатия (deflate «stored»): без зависимостей; архив результатов
 /// всё равно сжимается.
-fn write_png(path: &Path, w: usize, h: usize, rgb: &[u8]) -> std::io::Result<()> {
+pub(crate) fn write_png(path: &Path, w: usize, h: usize, rgb: &[u8]) -> std::io::Result<()> {
     let mut raw = Vec::with_capacity((w * 3 + 1) * h);
     for row in rgb.chunks(w * 3) {
         raw.push(0); // фильтр None

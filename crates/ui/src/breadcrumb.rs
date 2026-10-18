@@ -115,10 +115,11 @@ pub fn child(loc: &Location, name: &str) -> Location {
     with_path(loc, loc.path.join(name))
 }
 
-/// Разметка сегментов: запоминается до смены пути, шрифта или масштаба.
+/// Разметка сегментов: запоминается до смены пути, шрифта, масштаба или поколения
+/// стиля (атлас шрифтов пересоздан).
 #[derive(Debug, Default)]
 pub(crate) struct CrumbMemo {
-    key: Option<(Location, u32, bool, u32)>,
+    key: Option<(Location, u32, bool, u32, u64)>,
     pub crumbs: Vec<Crumb>,
     galleys: Vec<Arc<Galley>>,
     /// Текст поля ввода пути, пока оно открыто.
@@ -136,6 +137,7 @@ impl CrumbMemo {
             font.size.to_bits(),
             strong,
             ctx.pixels_per_point().to_bits(),
+            crate::style_gen(),
         );
         if self.key.as_ref() == Some(&key) {
             return;

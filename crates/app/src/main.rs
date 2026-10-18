@@ -21,6 +21,7 @@
 mod boot;
 mod gpu;
 mod ipc;
+mod screens;
 mod selftest;
 mod sys;
 mod window;
@@ -143,8 +144,12 @@ fn run() -> anyhow::Result<()> {
     // первому и выходит. Smoke, замер старта и самопроверка — всегда отдельно.
     let request = ipc::Request::from_args(&args);
     let selftest = selftest_dir(&args)?;
-    let separate =
-        flag("--new-instance") || flag("--smoke") || flag("--bench-startup") || selftest.is_some();
+    let screens = screens_dir(&args)?;
+    let separate = flag("--new-instance")
+        || flag("--smoke")
+        || flag("--bench-startup")
+        || selftest.is_some()
+        || screens.is_some();
     let ControlFlow::Continue(inbox) = single_instance(&paths, &request, separate) else {
         return Ok(());
     };
@@ -189,7 +194,22 @@ fn run() -> anyhow::Result<()> {
         ipc: inbox,
         open: request.commands(),
         selftest,
+        screens,
     })
+}
+
+/// `--screens <dir>` (по умолчанию `screens`): снимки экранов S2 §2; каталог создаётся.
+/// Только в сборке с `--features screens`.
+fn screens_dir(args: &[String]) -> anyhow::Result<Option<PathBuf>> {
+    let Some(i) = args.iter().position(|a| a == "--screens") else {
+        return Ok(None);
+    };
+    if !cfg!(feature = "screens") {
+        anyhow::bail!("--screens: build with `cargo build -p urfin-app --features screens`");
+    }
+    let dir = PathBuf::from(args.get(i + 1).map_or("screens", String::as_str));
+    std::fs::create_dir_all(&dir).with_context(|| format!("screens dir {}", dir.display()))?;
+    Ok(Some(dir))
 }
 
 /// `--selftest <dir>` (по умолчанию `selftest`); каталог создаётся.
