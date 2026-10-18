@@ -76,6 +76,14 @@ impl Poller {
         p
     }
 
+    /// Снимок показанного листинга вместо базовой линии первым опросом.
+    pub fn prime(&mut self, entries: &[Entry]) {
+        let mut snap = entries.to_vec();
+        snap.sort_unstable_by(|a, b| a.name.as_bytes().cmp(b.name.as_bytes()));
+        self.snap = snap;
+        self.primed = true;
+    }
+
     /// Текущий интервал опроса.
     pub fn interval(&self) -> Duration {
         self.base.max(self.last_list * LIST_FACTOR)
