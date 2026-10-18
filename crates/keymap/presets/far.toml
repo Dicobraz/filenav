@@ -1,4 +1,230 @@
-# Пресет Far (S0-decisions №21). Наполнение — S3-09 (таблицы S3 §3).
+# Пресет Far Manager 3 (S0-decisions №21, по умолчанию). Общее с DN — в base.
+# Быстрый поиск — Alt+символ (`[keymap] quick_search = "auto"`), печать — в cmdline.
 format = 1
 name = "far"
 extends = "base"
+
+[context.panel]
+"Left" = "panel.cursor.left"
+"Right" = "panel.cursor.right"
+"Ctrl+Shift+PageDown" = "arc.enter"
+"Alt+Left" = "panel.back"
+"Alt+Right" = "panel.forward"
+"Ctrl+H" = "panel.hidden.toggle"
+"Ctrl+F3" = { cmd = "panel.sort", key = "name" }
+"Ctrl+F4" = { cmd = "panel.sort", key = "ext" }
+"Ctrl+F5" = { cmd = "panel.sort", key = "mtime" }
+"Ctrl+F6" = { cmd = "panel.sort", key = "size" }
+"Ctrl+F7" = { cmd = "panel.sort", key = "unsorted" }
+"Ctrl+F12" = "ui.menu.sort"
+"Ctrl+I" = { cmd = "ui.draft", command = "panel.filter", arg = "mask" }
+"Ctrl+Shift+0" = { cmd = "panel.bookmark.set", n = 0 }
+"Ctrl+Shift+1" = { cmd = "panel.bookmark.set", n = 1 }
+"Ctrl+Shift+2" = { cmd = "panel.bookmark.set", n = 2 }
+"Ctrl+Shift+3" = { cmd = "panel.bookmark.set", n = 3 }
+"Ctrl+Shift+4" = { cmd = "panel.bookmark.set", n = 4 }
+"Ctrl+Shift+5" = { cmd = "panel.bookmark.set", n = 5 }
+"Ctrl+Shift+6" = { cmd = "panel.bookmark.set", n = 6 }
+"Ctrl+Shift+7" = { cmd = "panel.bookmark.set", n = 7 }
+"Ctrl+Shift+8" = { cmd = "panel.bookmark.set", n = 8 }
+"Ctrl+Shift+9" = { cmd = "panel.bookmark.set", n = 9 }
+# Правый Ctrl — закладки; левый (и без стороны) Ctrl+1…4 — вид (base).
+"RCtrl+0" = { cmd = "panel.bookmark.go", n = 0 }
+"RCtrl+1" = { cmd = "panel.bookmark.go", n = 1 }
+"RCtrl+2" = { cmd = "panel.bookmark.go", n = 2 }
+"RCtrl+3" = { cmd = "panel.bookmark.go", n = 3 }
+"RCtrl+4" = { cmd = "panel.bookmark.go", n = 4 }
+"RCtrl+5" = { cmd = "panel.bookmark.go", n = 5 }
+"RCtrl+6" = { cmd = "panel.bookmark.go", n = 6 }
+"RCtrl+7" = { cmd = "panel.bookmark.go", n = 7 }
+"RCtrl+8" = { cmd = "panel.bookmark.go", n = 8 }
+"RCtrl+9" = { cmd = "panel.bookmark.go", n = 9 }
+"Shift+GrayPlus" = "sel.all"
+"Shift+GrayMinus" = "sel.none"
+"Ctrl+GrayPlus" = { cmd = "sel.same", by = "ext", on = true }
+"Ctrl+GrayMinus" = { cmd = "sel.same", by = "ext", on = false }
+"Alt+GrayPlus" = { cmd = "sel.same", by = "name", on = true }
+"Alt+GrayMinus" = { cmd = "sel.same", by = "name", on = false }
+"Ctrl+M" = "sel.restore"
+"Ctrl+Shift+Insert" = { cmd = "ui.copy_names", full = false }
+"Alt+Shift+Insert" = { cmd = "ui.copy_names", full = true }
+"Ctrl+Alt+Insert" = { cmd = "ui.copy_names", full = true }
+"Ctrl+Shift+C" = "file.clip.copy"
+"Ctrl+Shift+X" = "file.clip.cut"
+"Ctrl+Shift+V" = "file.clip.paste"
+"Ctrl+Shift+F3" = { cmd = "viewer.open", internal = true }
+"Ctrl+Shift+F4" = { cmd = "editor.open", internal = true }
+"Shift+F5" = { cmd = "ops.copy", current = true }
+"Shift+F6" = "ops.rename"
+"Alt+F6" = "ops.link"
+"Ctrl+Alt+Enter" = { cmd = "file.open", elevated = true }
+"Ctrl+G" = "cmdline.apply"
+"Shift+F3" = "arc.commands"
+"Alt+F10" = "search.dirs"
+"Alt+F11" = "viewer.history"
+"Ctrl+Shift+T" = "tab.new"
+"Ctrl+Shift+W" = "tab.close"
+"Ctrl+Shift+D" = "tab.dup"
+"F9" = "ui.menu"
+"F10" = "app.quit"
+"F11" = "ui.palette"
+"F12" = "ui.screens"
+"Alt+Shift+F9" = "ui.settings"
+"Ctrl+B" = "ui.keybar.toggle"
+"Ctrl+Up" = { cmd = "ui.split.height", delta = -1 }
+"Ctrl+Down" = { cmd = "ui.split.height", delta = 1 }
+"Alt+F9" = "ui.window.maximize"
+"Shift+F9" = "app.save_session"
+
+[context."panel && cmdline_empty"]
+"Delete" = "ops.delete"
+"Ctrl+Left" = { cmd = "ui.split", delta = -1 }
+"Ctrl+Right" = { cmd = "ui.split", delta = 1 }
+
+[context."panel || cmdline"]
+"Ctrl+S" = "cmdline.cursor.left"
+"Ctrl+D" = "cmdline.cursor.right"
+"Ctrl+J" = { cmd = "cmdline.insert_name", what = "name" }
+"Ctrl+F" = { cmd = "cmdline.insert_name", what = "full" }
+"Ctrl+Shift+Enter" = { cmd = "cmdline.insert_name", what = "name", side = "passive" }
+"Ctrl+Semicolon" = { cmd = "cmdline.insert_name", what = "full", side = "passive" }
+"Ctrl+Shift+OpenBracket" = { cmd = "cmdline.insert_name", what = "path", side = "active" }
+"Ctrl+Shift+CloseBracket" = { cmd = "cmdline.insert_name", what = "path", side = "passive" }
+
+[context."overlay && qs"]
+"Ctrl+Shift+Enter" = "keymap.qs.prev"
+
+[context.viewer]
+"F3" = "viewer.close"
+"Num5" = "viewer.close"
+"Shift+F2" = "viewer.wrap_mode"
+"Shift+F4" = "viewer.mode"
+"F6" = "viewer.to_editor"
+"Space" = "viewer.search_next"
+"F8" = "viewer.codepage"
+"Shift+F8" = "viewer.codepage_menu"
+"Alt+F8" = "viewer.goto"
+"GrayPlus" = "viewer.next_file"
+"GrayMinus" = "viewer.prev_file"
+"Ctrl+F10" = "viewer.reveal"
+"Ctrl+Shift+0" = { cmd = "viewer.bookmark.set", n = 0 }
+"Ctrl+Shift+1" = { cmd = "viewer.bookmark.set", n = 1 }
+"Ctrl+Shift+2" = { cmd = "viewer.bookmark.set", n = 2 }
+"Ctrl+Shift+3" = { cmd = "viewer.bookmark.set", n = 3 }
+"Ctrl+Shift+4" = { cmd = "viewer.bookmark.set", n = 4 }
+"Ctrl+Shift+5" = { cmd = "viewer.bookmark.set", n = 5 }
+"Ctrl+Shift+6" = { cmd = "viewer.bookmark.set", n = 6 }
+"Ctrl+Shift+7" = { cmd = "viewer.bookmark.set", n = 7 }
+"Ctrl+Shift+8" = { cmd = "viewer.bookmark.set", n = 8 }
+"Ctrl+Shift+9" = { cmd = "viewer.bookmark.set", n = 9 }
+"Ctrl+0" = { cmd = "viewer.bookmark.go", n = 0 }
+"Ctrl+1" = { cmd = "viewer.bookmark.go", n = 1 }
+"Ctrl+2" = { cmd = "viewer.bookmark.go", n = 2 }
+"Ctrl+3" = { cmd = "viewer.bookmark.go", n = 3 }
+"Ctrl+4" = { cmd = "viewer.bookmark.go", n = 4 }
+"Ctrl+5" = { cmd = "viewer.bookmark.go", n = 5 }
+"Ctrl+6" = { cmd = "viewer.bookmark.go", n = 6 }
+"Ctrl+7" = { cmd = "viewer.bookmark.go", n = 7 }
+"Ctrl+8" = { cmd = "viewer.bookmark.go", n = 8 }
+"Ctrl+9" = { cmd = "viewer.bookmark.go", n = 9 }
+"Alt+Backspace" = "viewer.back"
+"Ctrl+Z" = "viewer.back"
+# Ctrl+стрелки — на 20 колонок.
+"Ctrl+Left" = { cmd = "viewer.scroll", dir = "left", n = 20 }
+"Ctrl+Right" = { cmd = "viewer.scroll", dir = "right", n = 20 }
+
+[context.editor]
+"F10" = "editor.close"
+"F4" = "editor.close"
+"Shift+F10" = "editor.save_close"
+"Alt+F8" = "editor.goto"
+"F8" = "editor.codepage"
+"Shift+F8" = "editor.codepage_menu"
+"F6" = "editor.to_viewer"
+"Ctrl+Z" = "editor.undo"
+"Ctrl+Shift+Z" = "editor.redo"
+"Alt+U" = "editor.block.shift_left"
+"Alt+I" = "editor.block.shift_right"
+
+# ---- macOS (колонка macOS S3 §3) ----
+[os.macos.context."*"]
+"Ctrl+F3" = false
+"Ctrl+F4" = false
+"Ctrl+F5" = false
+"Ctrl+F6" = false
+"Ctrl+F7" = false
+"Ctrl+Left" = false
+"Ctrl+Right" = false
+"Ctrl+Up" = false
+"Ctrl+Down" = false
+
+[os.macos.context.panel]
+"Cmd+OpenBracket" = "panel.back"
+"Cmd+CloseBracket" = "panel.forward"
+"Cmd+Shift+Period" = "panel.hidden.toggle"
+"Ctrl+Alt+Cmd+1" = { cmd = "panel.sort", key = "name" }
+"Ctrl+Alt+Cmd+2" = { cmd = "panel.sort", key = "ext" }
+"Ctrl+Alt+Cmd+5" = { cmd = "panel.sort", key = "mtime" }
+"Ctrl+Alt+Cmd+6" = { cmd = "panel.sort", key = "size" }
+"Ctrl+Alt+Cmd+7" = { cmd = "panel.sort", key = "unsorted" }
+"Cmd+Alt+0" = { cmd = "panel.bookmark.go", n = 0 }
+"Cmd+Alt+1" = { cmd = "panel.bookmark.go", n = 1 }
+"Cmd+Alt+2" = { cmd = "panel.bookmark.go", n = 2 }
+"Cmd+Alt+3" = { cmd = "panel.bookmark.go", n = 3 }
+"Cmd+Alt+4" = { cmd = "panel.bookmark.go", n = 4 }
+"Cmd+Alt+5" = { cmd = "panel.bookmark.go", n = 5 }
+"Cmd+Alt+6" = { cmd = "panel.bookmark.go", n = 6 }
+"Cmd+Alt+7" = { cmd = "panel.bookmark.go", n = 7 }
+"Cmd+Alt+8" = { cmd = "panel.bookmark.go", n = 8 }
+"Cmd+Alt+9" = { cmd = "panel.bookmark.go", n = 9 }
+"Cmd+A" = "sel.all"
+"Cmd+Alt+A" = "sel.none"
+"Cmd+Alt+C" = { cmd = "ui.copy_names", full = true }
+"Cmd+Alt+V" = { cmd = "file.clip.paste", move = true }
+"Cmd+T" = "tab.new"
+"Cmd+W" = "tab.close"
+"Cmd+Shift+D" = "tab.dup"
+"Cmd+Shift+CloseBracket" = "tab.next"
+"Cmd+Shift+OpenBracket" = "tab.prev"
+"Cmd+1" = { cmd = "tab.goto", n = 1 }
+"Cmd+2" = { cmd = "tab.goto", n = 2 }
+"Cmd+3" = { cmd = "tab.goto", n = 3 }
+"Cmd+4" = { cmd = "tab.goto", n = 4 }
+"Cmd+5" = { cmd = "tab.goto", n = 5 }
+"Cmd+6" = { cmd = "tab.goto", n = 6 }
+"Cmd+7" = { cmd = "tab.goto", n = 7 }
+"Cmd+8" = { cmd = "tab.goto", n = 8 }
+"Cmd+9" = { cmd = "tab.goto", n = 9 }
+"Cmd+Comma" = "ui.settings"
+"Cmd+Alt+Left" = { cmd = "ui.split", delta = -1 }
+"Cmd+Alt+Right" = { cmd = "ui.split", delta = 1 }
+"Cmd+Alt+Up" = { cmd = "ui.split.height", delta = -1 }
+"Cmd+Alt+Down" = { cmd = "ui.split.height", delta = 1 }
+"Ctrl+Cmd+F" = "ui.window.maximize"
+
+[os.macos.context."(panel || cmdline) && !cmdline_empty"]
+"Alt+Backspace" = "cmdline.del.word_left"
+
+[os.macos.context.viewer]
+"Cmd+Shift+CloseBracket" = "viewer.next_file"
+"Cmd+Shift+OpenBracket" = "viewer.prev_file"
+"Cmd+Z" = "viewer.back"
+
+[os.macos.context.editor]
+"Cmd+Alt+S" = "editor.save_all"
+"Cmd+OpenBracket" = "editor.block.shift_left"
+"Cmd+CloseBracket" = "editor.block.shift_right"
+
+# ---- Linux: Alt+F8, Alt+F10 у оконного менеджера ----
+[os.linux.context."*"]
+"Alt+F8" = false
+"Alt+F10" = false
+
+[os.linux.context.panel]
+"Alt+Shift+F10" = "search.dirs"
+
+[os.linux.context.viewer]
+"Alt+Shift+F8" = "viewer.goto"
+
+[os.linux.context.editor]
+"Alt+Shift+F8" = "editor.goto"

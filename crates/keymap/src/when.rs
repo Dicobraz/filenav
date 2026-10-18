@@ -41,8 +41,8 @@ impl FlagRegistry {
         }
     }
 
-    /// Встроенные: `qs`, `has_selection`, `on_parent_row`, `os_windows`, `os_macos`,
-    /// `os_linux`.
+    /// Встроенные: `qs`, `has_selection`, `on_parent_row`, `cmdline_empty` (заглушка до
+    /// S6), `os_windows`, `os_macos`, `os_linux`.
     pub fn with_builtin() -> Self {
         let mut r = Self::empty();
         r.register("qs", |st| {
@@ -52,6 +52,8 @@ impl FlagRegistry {
         r.register("on_parent_row", |st| {
             matches!(st.active_tab().current(), Some(Row::Parent))
         });
+        // Пока нет командной строки S6, она всегда пуста; S6 регистрирует настоящий.
+        r.register("cmdline_empty", |_| true);
         r.register("os_windows", |_| cfg!(windows));
         r.register("os_macos", |_| cfg!(target_os = "macos"));
         r.register("os_linux", |_| cfg!(all(unix, not(target_os = "macos"))));

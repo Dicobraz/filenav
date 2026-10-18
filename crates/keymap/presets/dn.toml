@@ -1,4 +1,97 @@
-# Пресет DN. Наполнение — S3-09 (таблицы S3 §3).
+# Пресет DN OSP (по таблицам S3 §3). Общее с Far — в base.
+# Быстрый поиск — одиночный Alt (`quick_search = "auto"` → `alt_tap`, S3-06),
+# поэтому Alt+буква — меню и команды. F10 — меню, выход — Alt+X (S0-decisions №22).
 format = 1
 name = "dn"
 extends = "base"
+
+[context.panel]
+"Alt+R" = "panel.refresh"
+"Alt+F5" = "ui.panels.toggle_all"
+"Alt+I" = { cmd = "panel.mode", mode = "info" }
+"Alt+B" = "ui.menu.sort"
+"Alt+Delete" = { cmd = "ui.draft", command = "panel.filter", arg = "mask" }
+# Ctrl+Shift+Alt+цифра (закладка) не привязана: Ctrl+Alt+печатная — это AltGr (S3 §0).
+"Alt+1" = { cmd = "panel.bookmark.go", n = 1 }
+"Alt+2" = { cmd = "panel.bookmark.go", n = 2 }
+"Alt+3" = { cmd = "panel.bookmark.go", n = 3 }
+"Alt+4" = { cmd = "panel.bookmark.go", n = 4 }
+"Alt+5" = { cmd = "panel.bookmark.go", n = 5 }
+"Alt+6" = { cmd = "panel.bookmark.go", n = 6 }
+"Alt+7" = { cmd = "panel.bookmark.go", n = 7 }
+"Alt+8" = { cmd = "panel.bookmark.go", n = 8 }
+"Alt+9" = { cmd = "panel.bookmark.go", n = 9 }
+"Alt+C" = { cmd = "ui.drives", side = "active" }
+"Alt+Backspace" = "ui.history.dirs"
+"Alt+K" = "ui.panel.setup"
+"Alt+S" = "ui.panel.setup"
+"Ctrl+Shift+GrayPlus" = { cmd = "sel.same", by = "ext", on = true }
+"Ctrl+Shift+GrayMinus" = { cmd = "sel.same", by = "ext", on = false }
+"Alt+F6" = "ops.rename"
+"Alt+E" = "ops.attrs"
+"Ctrl+Alt+F6" = "ops.multi_rename"
+"Ctrl+C" = "ops.compare"
+"Alt+G" = "vfs.dir_size"
+"Alt+Enter" = "file.open_with"
+"Alt+T" = "search.dirs"
+"Alt+PageDown" = { cmd = "viewer.history", kind = "view" }
+"Alt+PageUp" = { cmd = "viewer.history", kind = "edit" }
+"Ctrl+F3" = "tab.new"
+"Ctrl+F4" = "tab.close"
+"F9" = "tab.next"
+"Shift+F9" = "tab.prev"
+"Alt+0" = "ui.screens"
+"F11" = "ui.jobs.toggle"
+"F10" = "ui.menu"
+# Меню DN: File, Utils (→ «Команды»), Panel (→ меню активной панели), Options.
+"Alt+F" = { cmd = "ui.menu", menu = "files" }
+"Alt+U" = { cmd = "ui.menu", menu = "commands" }
+"Alt+P" = "ui.menu"
+"Alt+O" = { cmd = "ui.menu", menu = "options" }
+"Alt+F11" = "ui.palette"
+"Alt+Left" = { cmd = "ui.split", delta = -1 }
+"Alt+Right" = { cmd = "ui.split", delta = 1 }
+"Alt+J" = "term.focus"
+"Alt+X" = "app.quit"
+
+[context."panel && cmdline_empty"]
+"Left" = "panel.cursor.left"
+"Right" = "panel.cursor.right"
+
+[context."panel || cmdline"]
+"Ctrl+Shift+Enter" = { cmd = "cmdline.insert_name", what = "full" }
+
+[context."(panel || cmdline) && !cmdline_empty"]
+"Left" = "cmdline.cursor.left"
+"Right" = "cmdline.cursor.right"
+
+[context."overlay && qs"]
+"Shift+Enter" = "keymap.qs.prev"
+
+[context.viewer]
+"Ctrl+L" = "viewer.search_next"
+
+[context.editor]
+"Ctrl+F2" = "editor.save_all"
+"Ctrl+F4" = "editor.close"
+"Alt+G" = "editor.goto"
+"Alt+Backspace" = "editor.undo"
+"Alt+Shift+Backspace" = "editor.redo"
+
+# ---- macOS: Ctrl+F2…F4 заняты системой ----
+[os.macos.context."*"]
+"Ctrl+F2" = false
+"Ctrl+F3" = false
+"Ctrl+F4" = false
+
+[os.macos.context.panel]
+"Cmd+T" = "tab.new"
+"Cmd+W" = "tab.close"
+
+[os.macos.context.editor]
+"Cmd+Alt+S" = "editor.save_all"
+
+# ---- Linux: Ctrl+Alt+F* — переключение консолей ----
+# Групповое переименование — из меню и палитры.
+[os.linux.context."*"]
+"Ctrl+Alt+F6" = false

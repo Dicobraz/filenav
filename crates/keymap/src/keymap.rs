@@ -182,6 +182,13 @@ impl std::fmt::Display for KeymapWarning {
 }
 
 impl KeymapWarning {
+    /// Встроенный пресет ссылается на команду, которой ещё нет: её крейт (сессия)
+    /// не собран или не зарегистрирован. Не ошибка пользователя — не показывается.
+    pub fn missing_provider(&self) -> bool {
+        matches!(self.kind, WarnKind::UnknownCommand(_))
+            && BUILTIN.iter().any(|(n, _)| *n == self.file)
+    }
+
     /// Для баннера конфига (S1 `ConfigWarning`).
     pub fn to_config(&self) -> ConfigWarning {
         ConfigWarning {
@@ -600,9 +607,13 @@ impl<'a> Builder<'a> {
                     cmds.iter()
                         .all(|c| self.reg.get(c.id.as_str()).is_some_and(|m| m.repeatable))
                 });
-                for s in &chord.0 {
-                    if let Some(kind) = forbidden(*s, self.os) {
-                        self.warn(file, &at, kind);
+                // Встроенные слои проверяются в `finish`: их os-оверлей снимает
+                // системные сочетания своей ОС.
+                if layer == Layer::User {
+                    for s in &chord.0 {
+                        if let Some(kind) = forbidden(*s, self.os) {
+                            self.warn(file, &at, kind);
+                        }
                     }
                 }
                 out.push(Entry::Bind(Binding {
@@ -696,6 +707,20 @@ impl<'a> Builder<'a> {
     /// `PrefixShadow`: одиночная привязка, совпадающая с началом аккорда в пересекающемся
     /// контексте, отключается.
     fn finish(mut self) -> (Arc<Keymap>, Vec<KeymapWarning>) {
+        let mut late = Vec::new();
+        for b in self.bindings.iter().filter(|b| b.layer != Layer::User) {
+            for s in &b.chord.0 {
+                if let Some(kind) = forbidden(*s, self.os) {
+                    let at = format!("[{}] {}", b.src.context, b.chord);
+                    late.push(KeymapWarning {
+                        file: b.src.file.clone(),
+                        at: at.into(),
+                        kind,
+                    });
+                }
+            }
+        }
+        self.warnings.extend(late);
         let mut shadowed = Vec::new();
         for (i, single) in self.bindings.iter().enumerate() {
             if single.chord.0.len() != 1 {
@@ -722,7 +747,11 @@ impl<'a> Builder<'a> {
         }
         let warnings = self.warnings.clone();
         for w in &warnings {
-            tracing::warn!(target: "keymap", "{w}");
+            if w.missing_provider() {
+                tracing::debug!(target: "keymap", "{w}");
+            } else {
+                tracing::warn!(target: "keymap", "{w}");
+            }
         }
         (
             Arc::new(Keymap {
@@ -796,9 +825,14 @@ fn forbidden(s: Stroke, os: Os) -> Option<WarnKind> {
     let f = |n: u8| key.is_some_and(|k| fkey(k) == Some(n));
     let reserved = match os {
         Os::Windows => {
+            // Alt+Shift+F4 — альтернативный редактор (S3 §4): закрывает только Alt+F4.
             cmd || (alt
                 && !ctrl
-                && (is(K::Tab) || is(K::Escape) || is(K::F4) || is(K::Space) || is(K::Backtick)))
+                && (is(K::Tab)
+                    || is(K::Escape)
+                    || (is(K::F4) && !shift)
+                    || is(K::Space)
+                    || is(K::Backtick)))
                 || (ctrl && !alt && !shift && is(K::Escape))
                 || (ctrl && shift && !alt && is(K::Escape))
                 || (ctrl && alt && is(K::Delete))
