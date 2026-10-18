@@ -1,6 +1,6 @@
 //! Urfin — VFS (S4): адрес `Location`, trait `Vfs`, реестр backend'ов,
-//! локальная ФС, листинг для core (`VfsListing`), сортировка, иконки. Watcher и
-//! кэш — S4-12…16.
+//! локальная ФС, листинг для core (`VfsListing`), сортировка, иконки, наблюдение
+//! (Windows — S4-12, опрос — S4-13). Hub и кэш — S4-14…16.
 
 mod api;
 pub mod batch;
@@ -9,6 +9,7 @@ pub mod icons;
 mod local;
 pub mod name;
 pub mod path;
+pub mod poll;
 pub mod service;
 pub mod sort;
 mod sys;
@@ -16,6 +17,7 @@ pub mod volume;
 
 pub use api::*;
 pub use local::{ListMode, LocalFs, ROOTS_TIMEOUT};
+pub use poll::Poller;
 pub use service::{VfsCfg, VfsListing};
 
 /// Версия крейта из `Cargo.toml`.
