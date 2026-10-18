@@ -17,7 +17,7 @@ use urfin_core::{
 
 use crate::api::{ListOpts, VfsError, VfsRegistry};
 use crate::batch::{Batcher, Resort};
-use crate::hub::Hub;
+use crate::hub::{Hub, HubCfg};
 use crate::sort::{ArrangeOpts, arrange, visible};
 
 /// Секция `[vfs]` конфига (S4 §2.2). Поля кэша и watcher'а читают S4-12…16.
@@ -86,9 +86,13 @@ impl VfsListing {
         Arc::clone(self.hub.get_or_init(|| {
             Arc::new(Hub::start(
                 rt,
-                ms(self.cfg.debounce_ms.into()),
-                ms(self.cfg.max_latency_ms.into()),
-                ms(self.cfg.poll_interval_ms),
+                &HubCfg {
+                    debounce: ms(self.cfg.debounce_ms.into()),
+                    max_latency: ms(self.cfg.max_latency_ms.into()),
+                    poll: ms(self.cfg.poll_interval_ms),
+                    patch_threshold: self.cfg.patch_threshold,
+                    opts: self.cfg.arrange_opts(),
+                },
             ))
         }))
     }

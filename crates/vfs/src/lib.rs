@@ -9,6 +9,7 @@ pub mod hub;
 pub mod icons;
 mod local;
 pub mod name;
+pub mod patch;
 pub mod path;
 pub mod poll;
 pub mod service;

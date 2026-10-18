@@ -1,0 +1,1 @@
+{"task":"S4-15","os":"windows","bench":"cargo bench -p urfin-vfs --bench patch","entries":100000,"changes":{"modified":40,"added":30,"removed":30},"patch_100_in_100k_ms":2.01,"target_ms":3.0,"dir_index_build_100k_ms":6.10,"note":"DirIndex is cached per (tab, generation, len); the first patch of a listing pays the build once"}

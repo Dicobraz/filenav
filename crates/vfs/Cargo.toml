@@ -53,5 +53,9 @@ harness = false
 name = "sort"
 harness = false
 
+[[bench]]
+name = "patch"
+harness = false
+
 [lints]
 workspace = true

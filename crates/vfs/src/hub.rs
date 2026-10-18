@@ -24,10 +24,15 @@ use std::time::{Duration, Instant};
 use compact_str::CompactString;
 use crossbeam_channel::{Receiver, Sender, select};
 use rustc_hash::{FxHashMap, FxHashSet};
-use urfin_core::{CancelToken, Command, Gen, Location, MsgSink, Runtime, TabEvent, TabId, msg};
+use urfin_core::{
+    ArrangeSpec, Attrs, CancelToken, Command, Gen, Lane, ListingStatus, ListingUpdate, Location,
+    MsgSink, Runtime, TabEvent, TabId, listing_msg, msg,
+};
 
 use crate::api::{Entry, Vfs, VfsError, WatchEvent, WatchGuard, WatchId, WatchTx};
+use crate::patch::{Changes, DirIndex, build_patch};
 use crate::poll::Poller;
+use crate::sort::ArrangeOpts;
 
 /// Выход debounce (S4 §5.1).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -295,12 +300,8 @@ pub(crate) struct Hub {
 }
 
 impl Hub {
-    pub(crate) fn start(
-        rt: &Runtime,
-        debounce: Duration,
-        max_latency: Duration,
-        poll: Duration,
-    ) -> Hub {
+    pub(crate) fn start(rt: &Runtime, cfg: &HubCfg) -> Hub {
+        let (debounce, max_latency, poll) = (cfg.debounce, cfg.max_latency, cfg.poll);
         let (ctrl, ctrl_rx) = crossbeam_channel::unbounded();
         let (events, events_rx) = crossbeam_channel::unbounded();
         let current = Current::default();
@@ -312,6 +313,11 @@ impl Hub {
             hidden: FxHashSet::default(),
             dirty: FxHashSet::default(),
             current: Arc::clone(&current),
+            patch: Arc::new(PatchCx {
+                threshold: cfg.patch_threshold,
+                opts: cfg.opts,
+                indexes: Mutex::default(),
+            }),
         };
         let (sink, cancel) = (rt.sink(), rt.token());
         let spawned = std::thread::Builder::new()
@@ -421,6 +427,24 @@ struct Worker {
     hidden: FxHashSet<TabId>,
     dirty: FxHashSet<TabId>,
     current: Current,
+    patch: Arc<PatchCx>,
+}
+
+/// Параметры хаба из `[vfs]`.
+pub(crate) struct HubCfg {
+    pub debounce: Duration,
+    pub max_latency: Duration,
+    pub poll: Duration,
+    /// С этого числа записей — патч вместо перечитывания.
+    pub patch_threshold: u32,
+    pub opts: ArrangeOpts,
+}
+
+/// Общее для задач патча: порог, параметры порядка, кэш `DirIndex` по табам.
+struct PatchCx {
+    threshold: u32,
+    opts: ArrangeOpts,
+    indexes: Mutex<FxHashMap<TabId, DirIndex>>,
 }
 
 impl Worker {
@@ -554,6 +578,11 @@ impl Worker {
             }
             Ctrl::Tab(TabEvent::Closed(tab)) => {
                 self.drop_sub(tab);
+                self.patch
+                    .indexes
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .remove(&tab);
                 self.hidden.remove(&tab);
                 self.dirty.remove(&tab);
             }
@@ -620,24 +649,180 @@ impl Worker {
             self.drop_sub(tab);
             msg("vfs.dir_gone", move |cx| gone(cx, tab, generation, up))
         } else {
+            let job = PatchJob {
+                cx: Arc::clone(&self.patch),
+                vfs: Arc::clone(&s.vfs),
+                loc: s.loc.clone(),
+            };
             msg("vfs.dir_changed", move |cx| {
-                apply(cx, tab, generation, &change);
+                apply(cx, tab, generation, change, job);
             })
         };
         let _ = sink.send(m, cancel);
     }
 }
 
-/// В UI-потоке (S4 §5.3): таб и поколение совпали — `panel.refresh` (патч — S4-15).
-fn apply(cx: &mut urfin_core::Cx<'_>, tab: TabId, generation: Gen, change: &DirChange) {
+/// Что нужно задаче патча кроме самого изменения.
+struct PatchJob {
+    cx: Arc<PatchCx>,
+    vfs: Arc<dyn Vfs>,
+    loc: Location,
+}
+
+/// В UI-потоке (S4 §5.3): таб и поколение совпали — большой каталог патчим в
+/// фоне (S4 §5.4), маленький и `Rescan` — `panel.refresh`.
+fn apply(
+    cx: &mut urfin_core::Cx<'_>,
+    tab: TabId,
+    generation: Gen,
+    change: DirChange,
+    job: PatchJob,
+) {
     let Some((_, t)) = cx.state.tab(tab) else {
         return;
     };
     if t.listing.generation != generation {
         return;
     }
-    tracing::debug!(target: "watch.flush", tab = tab.0, change = ?std::mem::discriminant(change));
-    cx.dispatch(refresh(tab));
+    let big = t.listing.entries.len() >= job.cx.threshold as usize;
+    // Идущий refresh патчу не мешает: его листинг заменит этот целиком.
+    let settled = matches!(t.listing.status, ListingStatus::Complete);
+    let DirChange::Names {
+        added,
+        changed,
+        removed,
+        unresolved,
+    } = change
+    else {
+        tracing::debug!(target: "watch.flush", tab = tab.0, "rescan");
+        cx.dispatch(refresh(tab));
+        return;
+    };
+    if !big || !settled {
+        tracing::debug!(target: "watch.flush", tab = tab.0, big, settled, "refresh");
+        cx.dispatch(refresh(tab));
+        return;
+    }
+    let mut upsert = added;
+    upsert.extend(changed);
+    let task = PatchTask {
+        tab,
+        generation,
+        entries: Arc::clone(&t.listing.entries),
+        order: Arc::clone(&t.listing.order),
+        seq: t.listing.arrange_seq,
+        spec: ArrangeSpec {
+            sort: t.sort,
+            filter: t.filter.clone(),
+            show_hidden: t.show_hidden,
+        },
+        changes: Changes { upsert, removed },
+        unresolved,
+        job,
+    };
+    tracing::debug!(target: "watch.flush", tab = tab.0, "patch");
+    // `stat_entry` неразрешённых — I/O, поэтому Interactive; само построение — O(n).
+    cx.rt
+        .spawn(Lane::Interactive, "vfs.patch", cx.rt.token(), move |tcx| {
+            task.run(&tcx);
+        });
+}
+
+struct PatchTask {
+    tab: TabId,
+    generation: Gen,
+    entries: Arc<Vec<Entry>>,
+    order: Arc<Vec<u32>>,
+    seq: u32,
+    spec: ArrangeSpec,
+    changes: Changes,
+    unresolved: Vec<CompactString>,
+    job: PatchJob,
+}
+
+impl PatchTask {
+    fn run(self, tcx: &urfin_core::TaskCx) {
+        let PatchTask {
+            tab,
+            generation,
+            entries,
+            order,
+            seq,
+            spec,
+            mut changes,
+            unresolved,
+            job,
+        } = self;
+        // Имена без `Entry`: `stat_entry`; нет файла — удалён.
+        for name in unresolved {
+            let hint = if crate::name::may_be_escaped(&name) {
+                Attrs(Attrs::ESCAPED_NAME)
+            } else {
+                Attrs(0)
+            };
+            match job.vfs.stat_entry(&job.loc, &name, hint) {
+                Ok(e) => changes.upsert.push(e),
+                Err(VfsError::NotFound(_)) if hint.0 == 0 => changes.removed.push(name),
+                Err(e) => {
+                    tracing::debug!(error = %e, "patch: cannot resolve a name, refresh");
+                    let _ = tcx.sink.send(refresh_msg(tab, generation), &tcx.cancel);
+                    return;
+                }
+            }
+        }
+        let indexes = &job.cx.indexes;
+        let mut index = indexes
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&tab)
+            .filter(|i| i.fits(&entries, generation))
+            .unwrap_or_else(|| DirIndex::build(&entries, generation));
+        let patch = build_patch(
+            &entries,
+            &order,
+            &mut index,
+            &changes,
+            &spec,
+            job.cx.opts,
+            seq,
+        );
+        indexes
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(tab, index);
+        // Отпустить `Arc` до применения: иначе `make_mut` в core скопирует записи.
+        drop((entries, order));
+        let Some(patch) = patch else {
+            return;
+        };
+        let m = msg("vfs.patch", move |cx| {
+            let Some((_, t)) = cx.state.tab(tab) else {
+                return;
+            };
+            let fits = t.listing.generation == generation
+                && t.listing.entries.len() == patch.base_len as usize
+                && t.listing.arrange_seq == patch.seq;
+            if fits {
+                listing_msg(tab, generation, ListingUpdate::Patch(patch)).apply(cx);
+            } else {
+                // Листинг сменился, пока строился патч: изменения не теряем.
+                cx.dispatch(refresh(tab));
+            }
+        });
+        let _ = tcx.sink.send(m, &tcx.cancel);
+    }
+}
+
+fn refresh_msg(tab: TabId, generation: Gen) -> Box<dyn urfin_core::Msg> {
+    msg("vfs.dir_changed", move |cx| {
+        if cx
+            .state
+            .tab(tab)
+            .is_some_and(|(_, t)| t.listing.generation == generation)
+        {
+            cx.dispatch(refresh(tab));
+        }
+    })
 }
 
 /// Каталог таба удалён: перейти в `up` (или перечитать — тогда core покажет ошибку).
