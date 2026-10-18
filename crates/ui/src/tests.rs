@@ -286,7 +286,12 @@ fn core_with(entries: Vec<Entry>) -> Core {
         Arc::new(NoWake),
     );
     register(&mut core);
-    urfin_keymap::register(&mut core);
+    let _ = urfin_keymap::register(
+        &mut core,
+        urfin_core::Paths::in_dir(std::env::temp_dir().join("urfin-ui-test-keymap")),
+        urfin_keymap::KeymapCfg::default(),
+        urfin_keymap::FlagRegistry::with_builtin(),
+    );
     for _ in 0..20 {
         core.pump(Duration::from_millis(5));
         let loaded = core

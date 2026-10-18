@@ -32,7 +32,12 @@ fn core() -> Core {
         },
         Arc::new(NoWake),
     );
-    urfin_keymap::register(&mut core);
+    let _ = urfin_keymap::register(
+        &mut core,
+        urfin_core::Paths::in_dir(std::env::temp_dir().join("urfin-keymap-qs-bench")),
+        urfin_keymap::KeymapCfg::default(),
+        urfin_keymap::FlagRegistry::with_builtin(),
+    );
     while core.state().active_tab().listing.status != ListingStatus::Complete {
         core.pump(Duration::from_millis(50));
         std::thread::sleep(Duration::from_millis(1));

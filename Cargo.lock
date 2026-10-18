@@ -3443,6 +3443,7 @@ dependencies = [
  "toml",
  "tracing",
  "urfin-core",
+ "urfin-i18n",
 ]
 
 [[package]]

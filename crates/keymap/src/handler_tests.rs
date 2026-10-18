@@ -3,8 +3,11 @@ use std::time::Duration;
 
 use urfin_core::fake::FakeListing;
 use urfin_core::{
-    Boot, Command, Core, Entry, Focus, ListingStatus, Location, OverlayKind, Row, Services, Waker,
+    Boot, Command, Core, Entry, Focus, ListingStatus, Location, OverlayKind, Paths, Row, Services,
+    Waker,
 };
+
+use crate::{FlagRegistry, KeymapCfg};
 
 use super::{KeymapView, register};
 
@@ -27,7 +30,12 @@ pub(crate) fn core_with(entries: Vec<Entry>) -> Core {
         },
         Arc::new(NoWake),
     );
-    register(&mut core);
+    let _ = register(
+        &mut core,
+        Paths::in_dir(std::env::temp_dir().join("urfin-keymap-qs-nofiles")),
+        KeymapCfg::default(),
+        FlagRegistry::with_builtin(),
+    );
     for _ in 0..200 {
         core.pump(Duration::from_millis(5));
         if core.state().active_tab().listing.status == ListingStatus::Complete {
@@ -169,4 +177,176 @@ fn pending_chord() {
     assert_eq!(view(&c).pending.as_deref(), Some("Ctrl+K"));
     cmd(&mut c, "keymap.pending");
     assert_eq!(view(&c).pending, None);
+}
+
+// ---- S3-10: перезагрузка, пресет, show, dump, app.reload_config ----
+
+use crate::ActiveKeymap;
+
+/// Core с каталогами в `dir` (конфиг и `keymaps/` — там же) и пустым листингом.
+fn core_in(dir: &std::path::Path) -> Core {
+    let root = Location::local(dir.join("files"));
+    let mut boot = Boot::new(root.clone(), root);
+    boot.paths = Paths::in_dir(dir);
+    let paths = boot.paths.clone();
+    let mut core = Core::new(boot, Services::null(), Arc::new(NoWake));
+    let _ = register(
+        &mut core,
+        paths,
+        KeymapCfg::default(),
+        FlagRegistry::with_builtin(),
+    );
+    core.pump(Duration::from_millis(5));
+    core
+}
+
+/// Pump, пока не выполнится условие (загрузка идёт на `Lane::Bulk`).
+fn pump_until(core: &mut Core, f: impl Fn(&Core) -> bool) {
+    for _ in 0..400 {
+        core.pump(Duration::from_millis(5));
+        if f(core) {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    panic!("condition not reached");
+}
+
+fn active(core: &Core) -> (u64, String, Vec<String>) {
+    let a = core
+        .state()
+        .ext
+        .get::<ActiveKeymap>()
+        .expect("active keymap");
+    let keys = a
+        .keymap
+        .bindings()
+        .iter()
+        .map(|b| format!("{} = {}", b.chord, b.cmds[0]))
+        .collect();
+    (a.generation, a.cfg.preset.to_string(), keys)
+}
+
+fn write_user(dir: &std::path::Path, text: &str) {
+    std::fs::create_dir_all(dir.join("keymaps")).unwrap();
+    std::fs::write(dir.join("keymaps/user.toml"), text).unwrap();
+}
+
+/// Правка `user.toml` + `keymap.reload` применяется в следующих кадрах.
+#[test]
+fn reload_applies_user_file() {
+    let tmp = tempfile::tempdir().unwrap();
+    write_user(
+        tmp.path(),
+        "format = 1\nname = \"user\"\n[context.panel]\n\"F11\" = \"panel.refresh\"",
+    );
+    let mut c = core_in(tmp.path());
+    let (generation, _, keys) = active(&c);
+    assert_eq!(generation, 0);
+    assert!(keys.contains(&"F11 = panel.refresh".to_owned()), "{keys:?}");
+    assert!(c.state().banner.is_none());
+    write_user(
+        tmp.path(),
+        "format = 1\nname = \"user\"\n[context.panel]\n\"F11\" = \"panel.swap\"",
+    );
+    cmd(&mut c, "keymap.reload");
+    pump_until(&mut c, |c| active(c).0 == 1);
+    assert!(active(&c).2.contains(&"F11 = panel.swap".to_owned()));
+}
+
+/// Битый файл — баннер, прежняя раскладка остаётся; исправленный — баннер снят.
+#[test]
+fn broken_file_keeps_previous_keymap() {
+    let tmp = tempfile::tempdir().unwrap();
+    let good = "format = 1\nname = \"user\"\n[context.panel]\n\"F11\" = \"panel.refresh\"";
+    write_user(tmp.path(), good);
+    let mut c = core_in(tmp.path());
+    write_user(tmp.path(), "format = 1\n[context.panel\n");
+    cmd(&mut c, "keymap.reload");
+    pump_until(&mut c, |c| c.state().banner.is_some());
+    assert_eq!(active(&c).0, 0, "previous keymap kept");
+    let acts: Vec<String> = c
+        .state()
+        .banner
+        .as_ref()
+        .unwrap()
+        .actions
+        .iter()
+        .map(|(_, cmd)| cmd.to_string())
+        .collect();
+    assert_eq!(acts, ["keymap.reload", "app.dismiss_banner"]);
+    assert!(active(&c).2.contains(&"F11 = panel.refresh".to_owned()));
+    write_user(tmp.path(), good);
+    cmd(&mut c, "keymap.reload");
+    pump_until(&mut c, |c| active(c).0 == 1);
+    assert!(c.state().banner.is_none());
+}
+
+/// `keymap.preset`: новый пресет; неизвестный — баннер, остаётся прежний.
+#[test]
+fn preset_switch() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut c = core_in(tmp.path());
+    assert_eq!(active(&c).1, "far");
+    cmd(&mut c, "keymap.preset name=dn");
+    pump_until(&mut c, |c| active(c).0 == 1);
+    assert_eq!(active(&c).1, "dn");
+    cmd(&mut c, "keymap.preset name=nope");
+    pump_until(&mut c, |c| c.state().banner.is_some());
+    assert_eq!(active(&c).1, "dn");
+}
+
+/// `app.reload_config` с новой секцией `[keymap]` перечитывает раскладку.
+#[test]
+fn follows_config_reload() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut c = core_in(tmp.path());
+    std::fs::write(
+        tmp.path().join("config.toml"),
+        "[keymap]\npreset = \"dn\"\n",
+    )
+    .unwrap();
+    cmd(&mut c, "app.reload_config");
+    pump_until(&mut c, |c| active(c).1 == "dn");
+}
+
+/// `keymap.show` — таблица в `UiEvent::Ext`; `keymap.dump` — файл, который снова
+/// читается как раскладка.
+#[test]
+fn show_and_dump() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut c = core_in(tmp.path());
+    c.take_ui_events();
+    cmd(&mut c, "keymap.show");
+    let lines = c
+        .take_ui_events()
+        .into_iter()
+        .find_map(|e| match e {
+            urfin_core::UiEvent::Ext { id, args } if id.as_str() == "keymap.show" => {
+                args.list("lines").map(<[_]>::len)
+            }
+            _ => None,
+        })
+        .expect("keymap.show event");
+    assert!(lines > 10, "{lines}");
+    let out = tmp.path().join("out/dump.toml");
+    let arg = format!("keymap.dump path=\"{}\"", out.display());
+    cmd(&mut c, &arg);
+    pump_until(&mut c, |_| out.is_file());
+    let text = std::fs::read_to_string(&out).unwrap();
+    assert!(text.contains("panel.cursor.up"), "{text}");
+    // Выгрузка — валидный файл keymap.
+    let mut reg = urfin_core::CommandRegistry::new();
+    for m in c.registry().iter() {
+        let _ = reg.register(std::slice::from_ref(m));
+    }
+    let (km, w) = crate::Keymap::from_str_layers(
+        &[(&text, crate::Layer::User)],
+        &reg,
+        &FlagRegistry::with_builtin(),
+        crate::Os::current(),
+    );
+    let w: Vec<String> = w.iter().map(ToString::to_string).collect();
+    assert_eq!(w, Vec::<String>::new());
+    assert!(!km.bindings().is_empty());
 }

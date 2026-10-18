@@ -74,6 +74,8 @@ items = [
     { sep = true },
     { cmd = "app.reload_config" },
     { cmd = "app.save_session" },
+    { cmd = "keymap.reload" },
+    { cmd = "keymap.dump" },
     { sep = true },
     { cmd = "ui.about", label = "menu-about" },
 ]
