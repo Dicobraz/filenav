@@ -4,12 +4,20 @@
 
 pub(crate) mod std_fs;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
+
+use compact_str::CompactString;
 
 use crate::api::{
-    Attrs, Caps, Entry, ListOpts, ListStream, Metadata, Space, Vfs, VfsError, VfsPath, VfsRead,
-    WatchGuard, WatchTx,
+    Attrs, CancelToken, Caps, Entry, ListOpts, ListStream, Metadata, RootInfo, RootKind, Space,
+    Vfs, VfsError, VfsPath, VfsRead, WatchGuard, WatchTx,
 };
+
+/// Сколько ждать меток и места томов: медленные (отключённый сетевой диск) выдаются
+/// без них (S4 §3.1).
+pub const ROOTS_TIMEOUT: Duration = Duration::from_millis(1500);
 
 /// Способ листинга; `Auto` — самый быстрый из доступных с откатом на запасные.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
@@ -56,6 +64,140 @@ impl LocalFs {
     /// Способ листинга (вне Windows — всегда std).
     pub fn mode(&self) -> ListMode {
         self.mode
+    }
+
+    /// Корни (диски, тома). Список — сразу; метки и место — по потоку на корень, не
+    /// дольше [`ROOTS_TIMEOUT`]: опоздавшие выдаются без них. Порядок — по готовности.
+    pub fn roots(&self, cancel: &CancelToken, mut out: impl FnMut(RootInfo)) {
+        let list = platform_roots();
+        let (tx, rx) = mpsc::channel();
+        for (i, (path, _)) in list.iter().enumerate() {
+            let (tx, path) = (tx.clone(), path.clone());
+            let spawned = std::thread::Builder::new()
+                .name("volume-info".into())
+                .spawn(move || {
+                    let label = root_label(&path);
+                    let space = space_of(&path).ok();
+                    let _ = tx.send((i, label, space));
+                });
+            if let Err(e) = spawned {
+                tracing::warn!(error = %e, "volume-info thread");
+            }
+        }
+        drop(tx);
+        let deadline = Instant::now() + ROOTS_TIMEOUT;
+        let mut done = vec![false; list.len()];
+        let info = |i: usize, label: Option<String>, space: Option<Space>| RootInfo {
+            loc: VfsPath::local(&list[i].0),
+            label: label.map(CompactString::from).unwrap_or_default(),
+            kind: list[i].1,
+            space,
+        };
+        while done.iter().any(|d| !d) && !cancel.is_cancelled() {
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                break;
+            }
+            match rx.recv_timeout(left.min(Duration::from_millis(50))) {
+                Ok((i, label, space)) => {
+                    done[i] = true;
+                    out(info(i, label, space));
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+        }
+        if cancel.is_cancelled() {
+            return;
+        }
+        // Опоздавшие — без метки и места; их потоки дорабатывают сами.
+        for i in (0..list.len()).filter(|i| !done[*i]) {
+            tracing::debug!(root = %list[i].0.display(), "volume info timed out");
+            out(info(i, None, None));
+        }
+    }
+}
+
+/// Корни без обращения к томам: путь и тип.
+fn platform_roots() -> Vec<(PathBuf, RootKind)> {
+    #[cfg(windows)]
+    {
+        crate::sys::win_meta::drives()
+            .into_iter()
+            .map(|(p, k)| (PathBuf::from(p), k))
+            .collect()
+    }
+    #[cfg(not(windows))]
+    {
+        let mut v = vec![(PathBuf::from("/"), RootKind::Fixed)];
+        v.extend(unix_mounts());
+        v
+    }
+}
+
+/// Linux: съёмные и сетевые точки монтирования (`/media`, `/mnt`, `/run/media`);
+/// macOS: `/Volumes/*`.
+#[cfg(not(windows))]
+fn unix_mounts() -> Vec<(PathBuf, RootKind)> {
+    let mut v = Vec::new();
+    if cfg!(target_os = "macos") {
+        if let Ok(rd) = std::fs::read_dir("/Volumes") {
+            v.extend(rd.flatten().map(|e| (e.path(), RootKind::Other)));
+        }
+        return v;
+    }
+    let Ok(text) = std::fs::read_to_string("/proc/self/mounts") else {
+        return v;
+    };
+    for line in text.lines() {
+        let mut f = line.split_whitespace();
+        let (Some(_dev), Some(at), Some(fs)) = (f.next(), f.next(), f.next()) else {
+            continue;
+        };
+        // В /proc/mounts пробел в пути — `\040`.
+        let at = at.replace("\\040", " ");
+        if !["/media/", "/mnt/", "/run/media/"]
+            .iter()
+            .any(|p| at.starts_with(p))
+        {
+            continue;
+        }
+        let kind = if matches!(fs, "nfs" | "nfs4" | "cifs" | "smb3" | "fuse.sshfs") {
+            RootKind::Network
+        } else {
+            RootKind::Removable
+        };
+        v.push((PathBuf::from(at), kind));
+    }
+    v
+}
+
+fn root_label(p: &Path) -> Option<String> {
+    #[cfg(windows)]
+    {
+        crate::sys::win_meta::label(p)
+    }
+    #[cfg(not(windows))]
+    {
+        p.file_name().map(|n| n.to_string_lossy().into_owned())
+    }
+}
+
+/// Место на томе с путём `p`.
+fn space_of(p: &Path) -> Result<Space, VfsError> {
+    #[cfg(windows)]
+    {
+        crate::sys::win_meta::space(p)
+    }
+    #[cfg(not(windows))]
+    {
+        let s = rustix::fs::statvfs(p).map_err(|e| VfsError::from_io(p, e.into()))?;
+        let unit = s.f_frsize;
+        Ok(Space {
+            total: s.f_blocks.saturating_mul(unit),
+            free: s.f_bfree.saturating_mul(unit),
+            avail: s.f_bavail.saturating_mul(unit),
+        })
     }
 }
 
@@ -107,8 +249,8 @@ impl Vfs for LocalFs {
         Ok(Box::new(std_fs::open_read(&p.path)?))
     }
 
-    fn space(&self, _at: &VfsPath) -> Result<Space, VfsError> {
-        Err(VfsError::Unsupported("space: S4-10"))
+    fn space(&self, at: &VfsPath) -> Result<Space, VfsError> {
+        space_of(&at.path)
     }
 
     fn local_path(&self, p: &VfsPath) -> Option<PathBuf> {

@@ -49,6 +49,8 @@ raw-window-handle = "0.6.2"
 egui-wgpu = { version = "0.37.0", default-features = false }
 wgpu = { version = "30.0.1", default-features = false, features = ["std", "wgsl"] }
 windows-sys = "0.61"
+# statvfs в vfs (unix); S6 — PTY (S0 v3 «Зависимости»).
+rustix = { version = "1.1", default-features = false, features = ["std"] }
 # Хук сообщений Windows для keymap (S0 v3 №10): ровно версия eframe, без своих фич.
 winit = { version = "=0.30.13", default-features = false }
 # VERSIONINFO exe (R-01): без `toml` — поля задаёт build.rs.
