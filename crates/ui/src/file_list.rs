@@ -183,6 +183,8 @@ pub(crate) struct ListCx<'a> {
     pub st: &'a crate::state::UiState,
     /// Быстрый поиск и начатый аккорд (keymap, ADR-0016).
     pub keys: Option<&'a urfin_keymap::KeymapView>,
+    /// Имя `dst` открытого конфликта копирования — строка `caution.bg` (S2 §2.8).
+    pub conflict: Option<&'a str>,
 }
 
 /// Подсветка поля поиска после не принятого символа (S2 §576).
@@ -575,6 +577,7 @@ fn resize_handles(
 
 #[allow(
     clippy::too_many_arguments,
+    clippy::too_many_lines,
     clippy::many_single_char_names,
     reason = "строки используют всю раскладку; геометрия: c, t, i, g, x"
 )]
@@ -619,6 +622,11 @@ fn rows(
             .hl
             .color(line.group, tk)
             .unwrap_or_else(|| tk.c(Role::TextPrimary));
+        if let Some(name) = cx.conflict
+            && matches!(t.row(line.row), Some(Row::Entry { entry, .. }) if entry.name == name)
+        {
+            c.rect(row, Role::CautionBg, radius);
+        }
         // Помеченные — `accent.subtle` и `accent.text`, курсор — рамка 1 px (S0-decisions №31).
         if line.selected {
             c.rect(row, Role::AccentSubtle, radius);

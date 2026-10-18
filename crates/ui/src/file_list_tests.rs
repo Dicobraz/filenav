@@ -193,6 +193,7 @@ impl Fx {
                 widths: &mut self.widths,
                 st: &self.st,
                 keys: self.keys.as_ref(),
+                conflict: None,
             };
             show(&mut c, card, t, Side::Left, active, &mut cx, &mut out);
             yaml = c.to_yaml();

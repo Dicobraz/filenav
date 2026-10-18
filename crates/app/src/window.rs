@@ -666,7 +666,8 @@ impl eframe::App for App {
         {
             keys.apply(Arc::clone(&a.keymap), &a.cfg, a.generation);
         }
-        if s.prompts.active().is_some() {
+        // Видимый вопрос разбирает клавиши сам (S2-15); свёрнутый — нет.
+        if urfin_ui::prompt_takes_keys(s) {
             return;
         }
         let now = Instant::now();

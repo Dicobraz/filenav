@@ -84,3 +84,47 @@ menu-about = About Úrfionn
 # Быстрый поиск и начатый аккорд в подвале панели (S3-06)
 ui-qs-matches = { $count } found
 ui-chord-pending = { $chord } … (waiting for the next key)
+# Баннер-вопрос, конфликт и черновики (S2-15)
+ui-prompt-more = { $count ->
+    [one] { $count } more question
+   *[other] { $count } more questions
+}
+ui-prompt-all = For all
+ui-prompt-new-name = New name
+ui-button-apply = Apply
+ui-button-back = Back
+ui-button-later = Later
+ui-button-cancel = Cancel
+ui-button-delete = Delete
+ui-button-permanent = Permanently
+ui-conflict-name = Name
+ui-conflict-size = Size
+ui-conflict-mtime = Modified
+ui-conflict-new = New
+ui-conflict-old = Existing
+ui-conflict-newer = ▲ newer by { $span }
+ui-conflict-older = ▼ older by { $span }
+ui-span-min = { $n } min
+ui-span-hours = { $n } h
+ui-span-days = { $n } d
+ui-draft-delete = Move { $count } { $count ->
+    [one] item
+   *[other] items
+} ({ $size }) to the Recycle Bin?
+ui-draft-delete-permanent = Delete { $count } { $count ->
+    [one] item
+   *[other] items
+} ({ $size }) PERMANENTLY? This cannot be undone.
+ui-draft-copy = Copy { $count } { $count ->
+    [one] item
+   *[other] items
+} ({ $size }) to
+ui-draft-move = Move { $count } { $count ->
+    [one] item
+   *[other] items
+} ({ $size }) to
+ui-draft-ops-mkdir = New folder
+ui-draft-mkdir-hint = a\b\c is fine
+ui-draft-sel-add = Select by mask
+ui-draft-sel-remove = Deselect by mask
+ui-draft-panel-filter = Filter

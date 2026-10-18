@@ -89,3 +89,52 @@ menu-about = О программе Úrfionn
 # Быстрый поиск и начатый аккорд в подвале панели (S3-06)
 ui-qs-matches = Найдено: { $count }
 ui-chord-pending = { $chord } … (ждёт следующую клавишу)
+# Баннер-вопрос, конфликт и черновики (S2-15)
+ui-prompt-more = ещё { $count } { $count ->
+    [one] вопрос
+    [few] вопроса
+   *[many] вопросов
+}
+ui-prompt-all = Для всех
+ui-prompt-new-name = Новое имя
+ui-button-apply = Применить
+ui-button-back = Назад
+ui-button-later = Позже
+ui-button-cancel = Отмена
+ui-button-delete = Удалить
+ui-button-permanent = Насовсем
+ui-conflict-name = Имя
+ui-conflict-size = Размер
+ui-conflict-mtime = Изменён
+ui-conflict-new = Новый
+ui-conflict-old = Есть
+ui-conflict-newer = ▲ новее на { $span }
+ui-conflict-older = ▼ старше на { $span }
+ui-span-min = { $n } мин
+ui-span-hours = { $n } ч
+ui-span-days = { $n } д
+ui-draft-delete = В корзину { $count } { $count ->
+    [one] объект
+    [few] объекта
+   *[many] объектов
+} ({ $size })?
+ui-draft-delete-permanent = Удалить НАВСЕГДА { $count } { $count ->
+    [one] объект
+    [few] объекта
+   *[many] объектов
+} ({ $size })? Отменить нельзя.
+ui-draft-copy = Копировать { $count } { $count ->
+    [one] объект
+    [few] объекта
+   *[many] объектов
+} ({ $size }) в
+ui-draft-move = Переместить { $count } { $count ->
+    [one] объект
+    [few] объекта
+   *[many] объектов
+} ({ $size }) в
+ui-draft-ops-mkdir = Новая папка
+ui-draft-mkdir-hint = можно a\b\c
+ui-draft-sel-add = Пометить по маске
+ui-draft-sel-remove = Снять пометку по маске
+ui-draft-panel-filter = Фильтр
