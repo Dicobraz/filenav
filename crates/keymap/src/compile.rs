@@ -27,15 +27,15 @@ pub(crate) struct Entry {
     pub cmds: Arc<[Command]>,
     pub layer: Layer,
     pub order: u32,
-    pub repeat: Option<bool>,
+    pub repeatable: bool,
 }
 
 /// Результат поиска.
 #[derive(Debug, PartialEq)]
 pub enum Lookup<'a> {
-    /// Команды и разрешён ли автоповтор (`_repeat`, иначе `CommandMeta::repeatable` —
-    /// решает вызывающий; `None` — не задано в привязке).
-    Hit(&'a [Command], Option<bool>),
+    /// Команды и разрешён ли автоповтор при удержании (`_repeat`, иначе
+    /// `CommandMeta::repeatable`).
+    Hit(&'a [Command], bool),
     /// Начало аккорда: ждать следующее нажатие.
     Prefix,
     Miss,
@@ -79,7 +79,7 @@ impl Compiled {
                 cmds: Arc::clone(&b.cmds),
                 layer: b.layer,
                 order: u32::try_from(i).unwrap_or(u32::MAX),
-                repeat: b.repeat,
+                repeatable: b.repeatable,
             };
             let strokes = &b.chord.0;
             if strokes.len() == 1 {
@@ -124,7 +124,7 @@ impl Compiled {
             return Lookup::Prefix;
         }
         match self.single.get(&s).and_then(|list| best(list, st)) {
-            Some(e) => Lookup::Hit(&e.cmds, e.repeat),
+            Some(e) => Lookup::Hit(&e.cmds, e.repeatable),
             None => Lookup::Miss,
         }
     }
@@ -133,7 +133,7 @@ impl Compiled {
         let mut key = p.strokes.clone();
         key.push(s);
         if let Some(e) = self.chords.get(&key).and_then(|list| best(list, st)) {
-            return Lookup::Hit(&e.cmds, e.repeat);
+            return Lookup::Hit(&e.cmds, e.repeatable);
         }
         if self.prefix_live(&key, st) {
             return Lookup::Prefix;
@@ -242,4 +242,4 @@ pub(crate) fn fkey_stroke(i: usize, mods: Mods) -> Stroke {
 
 #[cfg(test)]
 #[path = "compile_tests.rs"]
-mod tests;
+pub(crate) mod tests;

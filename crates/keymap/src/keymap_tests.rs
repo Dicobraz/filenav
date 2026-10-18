@@ -48,7 +48,15 @@ fn flags() -> FlagRegistry {
 }
 
 fn load(layers: &[(&str, Layer)], os: Os) -> (Arc<Keymap>, Vec<KeymapWarning>) {
-    Keymap::from_str_layers(layers, &reg(), &flags(), os)
+    let (km, w) = Keymap::from_str_layers(layers, &reg(), &flags(), os);
+    (km, own(w))
+}
+
+/// Без предупреждений встроенных пресетов: их команды — в настоящем реестре, тестовый
+/// реестр их не знает (пресеты против реестра проверяет app).
+fn own(mut w: Vec<KeymapWarning>) -> Vec<KeymapWarning> {
+    w.retain(|w| !matches!(w.file.as_str(), "base" | "far" | "dn"));
+    w
 }
 
 fn keys(km: &Keymap) -> Vec<String> {
@@ -126,7 +134,7 @@ fn spec_example_loads_without_warnings() {
         let up = km
             .bindings()
             .iter()
-            .find(|b| b.chord.to_string() == "Up")
+            .find(|b| b.chord.to_string() == "Up" && b.layer == Layer::User)
             .unwrap();
         assert_eq!(up.repeat, Some(true));
     }
@@ -253,7 +261,11 @@ fn os_overlay_layers() {
     let (km, _) = load(&[(preset, Layer::Preset)], Os::Linux);
     assert!(km.bindings().is_empty());
     let (km, _) = load(&[(preset, Layer::User)], Os::Windows);
-    assert_eq!(keys(&km), ["[panel] F5 = panel.refresh (User)"]);
+    let user: Vec<String> = keys(&km)
+        .into_iter()
+        .filter(|k| k.ends_with("(User)"))
+        .collect();
+    assert_eq!(user, ["[panel] F5 = panel.refresh (User)"]);
 }
 
 /// `Keymap::load`: пресет far (с base) и `config_dir/keymaps/user.toml` с `extends = "dn"`.
@@ -274,8 +286,12 @@ fn load_from_config_dir() {
     )
     .unwrap();
     let (km, warnings) = Keymap::load(&paths, &KeymapCfg::default(), &reg(), &flags(), Os::Windows);
-    assert_eq!(warnings, Vec::new());
-    assert_eq!(keys(&km), ["[panel] F5 = panel.refresh (User)"]);
+    assert_eq!(own(warnings), Vec::new());
+    let user: Vec<String> = keys(&km)
+        .into_iter()
+        .filter(|k| k.ends_with("(User)"))
+        .collect();
+    assert_eq!(user, ["[panel] F5 = panel.refresh (User)"]);
     // Нет пользовательского файла и неизвестный пресет — предупреждение, старт идёт.
     let cfg = KeymapCfg {
         preset: "nope".into(),
