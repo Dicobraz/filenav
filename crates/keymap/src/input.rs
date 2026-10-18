@@ -276,10 +276,7 @@ impl KeyInput {
                 self.ime = !text.is_empty();
                 return true;
             }
-            Event::Ime(ImeEvent::Commit(_)) => {
-                self.ime = false;
-                return true;
-            }
+            Event::Ime(ImeEvent::Commit(t)) => return self.ime_commit(t, st, out),
             Event::WindowFocused(false) => {
                 self.mods.reset();
                 self.pending = None;
@@ -366,6 +363,20 @@ impl KeyInput {
             Event::Text(t) => self.text(t, st, now, out),
             _ => true,
         }
+    }
+
+    /// Конец композиции IME. Быстрый поиск без поля egui: итог (CJK) — в маску.
+    fn ime_commit(&mut self, t: &str, st: &AppState, out: &mut Vec<Command>) -> bool {
+        self.ime = false;
+        if is_qs(st) && !t.is_empty() && self.km.has_command("keymap.qs.input") {
+            out.push(
+                Command::new("keymap.qs.input")
+                    .arg("text", t)
+                    .from(Origin::Key),
+            );
+            return false;
+        }
+        true
     }
 
     fn press(

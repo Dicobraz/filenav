@@ -492,3 +492,55 @@ fn quick_search_footer() {
     let (yaml, _) = fx.frame(&t, false, Vec::new());
     assert!(!yaml.contains("Ctrl+K"), "only on the active panel");
 }
+
+/// Rename по месту (S2-16, §2.10): поле поверх имени и размера, подсказка в подвале;
+/// Enter — `ops.rename to=`; строка ищется по имени и после refresh.
+#[test]
+fn inline_rename() {
+    let mut fx = Fx::new();
+    let mut t = mockup_tab();
+    fx.st.rename = Some((t.id, "README.md".into()));
+    let (yaml, _) = fx.frame(&t, true, Vec::new());
+    assert!(
+        yaml.contains("Enter — переименовать · Esc — отмена"),
+        "{yaml}"
+    );
+    assert!(yaml.contains("\"rename\""), "{yaml}");
+    assert!(
+        !yaml.contains("\"README.md\""),
+        "name is under the field: {yaml}"
+    );
+    insta::assert_snapshot!(yaml);
+    // Refresh: другой порядок строк — поле на той же записи.
+    let n = u32::try_from(t.listing.entries.len()).unwrap();
+    let order: Vec<u32> = (0..n).rev().collect();
+    let entries = t.listing.entries.as_ref().clone();
+    t.listing = Listing::with_entries(entries, order, Gen(2));
+    t.listing.status = ListingStatus::Complete;
+    t.cursor.row = 1 + n - 1 - 12;
+    let (yaml, _) = fx.frame(&t, true, Vec::new());
+    assert!(yaml.contains("\"rename\""), "{yaml}");
+    // Ввод и Enter.
+    fx.frame(&t, true, vec![egui::Event::Text("X".into())]);
+    let (_, out) = fx.frame(
+        &t,
+        true,
+        vec![egui::Event::Key {
+            key: egui::Key::Enter,
+            physical_key: Some(egui::Key::Enter),
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        }],
+    );
+    let out: Vec<String> = out.iter().map(ToString::to_string).collect();
+    assert_eq!(out, ["ops.rename to=X.md", "ui.cancel"]);
+}
+
+#[test]
+fn rename_stem() {
+    assert_eq!(stem_chars("README.md"), 6);
+    assert_eq!(stem_chars("архив.tar.gz"), 9);
+    assert_eq!(stem_chars(".gitignore"), 10);
+    assert_eq!(stem_chars("Makefile"), 8);
+}

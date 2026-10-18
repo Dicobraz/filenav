@@ -187,6 +187,82 @@ pub(crate) struct ListCx<'a> {
     pub conflict: Option<&'a str>,
 }
 
+/// Имя, которое переименовывается в этом табе (`ui.rename`, S2-16).
+fn rename_target<'a>(cx: &ListCx<'a>, t: &Tab) -> Option<&'a str> {
+    cx.st
+        .rename
+        .as_ref()
+        .filter(|(id, _)| *id == t.id)
+        .map(|(_, name)| name.as_str())
+}
+
+/// Поле переименования поверх имени и размера строки `row` (S2 §2.10): выделена основа
+/// имени без расширения; Enter — `ops.rename to=`, Esc — keymap (`ui.cancel`).
+fn rename_field(
+    c: &mut dyn Canvas,
+    cx: &mut ListCx<'_>,
+    row: Rect,
+    name: &str,
+    out: &mut Vec<Command>,
+) {
+    let tk = cx.tokens;
+    let opened = cx.memo.rename.as_ref().is_none_or(|(n, _)| n != name);
+    if opened {
+        cx.memo.rename = Some((name.into(), name.to_owned()));
+    }
+    let radius = egui::CornerRadius::from(tk.m(Metric::RadiusControl));
+    c.rect(row, Role::FillControlInput, radius);
+    c.rect(
+        row.with_min_y(row.bottom() - 2.0 * tk.m(Metric::StrokeThin)),
+        Role::AccentFill,
+        egui::CornerRadius::ZERO,
+    );
+    c.region("rename", row);
+    let text = &mut cx.memo.rename.as_mut().expect("set above").1;
+    let mut ui = cx
+        .ui
+        .new_child(egui::UiBuilder::new().max_rect(row.shrink(1.0)));
+    let id = ui.scope_id().with("rename-field");
+    let resp = ui.add_sized(
+        row.shrink(1.0).size(),
+        egui::TextEdit::singleline(text)
+            .id(id)
+            .frame(egui::Frame::NONE)
+            .font(cx.fonts.id(Font::Ui, tk.m(Metric::TypeBody))),
+    );
+    if opened {
+        resp.request_focus();
+        if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), id) {
+            let stem = stem_chars(name);
+            state
+                .cursor
+                .set_char_range(Some(egui::text::CCursorRange::two(
+                    egui::text::CCursor::new(0),
+                    egui::text::CCursor::new(stem),
+                )));
+            state.store(ui.ctx(), id);
+        }
+    } else if !resp.has_focus() && !resp.lost_focus() {
+        resp.request_focus();
+    }
+    if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+        let to = text.trim();
+        if !to.is_empty() && to != name {
+            out.push(Command::new("ops.rename").arg("to", to));
+        }
+        out.push(Command::new("ui.cancel"));
+    }
+}
+
+/// Длина основы имени в символах: до последней точки; у `.gitignore` и имён без точки —
+/// всё имя.
+fn stem_chars(name: &str) -> usize {
+    match name.rfind('.') {
+        Some(i) if i > 0 => name[..i].chars().count(),
+        _ => name.chars().count(),
+    }
+}
+
 /// Подсветка поля поиска после не принятого символа (S2 §576).
 const MISS_FLASH: Duration = Duration::from_millis(300);
 
@@ -407,7 +483,20 @@ pub(crate) fn show(
             egui::CornerRadius::ZERO,
         );
     }
-    footer_line(c, cx, foot_r, side, active, pad, caption);
+    if rename_target(cx, t).is_some() {
+        // Подсказка вместо итогов (S2 §2.10).
+        c.text(
+            foot_r.left_center() + vec2(pad, 0.0),
+            Align2::LEFT_CENTER,
+            &Tx::key("ui-rename-hint"),
+            Font::Caption,
+            caption,
+            Role::TextSecondary,
+        );
+    } else {
+        cx.memo.rename = None;
+        footer_line(c, cx, foot_r, side, active, pad, caption);
+    }
     // Подсказка подвала — точный размер (S2 §2.1).
     let foot = cx.ui.interact(
         foot_r,
@@ -651,12 +740,25 @@ fn rows(
             let g = cx.cache.icon(&ctx, line.icon, &icon_font);
             c.galley(centered(ic, mid, &g), g, role);
         }
-        c.tinted(
-            pos2(cols.name.0, mid - line.name.size().y / 2.0),
-            Arc::clone(&line.name),
-            color,
+        if let Some(name) = rename_target(cx, t)
+            && matches!(t.row(line.row), Some(Row::Entry { entry, .. }) if entry.name == name)
+        {
+            let field = Rect::from_min_max(
+                pos2(cols.name.0 - 2.0, row.top() + 1.0),
+                pos2(cols.size.1.max(cols.name.1), row.bottom() - 1.0),
+            );
+            rename_field(c, cx, field, name, out);
+        } else {
+            c.tinted(
+                pos2(cols.name.0, mid - line.name.size().y / 2.0),
+                Arc::clone(&line.name),
+                color,
+            );
+        }
+        let renaming = rename_target(cx, t).is_some_and(
+            |name| matches!(t.row(line.row), Some(Row::Entry { entry, .. }) if entry.name == name),
         );
-        if let Some((g, lead, width)) = &line.size {
+        if let Some((g, lead, width)) = line.size.as_ref().filter(|_| !renaming) {
             let x = cols.size.1 - width + lead;
             c.galley(
                 pos2(x, mid - g.size().y / 2.0),

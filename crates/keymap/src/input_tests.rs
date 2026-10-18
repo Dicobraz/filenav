@@ -809,3 +809,23 @@ fn gray_slash() {
         "repeat of the same held key is ignored"
     );
 }
+
+/// IME в быстром поиске (S2-16): итог композиции — в маску, preedit — мимо.
+#[test]
+fn ime_commit_goes_to_quick_search() {
+    let mut ki = input_qs(&KeymapCfg::default());
+    let st = state(Focus::Overlay(OverlayKind::QuickSearch));
+    let preedit = Event::Ime(ImeEvent::Preedit {
+        text: "に".into(),
+        active_range_chars: None,
+    });
+    let f = run(&mut ki, &st, vec![preedit]);
+    assert_eq!(f.cmds, Vec::<String>::new());
+    let f = run(
+        &mut ki,
+        &st,
+        vec![Event::Ime(ImeEvent::Commit("日本".into()))],
+    );
+    assert_eq!(f.cmds, ["keymap.qs.input text=日本"]);
+    assert_eq!(f.events, []);
+}
