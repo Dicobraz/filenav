@@ -81,3 +81,11 @@ cmd-ui-palette = Command palette
 cmd-ui-screens = Screens
 cmd-ui-menu-sort = Sort menu
 cmd-ui-about = About
+# keymap (S3-06)
+cmd-keymap-qs-start = Quick search
+cmd-keymap-qs-input = Quick search: type
+cmd-keymap-qs-next = Quick search: next match
+cmd-keymap-qs-prev = Quick search: previous match
+cmd-keymap-qs-backspace = Quick search: erase a character
+cmd-keymap-qs-cancel = Close quick search
+cmd-keymap-pending = Pending key chord

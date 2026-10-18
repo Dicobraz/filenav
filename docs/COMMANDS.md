@@ -127,3 +127,15 @@
 | `ui.columns` | `set:str` | Columns | Колонки | — | — |
 | `ui.panels.toggle_all` | — | Hide or show panels | Скрыть или показать панели | Ctrl+O | commands |
 | `ui.about` | — | About | О программе | — | options |
+
+## `keymap` (7)
+
+| Команда | Аргументы | EN | RU | Клавиши (Far) | Меню F9 |
+|---|---|---|---|---|---|
+| `keymap.qs.start` | `text?:str` | Quick search | Быстрый поиск | — | — |
+| `keymap.qs.input` | `text:str` | Quick search: type | Быстрый поиск: ввод | — | — |
+| `keymap.qs.next` | — | Quick search: next match | Быстрый поиск: следующее | — | — |
+| `keymap.qs.prev` | — | Quick search: previous match | Быстрый поиск: предыдущее | — | — |
+| `keymap.qs.backspace` | — | Quick search: erase a character | Быстрый поиск: стереть символ | — | — |
+| `keymap.qs.cancel` | — | Close quick search | Закрыть быстрый поиск | — | — |
+| `keymap.pending` | `chord?:str` | Pending key chord | Начатое сочетание клавиш | — | — |

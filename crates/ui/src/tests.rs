@@ -286,6 +286,7 @@ fn core_with(entries: Vec<Entry>) -> Core {
         Arc::new(NoWake),
     );
     register(&mut core);
+    urfin_keymap::register(&mut core);
     for _ in 0..20 {
         core.pump(Duration::from_millis(5));
         let loaded = core
@@ -333,18 +334,24 @@ fn overlay_mirrors_focus() {
     assert_eq!(c.state().focus, Focus::Overlay(OverlayKind::Menu));
     assert_eq!(ui_state(&c).overlay, Some(OverlayKind::Menu));
     assert_eq!(ui_state(&c).menu.as_deref(), Some("file"));
-    // Новый оверлей закрывает прежний.
-    run(&mut c, "ui.qsearch text=ab");
+    // Быстрый поиск ведёт keymap (ADR-0016): `ui.qsearch` — синоним; меню закрыто.
+    run(&mut c, "ui.qsearch text=f");
+    c.pump(Duration::from_millis(5));
     assert_eq!(c.state().focus, Focus::Overlay(OverlayKind::QuickSearch));
     assert_eq!(ui_state(&c).menu, None);
-    assert_eq!(
-        ui_state(&c).qsearch.as_ref().map(|(s, t)| (*s, t.as_str())),
-        Some((c.state().active, "ab"))
-    );
+    let qs = |c: &Core| {
+        c.state()
+            .ext
+            .get::<urfin_keymap::KeymapView>()
+            .and_then(|v| v.qs.as_ref())
+            .map(|q| (q.side, q.mask.to_string()))
+    };
+    assert_eq!(qs(&c), Some((c.state().active, "f".to_owned())));
     run(&mut c, "ui.cancel");
+    c.pump(Duration::from_millis(5));
     assert_eq!(c.state().focus, Focus::Panel);
     assert_eq!(ui_state(&c).overlay, None);
-    assert_eq!(ui_state(&c).qsearch, None);
+    assert_eq!(qs(&c), None);
     // Фокус увели в панель (клик) — оверлей закрывается в следующем pump.
     run(&mut c, "ui.draft command=ops.mkdir arg=name init=New");
     assert_eq!(

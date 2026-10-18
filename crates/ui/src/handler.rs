@@ -147,9 +147,10 @@ impl Handler for UiHandler {
     fn on_pump(&mut self, cx: &mut Cx<'_>) {
         let focus = cx.state.focus;
         let st = ui_state(cx);
-        // Фокус ушёл из оверлея (клик в панель, вопрос core) — оверлей закрыт.
+        // Фокус ушёл из оверлея (клик в панель, вопрос core, быстрый поиск keymap) —
+        // оверлей закрыт.
         let open = st.overlay;
-        if open.is_some() && !matches!(focus, Focus::Overlay(_)) {
+        if open.is_some_and(|k| focus != Focus::Overlay(k)) {
             st.close_overlay();
             cx.state.touch();
             self.cancel_task();
@@ -160,12 +161,14 @@ impl Handler for UiHandler {
         let a = &cmd.args;
         match cmd.id.as_str() {
             "ui.menu" => self.menu(cx, a),
+            // Быстрый поиск ведёт keymap (ADR-0016); здесь — синоним для меню.
             "ui.qsearch" => {
-                let side = cx.state.active;
-                let text = a.str("text").unwrap_or_default().into();
-                open(cx, OverlayKind::QuickSearch, |st| {
-                    st.qsearch = Some((side, text));
-                });
+                let mut c = Command::new("keymap.qs.start");
+                if let Some(t) = a.str("text") {
+                    c = c.arg("text", t);
+                }
+                cx.dispatch(c);
+                cx.keep_rev();
             }
             "ui.rename" => {
                 let t = cx.state.active_tab();

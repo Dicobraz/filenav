@@ -339,6 +339,7 @@ fn smoke(
     boot.crashed_last_time = crashed;
     let mut core = Core::new(boot, demo_services(), Arc::new(NoWake));
     urfin_ui::register(&mut core);
+    urfin_keymap::register(&mut core);
     // Кадры UrfinUi без окна: каркас UI рисуется на каждом шаге прогона.
     let mut ui = urfin_ui::UrfinUi::new(
         core.registry(),

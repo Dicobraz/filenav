@@ -181,6 +181,95 @@ pub(crate) struct ListCx<'a> {
     pub memo: &'a mut CardMemo,
     pub widths: &'a mut Widths,
     pub st: &'a crate::state::UiState,
+    /// Быстрый поиск и начатый аккорд (keymap, ADR-0016).
+    pub keys: Option<&'a urfin_keymap::KeymapView>,
+}
+
+/// Подсветка поля поиска после не принятого символа (S2 §576).
+const MISS_FLASH: Duration = Duration::from_millis(300);
+
+/// Подвал: строка быстрого поиска (S2 §576, ADR-0016), начатый аккорд на активной
+/// панели или итоги каталога.
+fn footer_line(
+    c: &mut dyn Canvas,
+    cx: &mut ListCx<'_>,
+    foot_r: Rect,
+    side: Side,
+    active: bool,
+    pad: f32,
+    caption: f32,
+) {
+    let keys = cx.keys;
+    if let Some(q) = keys.and_then(|k| k.qs.as_ref()).filter(|q| q.side == side) {
+        let tk = cx.tokens;
+        c.rect(foot_r, Role::FillControlInput, egui::CornerRadius::ZERO);
+        let flash = q
+            .miss_at
+            .map(|t| MISS_FLASH.saturating_sub(t.elapsed()))
+            .filter(|d| !d.is_zero());
+        if let Some(left) = flash {
+            cx.ui.ctx().request_repaint_after(left);
+        }
+        let edge = 2.0 * tk.m(Metric::StrokeThin);
+        c.rect(
+            foot_r.with_min_y(foot_r.bottom() - edge),
+            if flash.is_some() {
+                Role::CriticalFg
+            } else {
+                Role::AccentFill
+            },
+            egui::CornerRadius::ZERO,
+        );
+        let icon_x = foot_r.left() + pad + caption * 0.5;
+        c.icon(
+            pos2(icon_x, foot_r.center().y),
+            crate::icons::SEARCH,
+            caption,
+            Role::TextSecondary,
+        );
+        c.text(
+            pos2(icon_x + caption, foot_r.center().y),
+            Align2::LEFT_CENTER,
+            &Tx::user(q.mask.as_str()),
+            Font::Ui,
+            caption,
+            Role::TextPrimary,
+        );
+        if !q.mask.is_empty() {
+            let mut args = FluentArgs::new();
+            args.set("count", u64::from(q.matches));
+            c.text(
+                foot_r.right_center() - vec2(pad, 0.0),
+                Align2::RIGHT_CENTER,
+                &Tx::Args("ui-qs-matches", args),
+                Font::Caption,
+                caption,
+                Role::TextSecondary,
+            );
+        }
+        return;
+    }
+    if let Some(chord) = keys.and_then(|k| k.pending.as_deref()).filter(|_| active) {
+        let mut args = FluentArgs::new();
+        args.set("chord", chord.to_owned());
+        c.text(
+            foot_r.left_center() + vec2(pad, 0.0),
+            Align2::LEFT_CENTER,
+            &Tx::Args("ui-chord-pending", args),
+            Font::Caption,
+            caption,
+            Role::TextPrimary,
+        );
+        return;
+    }
+    c.text(
+        foot_r.left_center() + vec2(pad, 0.0),
+        Align2::LEFT_CENTER,
+        &Tx::user(cx.memo.footer.as_str()),
+        Font::Caption,
+        caption,
+        Role::TextSecondary,
+    );
 }
 
 /// Карточка панели в прямоугольнике `r` (подложку и полосу акцента рисует `frame`).
@@ -316,14 +405,7 @@ pub(crate) fn show(
             egui::CornerRadius::ZERO,
         );
     }
-    c.text(
-        foot_r.left_center() + vec2(pad, 0.0),
-        Align2::LEFT_CENTER,
-        &Tx::user(cx.memo.footer.as_str()),
-        Font::Caption,
-        caption,
-        Role::TextSecondary,
-    );
+    footer_line(c, cx, foot_r, side, active, pad, caption);
     // Подсказка подвала — точный размер (S2 §2.1).
     let foot = cx.ui.interact(
         foot_r,

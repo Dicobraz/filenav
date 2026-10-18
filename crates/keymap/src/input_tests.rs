@@ -522,3 +522,185 @@ fn set_keymap_resets_chord() {
     ki.set_keymap(Arc::clone(&other.km));
     assert!(ki.pending().is_none());
 }
+
+// ---- S3-06: быстрый поиск, одиночный Alt, начатый аккорд ----
+
+const CHORD: &[ArgSpec] = &[ArgSpec {
+    name: "chord",
+    kind: ValueKind::Str,
+    required: false,
+}];
+
+static QS_METAS: &[CommandMeta] = &[
+    meta("keymap.qs.cancel", &[], false),
+    meta("keymap.qs.next", &[], true),
+    meta("keymap.pending", CHORD, false),
+];
+
+const QS_PRESET: &str = r#"format = 1
+name = "qs"
+extends = "far"
+[context."overlay && qs"]
+"Down" = "keymap.qs.next"
+"#;
+
+/// Как `input_with`, плюс команды handler `keymap` (S3-06).
+fn input_qs(cfg: &KeymapCfg) -> KeyInput {
+    let mut reg = CommandRegistry::new();
+    reg.register(METAS).unwrap();
+    reg.register(QS_METAS).unwrap();
+    let (km, w) = Keymap::from_str_layers(
+        &[(PRESET, Layer::Preset), (QS_PRESET, Layer::User)],
+        &reg,
+        &FlagRegistry::with_builtin(),
+        Os::Windows,
+    );
+    assert_eq!(w, Vec::new());
+    KeyInput::new(km, cfg)
+}
+
+fn dn() -> KeymapCfg {
+    KeymapCfg {
+        preset: "dn".into(),
+        ..KeymapCfg::default()
+    }
+}
+
+fn mods(m: Modifiers) -> Event {
+    Event::ModifiersChanged(m)
+}
+
+/// DN: одиночный Alt начинает поиск.
+#[test]
+fn alt_tap_starts_quick_search() {
+    let mut ki = input_qs(&dn());
+    let st = state(Focus::Panel);
+    let t0 = Instant::now();
+    run_at(&mut ki, &st, t0, vec![mods(Modifiers::ALT)]);
+    let f = run_at(
+        &mut ki,
+        &st,
+        t0 + Duration::from_millis(100),
+        vec![mods(Modifiers::NONE)],
+    );
+    assert_eq!(f.cmds, ["keymap.qs.start"]);
+}
+
+/// Alt → Shift → отпустить (смена раскладки), долгое удержание, клавиша между,
+/// потеря фокуса (Alt+Tab) — не одиночный Alt.
+#[test]
+fn alt_tap_rejections() {
+    let st = state(Focus::Panel);
+    let t0 = Instant::now();
+    let soon = t0 + Duration::from_millis(100);
+    let alt_shift = Modifiers {
+        alt: true,
+        shift: true,
+        ..Modifiers::NONE
+    };
+    let cases: [(&str, Vec<Event>, Instant); 4] = [
+        (
+            "alt+shift",
+            vec![mods(alt_shift), mods(Modifiers::ALT), mods(Modifiers::NONE)],
+            soon,
+        ),
+        (
+            "too long",
+            vec![mods(Modifiers::NONE)],
+            t0 + Duration::from_millis(900),
+        ),
+        (
+            "key between",
+            vec![press(Key::F5, Modifiers::ALT), mods(Modifiers::NONE)],
+            soon,
+        ),
+        (
+            "focus lost",
+            vec![Event::WindowFocused(false), mods(Modifiers::NONE)],
+            soon,
+        ),
+    ];
+    for (name, rest, at) in cases {
+        let mut ki = input_qs(&dn());
+        run_at(&mut ki, &st, t0, vec![mods(Modifiers::ALT)]);
+        let f = run_at(&mut ki, &st, at, rest);
+        assert!(
+            !f.cmds.iter().any(|c| c.starts_with("keymap.qs.start")),
+            "{name}: {:?}",
+            f.cmds
+        );
+    }
+}
+
+/// Far: одиночный Alt поиск не начинает (там — Alt+буква).
+#[test]
+fn alt_tap_off_in_far() {
+    let mut ki = input_qs(&KeymapCfg::default());
+    let st = state(Focus::Panel);
+    let t0 = Instant::now();
+    run_at(&mut ki, &st, t0, vec![mods(Modifiers::ALT)]);
+    let f = run_at(&mut ki, &st, t0, vec![mods(Modifiers::NONE)]);
+    assert_eq!(f.cmds, Vec::<String>::new());
+}
+
+/// В поиске: своя привязка — команда поиска; печать — в маску; прочая клавиша
+/// закрывает поиск и выполняется как на панели.
+#[test]
+fn quick_search_keys() {
+    let mut ki = input_qs(&KeymapCfg::default());
+    let st = state(Focus::Overlay(OverlayKind::QuickSearch));
+    let none = Modifiers::NONE;
+    let f = run(&mut ki, &st, vec![press(Key::ArrowDown, none)]);
+    assert_eq!(f.cmds, ["keymap.qs.next"]);
+    let f = run(
+        &mut ki,
+        &st,
+        vec![press(Key::B, none), Event::Text("b".into())],
+    );
+    assert_eq!(f.cmds, ["keymap.qs.input text=b"]);
+    // Пробел печатается в маску, а не помечает файл.
+    let f = run(
+        &mut ki,
+        &st,
+        vec![press(Key::Space, none), Event::Text(" ".into())],
+    );
+    assert_eq!(f.cmds, [r#"keymap.qs.input text=" ""#]);
+    let f = run(&mut ki, &st, vec![press(Key::F5, none)]);
+    assert_eq!(f.cmds, ["keymap.qs.cancel", "ops.copy"]);
+    assert_eq!(f.events, []);
+    // Непривязанная и на панели — только закрыть.
+    let f = run(&mut ki, &st, vec![press(Key::F12, none)]);
+    assert_eq!(f.cmds, ["keymap.qs.cancel"]);
+}
+
+/// Вставка в поиске — в маску; клик — закрыть.
+#[test]
+fn quick_search_paste_and_click() {
+    let mut ki = input_qs(&KeymapCfg::default());
+    let st = state(Focus::Overlay(OverlayKind::QuickSearch));
+    let f = run(&mut ki, &st, vec![Event::Paste("abc".into())]);
+    assert_eq!(f.cmds, ["keymap.qs.input text=abc"]);
+    let click = Event::PointerButton {
+        pos: egui::pos2(1.0, 1.0),
+        button: egui::PointerButton::Primary,
+        pressed: true,
+        modifiers: Modifiers::NONE,
+    };
+    let f = run(&mut ki, &st, vec![click.clone()]);
+    assert_eq!(f.cmds, ["keymap.qs.cancel"]);
+    assert_eq!(f.events, [click]);
+}
+
+/// Начатый аккорд — `keymap.pending chord=…`, сброс — без `chord`.
+#[test]
+fn pending_chord_is_reported() {
+    let mut ki = input_qs(&KeymapCfg::default());
+    let st = state(Focus::Panel);
+    let ctrl = Modifiers::CTRL;
+    let f = run(&mut ki, &st, vec![press(Key::K, ctrl)]);
+    assert_eq!(f.cmds, ["keymap.pending chord=Ctrl+K"]);
+    let f = run(&mut ki, &st, vec![press(Key::K, ctrl)]);
+    assert_eq!(f.cmds, Vec::<String>::new(), "repeat: no change");
+    let f = run(&mut ki, &st, vec![press(Key::C, ctrl)]);
+    assert_eq!(f.cmds, ["a.chord", "keymap.pending"]);
+}

@@ -81,3 +81,11 @@ cmd-ui-palette = Палитра команд
 cmd-ui-screens = Экраны
 cmd-ui-menu-sort = Меню сортировки
 cmd-ui-about = О программе
+# keymap (S3-06)
+cmd-keymap-qs-start = Быстрый поиск
+cmd-keymap-qs-input = Быстрый поиск: ввод
+cmd-keymap-qs-next = Быстрый поиск: следующее
+cmd-keymap-qs-prev = Быстрый поиск: предыдущее
+cmd-keymap-qs-backspace = Быстрый поиск: стереть символ
+cmd-keymap-qs-cancel = Закрыть быстрый поиск
+cmd-keymap-pending = Начатое сочетание клавиш

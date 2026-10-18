@@ -11,7 +11,7 @@ use std::sync::Arc;
 use compact_str::CompactString;
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
-use urfin_core::{AppState, Command};
+use urfin_core::{AppState, Command, Focus};
 
 use crate::key::{Chord, KeyCode, Mods, Stroke};
 use crate::keymap::{Binding, Layer};
@@ -99,16 +99,18 @@ impl Compiled {
     }
 
     /// Поиск нажатия `s` после начатого аккорда `pending`.
+    /// Контексты — при фокусе `focus` (обычно `st.focus`).
     pub(crate) fn lookup(
         &self,
         pending: Option<&ChordState>,
         s: Stroke,
         st: &AppState,
+        focus: Focus,
     ) -> Lookup<'_> {
         for v in variants(s).into_iter().flatten() {
             let found = match pending.filter(|p| !p.strokes.is_empty()) {
-                None => self.find_single(v, st),
-                Some(p) => self.find_chord(p, v, st),
+                None => self.find_single(v, st, focus),
+                Some(p) => self.find_chord(p, v, st, focus),
             };
             if !matches!(found, Lookup::Miss) {
                 return found;
@@ -117,55 +119,55 @@ impl Compiled {
         Lookup::Miss
     }
 
-    fn find_single(&self, s: Stroke, st: &AppState) -> Lookup<'_> {
+    fn find_single(&self, s: Stroke, st: &AppState, focus: Focus) -> Lookup<'_> {
         let one: Strokes = std::iter::once(s).collect();
         // Аккорд с этим началом в сработавшем контексте побеждает (PrefixShadow).
-        if self.prefix_live(&one, st) {
+        if self.prefix_live(&one, st, focus) {
             return Lookup::Prefix;
         }
-        match self.single.get(&s).and_then(|list| best(list, st)) {
+        match self.single.get(&s).and_then(|list| best(list, st, focus)) {
             Some(e) => Lookup::Hit(&e.cmds, e.repeatable),
             None => Lookup::Miss,
         }
     }
 
-    fn find_chord(&self, p: &ChordState, s: Stroke, st: &AppState) -> Lookup<'_> {
+    fn find_chord(&self, p: &ChordState, s: Stroke, st: &AppState, focus: Focus) -> Lookup<'_> {
         let mut key = p.strokes.clone();
         key.push(s);
-        if let Some(e) = self.chords.get(&key).and_then(|list| best(list, st)) {
+        if let Some(e) = self.chords.get(&key).and_then(|list| best(list, st, focus)) {
             return Lookup::Hit(&e.cmds, e.repeatable);
         }
-        if self.prefix_live(&key, st) {
+        if self.prefix_live(&key, st, focus) {
             return Lookup::Prefix;
         }
         Lookup::Miss
     }
 
-    fn prefix_live(&self, p: &Strokes, st: &AppState) -> bool {
+    fn prefix_live(&self, p: &Strokes, st: &AppState, focus: Focus) -> bool {
         self.prefixes
             .get(p)
-            .is_some_and(|ws| ws.iter().any(|w| w.eval(st)))
+            .is_some_and(|ws| ws.iter().any(|w| w.matches_as(st, focus).is_some()))
     }
 
     /// Сработает ли именно эта запись на своём аккорде в состоянии `st`.
     pub(crate) fn wins(&self, chord: &Chord, order: u32, st: &AppState) -> bool {
         let list = if chord.0.len() == 1 {
-            if self.prefix_live(&chord.0, st) {
+            if self.prefix_live(&chord.0, st, st.focus) {
                 return false;
             }
             self.single.get(&chord.0[0])
         } else {
             self.chords.get(&chord.0)
         };
-        list.and_then(|l| best(l, st))
+        list.and_then(|l| best(l, st, st.focus))
             .is_some_and(|e| e.order == order)
     }
 }
 
 /// Лучшая сработавшая запись.
-fn best<'a>(list: &'a [Entry], st: &AppState) -> Option<&'a Entry> {
+fn best<'a>(list: &'a [Entry], st: &AppState, focus: Focus) -> Option<&'a Entry> {
     list.iter()
-        .filter_map(|e| e.when.matches(st).map(|spec| (spec, e)))
+        .filter_map(|e| e.when.matches_as(st, focus).map(|spec| (spec, e)))
         .max_by_key(|(spec, e)| (*spec, e.layer, e.order))
         .map(|(_, e)| e)
 }

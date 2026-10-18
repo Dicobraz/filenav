@@ -13,6 +13,7 @@ compact_str.workspace = true
 egui.workspace = true
 urfin-core.workspace = true
 urfin-i18n.workspace = true
+urfin-keymap.workspace = true
 urfin-vfs.workspace = true
 rustc-hash.workspace = true
 serde.workspace = true

@@ -17,6 +17,7 @@
 | 0013 | [Аргумент `ui.draft` — `command`, а не `cmd`](0013-ui-draft-command-arg.md) |
 | 0014 | [Ввод пути и меню подкаталогов breadcrumb — через handler `ui`](0014-breadcrumb-io-commands.md) |
 | 0015 | [Где действует контекст `global` keymap](0015-global-context.md) |
+| 0016 | [Быстрый поиск ведёт keymap (S3), ui рисует](0016-quick-search-owner.md) |
 
 Новые ADR — со следующего свободного номера: `NNNN-кратко.md`.
 

@@ -337,6 +337,7 @@ fn create_app(
                 let t = Instant::now();
                 let mut core = Core::new(boot, services, waker.clone());
                 urfin_ui::register(&mut core);
+                urfin_keymap::register(&mut core);
                 startup.core = t.elapsed();
                 core
             };
@@ -695,6 +696,7 @@ mod tests {
         let (config, paths) = (boot.config.clone(), boot.paths.clone());
         let mut core = Core::new(boot, urfin_core::Services::null(), Arc::new(NoWake));
         urfin_ui::register(&mut core);
+        urfin_keymap::register(&mut core);
         (core, config, paths)
     }
 
