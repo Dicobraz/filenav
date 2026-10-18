@@ -73,11 +73,15 @@ fn load_keys(
     }
     let flags = FlagRegistry::with_builtin();
     let (km, warnings) = Keymap::load(paths, &km_cfg, reg, &flags, Os::current());
-    for w in &warnings {
-        tracing::warn!(warning = %w, "keymap");
-    }
+    // Команды сессий, которых ещё нет в сборке, пресеты пропускают молча (лог — в keymap).
     // Тостов — не больше трёх: остальное в логе.
-    out.extend(warnings.iter().take(3).map(|w| format!("keymap: {w}")));
+    out.extend(
+        warnings
+            .iter()
+            .filter(|w| !w.missing_provider())
+            .take(3)
+            .map(|w| format!("keymap: {w}")),
+    );
     (KeyInput::new(km, &km_cfg), out)
 }
 
@@ -694,7 +698,8 @@ mod tests {
         (core, config, paths)
     }
 
-    /// Встроенные пресеты — только команды настоящего реестра (core + ui), на всех ОС.
+    /// Встроенные пресеты против настоящего реестра (core + ui), на всех ОС: только
+    /// команды сессий, которых ещё нет; у имеющихся — верные аргументы.
     #[test]
     fn builtin_presets_match_registry() {
         let (core, _, paths) = core();
@@ -707,7 +712,12 @@ mod tests {
                 };
                 let flags = FlagRegistry::with_builtin();
                 let (km, w) = Keymap::load(&paths, &cfg, core.registry(), &flags, os);
-                assert_eq!(w, Vec::new(), "{preset} {os:?}");
+                let real: Vec<String> = w
+                    .iter()
+                    .filter(|w| !w.missing_provider())
+                    .map(ToString::to_string)
+                    .collect();
+                assert_eq!(real, Vec::<String>::new(), "{preset} {os:?}");
                 assert!(!km.bindings().is_empty());
             }
         }
@@ -811,7 +821,8 @@ mod tests {
     fn foreign_keys_and_text_pass_through() {
         let ctrl = egui::Modifiers::CTRL;
         let events = vec![
-            key(egui::Key::Q, ctrl, true),
+            // Ctrl+W в Far не привязан; Ctrl+↓ — команда S2, которой ещё нет.
+            key(egui::Key::W, ctrl, true),
             key(egui::Key::ArrowDown, ctrl, true),
             key(egui::Key::F5, egui::Modifiers::NONE, true),
             egui::Event::Text("a".into()),
