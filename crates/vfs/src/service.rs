@@ -6,17 +6,18 @@
 //! пересорт по ходу — S4-06), затем `Done`. Ошибка → `Failed`. Отмена (навигация)
 //! — тихий выход, после неё ничего не отправляется.
 
-use std::sync::Arc;
-use std::time::Instant;
+use std::sync::{Arc, OnceLock};
+use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 use urfin_core::{
     ArrangeReq, ArrangeSpec, Entry, ListingService, ListingUpdate, LoadReq, Runtime, SortKey,
-    TaskCx, listing_msg,
+    TabEvent, TabId, TaskCx, listing_msg,
 };
 
 use crate::api::{ListOpts, VfsError, VfsRegistry};
 use crate::batch::{Batcher, Resort};
+use crate::hub::Hub;
 use crate::sort::{ArrangeOpts, arrange, visible};
 
 /// Секция `[vfs]` конфига (S4 §2.2). Поля кэша и watcher'а читают S4-12…16.
@@ -67,11 +68,35 @@ impl VfsCfg {
 pub struct VfsListing {
     reg: Arc<VfsRegistry>,
     cfg: VfsCfg,
+    /// Поток наблюдения поднимается с первым листингом (нужен рантайм).
+    hub: OnceLock<Arc<Hub>>,
 }
 
 impl VfsListing {
     pub fn new(reg: Arc<VfsRegistry>, cfg: VfsCfg) -> VfsListing {
-        VfsListing { reg, cfg }
+        VfsListing {
+            reg,
+            cfg,
+            hub: OnceLock::new(),
+        }
+    }
+
+    fn hub(&self, rt: &Runtime) -> Arc<Hub> {
+        let ms = |v: u32| Duration::from_millis(u64::from(v));
+        Arc::clone(self.hub.get_or_init(|| {
+            Arc::new(Hub::start(
+                rt,
+                ms(self.cfg.debounce_ms.into()),
+                ms(self.cfg.max_latency_ms.into()),
+                ms(self.cfg.poll_interval_ms),
+            ))
+        }))
+    }
+
+    /// Табы, за каталогами которых сейчас наблюдают (тесты, диагностика).
+    #[doc(hidden)]
+    pub fn watched_tabs(&self) -> Vec<TabId> {
+        self.hub.get().map(|h| h.watched()).unwrap_or_default()
     }
 }
 
@@ -87,12 +112,19 @@ impl ListingService for VfsListing {
     fn load(&self, req: LoadReq, rt: &Runtime) {
         let reg = Arc::clone(&self.reg);
         let opts = self.cfg.arrange_opts();
+        let hub = self.hub(rt);
         rt.spawn(
             urfin_core::Lane::Interactive,
             "vfs.list",
             req.cancel.clone(),
-            move |cx| load(&reg, &req, opts, &cx),
+            move |cx| load(&reg, &req, opts, &cx, &hub),
         );
+    }
+
+    fn tab_event(&self, ev: TabEvent) {
+        if let Some(h) = self.hub.get() {
+            h.tab_event(ev);
+        }
     }
 
     fn arrange(&self, req: ArrangeReq, rt: &Runtime) {
@@ -115,8 +147,12 @@ impl ListingService for VfsListing {
 }
 
 /// Поток листинга. Ошибки — `Failed`, отмена — молча.
-fn load(reg: &VfsRegistry, req: &LoadReq, opts: ArrangeOpts, cx: &TaskCx) {
+fn load(reg: &VfsRegistry, req: &LoadReq, opts: ArrangeOpts, cx: &TaskCx, hub: &Hub) {
     let t0 = Instant::now();
+    // Наблюдение — до чтения: изменения во время листинга придут после `Done`.
+    if let Ok(fs) = reg.get(&req.loc) {
+        hub.prepare(fs, req.tab, req.generation, &req.loc);
+    }
     let send = |u: ListingUpdate| {
         cx.sink
             .send(listing_msg(req.tab, req.generation, u), &cx.cancel)
@@ -133,6 +169,7 @@ fn load(reg: &VfsRegistry, req: &LoadReq, opts: ArrangeOpts, cx: &TaskCx) {
             tracing::debug!(target: "list.sorted", elapsed = ?t0.elapsed(), entries = all.len());
             if send(ListingUpdate::Done) {
                 tracing::debug!(target: "list.done", elapsed = ?t0.elapsed(), entries = all.len(), loc = %req.loc.path.display());
+                hub.activate(req.tab, req.generation, all, t0.elapsed());
             }
         }
         // Отменено: ничего не отправляем.
