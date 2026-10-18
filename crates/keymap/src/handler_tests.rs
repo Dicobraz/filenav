@@ -265,6 +265,16 @@ fn broken_file_keeps_previous_keymap() {
     cmd(&mut c, "keymap.reload");
     pump_until(&mut c, |c| c.state().banner.is_some());
     assert_eq!(active(&c).0, 0, "previous keymap kept");
+    let acts: Vec<String> = c
+        .state()
+        .banner
+        .as_ref()
+        .unwrap()
+        .actions
+        .iter()
+        .map(|(_, cmd)| cmd.to_string())
+        .collect();
+    assert_eq!(acts, ["keymap.reload", "app.dismiss_banner"]);
     assert!(active(&c).2.contains(&"F11 = panel.refresh".to_owned()));
     write_user(tmp.path(), good);
     cmd(&mut c, "keymap.reload");

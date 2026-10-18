@@ -7,3 +7,4 @@ keymap-warnings = Раскладка клавиш: { $count } { $count ->
 keymap-kept = Раскладка клавиш не перечитана, осталась прежняя: { $first }
 keymap-dumped = Раскладка клавиш сохранена в { $path }
 keymap-dump-failed = Не удалось сохранить раскладку в { $path }: { $error }
+keymap-action-reload = Перечитать

@@ -472,10 +472,21 @@ fn apply_banner(cx: &mut Cx<'_>, warnings: &[KeymapWarning], kept: bool) {
     });
     match &text {
         Some(t) => {
+            // Кнопки баннера (v2 №15): перечитать после правки файла, скрыть.
+            let i18n = urfin_i18n::current();
+            let mut actions = SmallVec::new();
+            actions.push((
+                i18n.get("keymap-action-reload").into(),
+                Command::new("keymap.reload"),
+            ));
+            actions.push((
+                i18n.get("core-action-dismiss").into(),
+                Command::new("app.dismiss_banner"),
+            ));
             cx.state.banner = Some(Banner {
                 level: Level::Warn,
                 text: t.clone(),
-                actions: SmallVec::new(),
+                actions,
             });
         }
         None if ours.is_some() && cx.state.banner.as_ref().map(|b| &b.text) == ours.as_ref() => {
