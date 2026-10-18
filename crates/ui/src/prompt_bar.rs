@@ -224,7 +224,11 @@ fn buttons(
     let mut clicked = None;
     for (i, b) in list.iter().enumerate().rev() {
         let label_w = text_width(cx, &b.label, Font::Ui, body);
-        let chip_w = text_width(cx, &b.chip, Font::Caption, caption) + 2.0 * pad / 2.0;
+        let chip_w = if b.chip.is_empty() {
+            -pad
+        } else {
+            text_width(cx, &b.chip, Font::Caption, caption) + pad
+        };
         let w = pad + label_w + pad + chip_w + pad;
         let rect = Rect::from_min_max(pos2(x - w, y - h / 2.0), pos2(x, y + h / 2.0));
         let (bg, fg) = if b.accent {
@@ -255,15 +259,17 @@ fn buttons(
             pos2(rect.right() - pad - chip_w, y - caption * 0.75),
             pos2(rect.right() - pad, y + caption * 0.75),
         );
-        c.stroke(chip, Role::StrokeControl, radius, t.m(Metric::StrokeThin));
-        c.text(
-            chip.center(),
-            Align2::CENTER_CENTER,
-            &Tx::user(b.chip.as_str()),
-            Font::Caption,
-            caption,
-            fg,
-        );
+        if !b.chip.is_empty() {
+            c.stroke(chip, Role::StrokeControl, radius, t.m(Metric::StrokeThin));
+            c.text(
+                chip.center(),
+                Align2::CENTER_CENTER,
+                &Tx::user(b.chip.as_str()),
+                Font::Caption,
+                caption,
+                fg,
+            );
+        }
         let id = cx.ui.scope_id().with(("prompt-btn", salt, i));
         if cx.ui.interact(rect, id, Sense::click()).clicked() {
             clicked = Some(b.action.clone());
@@ -1047,6 +1053,58 @@ fn draft(
         }
     }
     if let Some(Action::Cmds(cmds)) = action {
+        out.extend(cmds);
+    }
+}
+
+/// Баннер core (`AppState.banner`: сбой прошлого запуска, конфиг, раскладка; S2-17):
+/// иконка, текст и кнопки `actions` (≤3, v2 №15). Подложку и рамку рисует `frame`.
+#[allow(clippy::many_single_char_names, reason = "геометрия: c, t, r, b, x, y")]
+pub(crate) fn app_banner(
+    c: &mut dyn Canvas,
+    cx: &mut BarCx<'_>,
+    r: Rect,
+    b: &urfin_core::Banner,
+    out: &mut Vec<Command>,
+) {
+    let t = cx.tokens;
+    let (tone, icon) = match b.level {
+        urfin_core::Level::Error => (Tone::Critical, crate::icons::ERROR_BADGE),
+        urfin_core::Level::Warn => (Tone::Caution, glyph::WARNING),
+        urfin_core::Level::Info => (Tone::Info, glyph::INFO),
+    };
+    let y = head_y(t, r, false);
+    let pad = t.m(Metric::SpaceL);
+    let icon_size = t.m(Metric::WIcon);
+    c.icon(
+        pos2(r.left() + pad + icon_size / 2.0, y),
+        icon,
+        icon_size,
+        tone.fg(),
+    );
+    let x = r.left() + pad + icon_size + t.m(Metric::SpaceM);
+    let list: Vec<Button> = b
+        .actions
+        .iter()
+        .take(3)
+        .map(|(label, cmd)| Button {
+            label: label.to_string(),
+            chip: String::new(),
+            accent: false,
+            focused: false,
+            action: Action::Cmds(vec![cmd.clone()]),
+        })
+        .collect();
+    let (clicked, left) = buttons(c, cx, r.right() - pad, y, &list, "banner");
+    c.text_clipped(
+        pos2(x, y),
+        (left - t.m(Metric::SpaceM) - x).max(0.0),
+        &Tx::user(b.text.as_str()),
+        Font::Ui,
+        t.m(Metric::TypeBody),
+        Role::TextPrimary,
+    );
+    if let Some(Action::Cmds(cmds)) = clicked {
         out.extend(cmds);
     }
 }

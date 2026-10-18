@@ -367,3 +367,54 @@ fn hidden_prompt_and_priority() {
     assert!(matches!(bar(&s, &st), Some(Bar::Draft(_))));
     let _ = Arc::new(());
 }
+
+/// Баннер core (S2-17): текст и кнопки действий без чипов; клик — команда действия.
+#[test]
+fn app_banner_actions() {
+    let mut fx = Fx::new();
+    let banner = urfin_core::Banner {
+        level: urfin_core::Level::Error,
+        text: "Прошлый запуск завершился сбоем".into(),
+        actions: SmallVec::from_vec(vec![
+            ("Показать логи".into(), urfin_core::Command::new("panel.go")),
+            (
+                "Закрыть".into(),
+                urfin_core::Command::new("app.dismiss_banner"),
+            ),
+        ]),
+    };
+    let input = egui::RawInput {
+        screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 768.0))),
+        ..Default::default()
+    };
+    let mut yaml = String::new();
+    let mut out = Vec::new();
+    let ctx = fx.ctx.clone();
+    let mut full = ctx.run_ui(input, |root| {
+        let r = Rect::from_min_size(pos2(8.0, 48.0), vec2(1264.0, 48.0));
+        let mut c = RecordCanvas::new(&fx.i18n);
+        app_banner(
+            &mut c,
+            &mut BarCx {
+                ui: root,
+                i18n: &fx.i18n,
+                tokens: &fx.tokens,
+                fonts: &fx.fonts,
+                fmt: &fx.fmt,
+                memo: &mut fx.memo,
+            },
+            r,
+            &banner,
+            &mut out,
+        );
+        yaml = c.to_yaml();
+    });
+    full.textures_delta.clear();
+    assert!(yaml.contains("Прошлый запуск завершился сбоем"), "{yaml}");
+    assert!(
+        yaml.contains("Показать логи") && yaml.contains("Закрыть"),
+        "{yaml}"
+    );
+    assert!(yaml.contains("critical.fg"), "{yaml}");
+    assert_eq!(out.len(), 0);
+}

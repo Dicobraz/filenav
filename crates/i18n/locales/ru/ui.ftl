@@ -140,3 +140,18 @@ ui-draft-sel-remove = Снять пометку по маске
 ui-draft-panel-filter = Фильтр
 # Переименование по месту (S2-16)
 ui-rename-hint = Enter — переименовать · Esc — отмена
+# Job-бар (S2-17)
+ui-job-speed = { $size }/с
+ui-job-phase-scan = Подсчёт
+ui-job-phase-verify = Проверка
+ui-job-phase-finalize = Завершение
+ui-job-phase-recover = Восстановление
+ui-job-eta-sec = ≈ { $s } с
+ui-job-eta-min = ≈ { $m } мин
+ui-job-eta-hour = ≈ { $h } ч { $m } мин
+ui-job-questions = { $count } { $count ->
+    [one] вопрос
+    [few] вопроса
+   *[many] вопросов
+}
+ui-jobs-count = Задачи { $count }
