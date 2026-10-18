@@ -192,3 +192,113 @@ pub fn label(root: &Path) -> Option<String> {
     let n = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
     Some(String::from_utf16_lossy(&buf[..n]))
 }
+
+/// Том пути `p` (S5 §3.2 без IOCTL носителя — S5-02): `GetVolumePathNameW`,
+/// `GetVolumeInformationW` (метка, ФС, флаги), `GetDriveTypeW`, `GetDiskFreeSpaceW`.
+pub fn volume(p: &Path) -> Result<crate::volume::VolumeInfo, VfsError> {
+    use std::os::windows::ffi::OsStrExt;
+
+    use windows_sys::Win32::Storage::FileSystem::{GetDiskFreeSpaceW, GetVolumePathNameW};
+
+    use crate::volume::{FsKind, Media, VolCaps, VolumeInfo};
+
+    const FILE_CASE_SENSITIVE_SEARCH: u32 = 0x1;
+    const FILE_FILE_COMPRESSION: u32 = 0x10;
+    const FILE_SUPPORTS_SPARSE_FILES: u32 = 0x40;
+    const FILE_SUPPORTS_POSIX_UNLINK_RENAME: u32 = 0x400;
+    const FILE_NAMED_STREAMS: u32 = 0x0004_0000;
+    const FILE_SUPPORTS_BLOCK_REFCOUNTING: u32 = 0x0800_0000;
+
+    let err = |p: &Path| {
+        // SAFETY: без аргументов.
+        let code = unsafe { GetLastError() };
+        VfsError::from_io(p, std::io::Error::from_raw_os_error(code.cast_signed()))
+    };
+    let path: Vec<u16> = p.as_os_str().encode_wide().chain(Some(0)).collect();
+    let mut root = [0u16; 261];
+    // SAFETY: путь NUL-терминирован, буфер — 261 символ.
+    let ok = unsafe {
+        GetVolumePathNameW(
+            path.as_ptr(),
+            root.as_mut_ptr(),
+            u32::try_from(root.len()).unwrap_or(0),
+        )
+    };
+    if ok == 0 {
+        return Err(err(p));
+    }
+    let n = root.iter().position(|&c| c == 0).unwrap_or(root.len());
+    let root_path = std::path::PathBuf::from(String::from_utf16_lossy(&root[..n]));
+    let (mut label, mut fs_name) = ([0u16; 261], [0u16; 261]);
+    let (mut serial, mut max_len, mut flags) = (0u32, 0u32, 0u32);
+    // SAFETY: корень NUL-терминирован (из `GetVolumePathNameW`), буферы по 261.
+    let ok = unsafe {
+        GetVolumeInformationW(
+            root.as_ptr(),
+            label.as_mut_ptr(),
+            u32::try_from(label.len()).unwrap_or(0),
+            &raw mut serial,
+            &raw mut max_len,
+            &raw mut flags,
+            fs_name.as_mut_ptr(),
+            u32::try_from(fs_name.len()).unwrap_or(0),
+        )
+    };
+    if ok == 0 {
+        return Err(err(&root_path));
+    }
+    let text = |b: &[u16]| {
+        let n = b.iter().position(|&c| c == 0).unwrap_or(b.len());
+        String::from_utf16_lossy(&b[..n])
+    };
+    // SAFETY: NUL-терминированный корень.
+    let media = match unsafe { GetDriveTypeW(root.as_ptr()) } {
+        2 => Media::Usb,
+        4 => Media::Net,
+        _ => Media::Unknown,
+    };
+    let (mut spc, mut bps, mut free, mut total) = (0u32, 0u32, 0u32, 0u32);
+    // SAFETY: корень NUL-терминирован, выходы — валидные `u32`.
+    let cluster = if unsafe {
+        GetDiskFreeSpaceW(
+            root.as_ptr(),
+            &raw mut spc,
+            &raw mut bps,
+            &raw mut free,
+            &raw mut total,
+        )
+    } != 0
+    {
+        spc.saturating_mul(bps)
+    } else {
+        0
+    };
+    let mut caps = 0;
+    for (flag, cap) in [
+        (FILE_SUPPORTS_BLOCK_REFCOUNTING, VolCaps::CLONE),
+        (FILE_SUPPORTS_POSIX_UNLINK_RENAME, VolCaps::POSIX_DELETE),
+        (FILE_SUPPORTS_SPARSE_FILES, VolCaps::SPARSE),
+        (FILE_NAMED_STREAMS, VolCaps::ADS),
+        (FILE_CASE_SENSITIVE_SEARCH, VolCaps::CASE_SENSITIVE),
+        (FILE_FILE_COMPRESSION, VolCaps::COMPRESSION),
+    ] {
+        if flags & flag != 0 {
+            caps |= cap;
+        }
+    }
+    // Корзина — у локальных томов (на сетевых Проводник удаляет насовсем).
+    if media != Media::Net {
+        caps |= VolCaps::TRASH;
+    }
+    let fs_name = text(&fs_name);
+    Ok(VolumeInfo {
+        id: u64::from(serial),
+        root: root_path,
+        label: text(&label),
+        fs: FsKind::from_name(&fs_name),
+        fs_name,
+        media,
+        caps: VolCaps(caps),
+        cluster,
+    })
+}

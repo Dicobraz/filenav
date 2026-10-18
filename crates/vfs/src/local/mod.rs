@@ -184,7 +184,7 @@ fn root_label(p: &Path) -> Option<String> {
 }
 
 /// Место на томе с путём `p`.
-fn space_of(p: &Path) -> Result<Space, VfsError> {
+pub(crate) fn space_of(p: &Path) -> Result<Space, VfsError> {
     #[cfg(windows)]
     {
         crate::sys::win_meta::space(p)

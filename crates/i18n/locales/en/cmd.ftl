@@ -95,3 +95,14 @@ cmd-keymap-preset = Key bindings preset
 cmd-keymap-show = Key bindings
 cmd-keymap-dump = Export key bindings
     .menu-key = x
+# Дерево в панели (S2-18)
+cmd-ui-tree-up = Tree: up
+cmd-ui-tree-down = Tree: down
+cmd-ui-tree-page_up = Tree: page up
+cmd-ui-tree-page_down = Tree: page down
+cmd-ui-tree-home = Tree: first
+cmd-ui-tree-end = Tree: last
+cmd-ui-tree-expand = Tree: expand
+cmd-ui-tree-collapse = Tree: collapse
+cmd-ui-tree-enter = Tree: open
+cmd-ui-tree-select = Tree: select

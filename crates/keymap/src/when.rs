@@ -41,7 +41,7 @@ impl FlagRegistry {
         }
     }
 
-    /// Встроенные: `qs`, `has_selection`, `on_parent_row`, `cmdline_empty` (заглушка до
+    /// Встроенные: `qs`, `has_selection`, `tree`, `on_parent_row`, `cmdline_empty` (заглушка до
     /// S6), `os_windows`, `os_macos`, `os_linux`.
     pub fn with_builtin() -> Self {
         let mut r = Self::empty();
@@ -49,6 +49,10 @@ impl FlagRegistry {
             st.focus == Focus::Overlay(OverlayKind::QuickSearch)
         });
         r.register("has_selection", |st| !st.active_tab().selection.is_empty());
+        // Активная панель — дерево каталогов (S2-18): стрелки и Enter ведут дерево.
+        r.register("tree", |st| {
+            st.active_tab().mode == urfin_core::PanelMode::Tree
+        });
         r.register("on_parent_row", |st| {
             matches!(st.active_tab().current(), Some(Row::Parent))
         });

@@ -78,6 +78,18 @@ name = "base"
 "Ctrl+Insert" = { cmd = "ui.copy_names", full = false }
 "Shift+Enter" = "file.reveal"
 
+# ---- Дерево каталогов в панели (S2-18): стрелки и Enter — по дереву ----
+[context."panel && tree && cmdline_empty"]
+"Up" = "ui.tree.up"
+"Down" = "ui.tree.down"
+"PageUp" = "ui.tree.page_up"
+"PageDown" = "ui.tree.page_down"
+"Home" = "ui.tree.home"
+"End" = "ui.tree.end"
+"Right" = "ui.tree.expand"
+"Left" = "ui.tree.collapse"
+"Enter" = "ui.tree.enter"
+
 # ---- §3.4 командная строка (S6): в панели и в cmdline ----
 # `cmdline.del.*` — в S3 §3 `cmdline.delete.*`: `delete.word_right` длиннее 24 байт id (S1 §2.1).
 [context."panel || cmdline"]

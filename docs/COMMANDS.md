@@ -107,7 +107,7 @@
 | `prompt.reply` | `id:int`, `choice:str`, `input?:str`, `all?:bool` | Answer | Ответить | — | — |
 | `prompt.cancel` | `id:int` | Dismiss | Закрыть | — | — |
 
-## `ui` (16)
+## `ui` (26)
 
 | Команда | Аргументы | EN | RU | Клавиши (Far) | Меню F9 |
 |---|---|---|---|---|---|
@@ -127,6 +127,16 @@
 | `ui.columns` | `set:str` | Columns | Колонки | — | — |
 | `ui.panels.toggle_all` | — | Hide or show panels | Скрыть или показать панели | Ctrl+O | commands |
 | `ui.about` | — | About | О программе | — | options |
+| `ui.tree.up` | — | Tree: up | Дерево: вверх | — | — |
+| `ui.tree.down` | — | Tree: down | Дерево: вниз | — | — |
+| `ui.tree.page_up` | — | Tree: page up | Дерево: страница вверх | — | — |
+| `ui.tree.page_down` | — | Tree: page down | Дерево: страница вниз | — | — |
+| `ui.tree.home` | — | Tree: first | Дерево: в начало | — | — |
+| `ui.tree.end` | — | Tree: last | Дерево: в конец | — | — |
+| `ui.tree.expand` | — | Tree: expand | Дерево: развернуть | — | — |
+| `ui.tree.collapse` | — | Tree: collapse | Дерево: свернуть | — | — |
+| `ui.tree.enter` | — | Tree: open | Дерево: открыть | — | — |
+| `ui.tree.select` | `n:int` | Tree: select | Дерево: выбрать | — | — |
 
 ## `keymap` (11)
 

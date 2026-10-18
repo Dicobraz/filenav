@@ -33,6 +33,8 @@ mod tabs;
 pub mod text;
 mod titlebar;
 pub mod tokens;
+pub mod views;
+mod views_draw;
 
 use std::collections::VecDeque;
 use std::sync::mpsc;
@@ -549,6 +551,25 @@ impl UrfinUi {
             i18n,
         };
         let mut ui = root.new_child(egui::UiBuilder::new().max_rect(r));
+        // Дерево, «Инфо», быстрый просмотр (S2-18) — вместо списка.
+        if p.tab().mode != urfin_core::PanelMode::Files {
+            views_draw::show(
+                &mut c,
+                &mut views_draw::ViewCx {
+                    ui: &mut ui,
+                    i18n,
+                    tokens: &self.tokens,
+                    fmt: &self.fmt.1,
+                },
+                r,
+                s,
+                st,
+                side,
+                s.active == side,
+                out,
+            );
+            return;
+        }
         let mut cx = file_list::ListCx {
             ui: &mut ui,
             i18n,

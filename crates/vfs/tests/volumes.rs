@@ -126,3 +126,18 @@ fn stat_file_metadata() {
         assert_eq!(md.reparse_tag, None);
     }
 }
+
+/// Том временного каталога: корень — префикс пути, ФС и кластер известны.
+#[test]
+fn volume_of_temp_dir() {
+    let tmp = tempfile::tempdir().unwrap();
+    let v = urfin_vfs::volume::of(tmp.path()).unwrap();
+    assert!(
+        tmp.path().starts_with(&v.root) || cfg!(target_os = "macos"),
+        "{v:?}"
+    );
+    if cfg!(windows) {
+        assert!(!v.fs_name.is_empty() && v.cluster > 0, "{v:?}");
+        assert!(v.caps.has(urfin_vfs::volume::VolCaps::TRASH));
+    }
+}
