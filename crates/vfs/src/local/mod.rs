@@ -257,7 +257,15 @@ impl Vfs for LocalFs {
         Some(p.path.clone())
     }
 
-    fn watch(&self, _dir: &VfsPath, _tx: WatchTx) -> Result<WatchGuard, VfsError> {
-        Err(VfsError::Unsupported("watch: S4-12"))
+    fn watch(&self, dir: &VfsPath, tx: WatchTx) -> Result<WatchGuard, VfsError> {
+        #[cfg(windows)]
+        {
+            crate::sys::win_watch::watch(&dir.path, tx)
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = (dir, tx);
+            Err(VfsError::Unsupported("watch: S4-13"))
+        }
     }
 }
