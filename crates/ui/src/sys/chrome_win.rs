@@ -8,6 +8,10 @@
 //!   (меню Snap Layouts Win11), верх → `HTTOP*`.
 //! - События кнопки «развернуть» неклиентские: наведение и нажатие ведёт эта процедура.
 //! - DWM: тёмная рамка по теме, Mica (`DWMWA_SYSTEMBACKDROP_TYPE`) или сплошной фон.
+//! - С Mica у окна нет `WS_CAPTION`: рамка растянута на всего клиента, и DWM рисовал
+//!   бы под прозрачным заголовком свои кнопки caption — глифы двоились с нашими. Без
+//!   заголовка развёрнутое окно занимает весь монитор, поэтому `WM_GETMINMAXINFO`
+//!   возвращает рабочую область (панель задач видна, автоскрытая — выезжает).
 
 #![allow(unsafe_code)]
 #![allow(
@@ -22,20 +26,26 @@ use std::sync::atomic::Ordering;
 
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows_sys::Win32::Graphics::Dwm::{DwmExtendFrameIntoClientArea, DwmSetWindowAttribute};
-use windows_sys::Win32::Graphics::Gdi::ScreenToClient;
+use windows_sys::Win32::Graphics::Gdi::{
+    GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow, ScreenToClient,
+};
 use windows_sys::Win32::UI::Controls::MARGINS;
 use windows_sys::Win32::UI::HiDpi::{GetDpiForWindow, GetSystemMetricsForDpi};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     TME_LEAVE, TME_NONCLIENT, TRACKMOUSEEVENT, TrackMouseEvent,
 };
-use windows_sys::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
+use windows_sys::Win32::UI::Shell::{
+    ABE_BOTTOM, ABE_LEFT, ABE_RIGHT, ABE_TOP, ABM_GETAUTOHIDEBAREX, APPBARDATA, DefSubclassProc,
+    RemoveWindowSubclass, SHAppBarMessage, SetWindowSubclass,
+};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    GetClientRect, GetWindowRect, HTCAPTION, HTCLIENT, HTMAXBUTTON, HTTOP, HTTOPLEFT, HTTOPRIGHT,
-    IsZoomed, NCCALCSIZE_PARAMS, SM_CXFRAME, SM_CXPADDEDBORDER, SM_CYFRAME, SW_MAXIMIZE,
-    SW_RESTORE, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOZORDER,
-    SetWindowPos, ShowWindow, WM_DWMCOMPOSITIONCHANGED, WM_MOUSEMOVE, WM_NCCALCSIZE, WM_NCDESTROY,
-    WM_NCHITTEST, WM_NCLBUTTONDBLCLK, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP, WM_NCMOUSELEAVE,
-    WM_NCMOUSEMOVE, WM_SETTINGCHANGE,
+    GWL_STYLE, GetClientRect, GetWindowLongPtrW, GetWindowRect, HTCAPTION, HTCLIENT, HTMAXBUTTON,
+    HTTOP, HTTOPLEFT, HTTOPRIGHT, IsZoomed, MINMAXINFO, NCCALCSIZE_PARAMS, SM_CXFRAME,
+    SM_CXPADDEDBORDER, SM_CYFRAME, STYLESTRUCT, SW_MAXIMIZE, SW_RESTORE, SWP_FRAMECHANGED,
+    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOZORDER, SetWindowLongPtrW, SetWindowPos,
+    ShowWindow, WM_DWMCOMPOSITIONCHANGED, WM_GETMINMAXINFO, WM_MOUSEMOVE, WM_NCCALCSIZE,
+    WM_NCDESTROY, WM_NCHITTEST, WM_NCLBUTTONDBLCLK, WM_NCLBUTTONDOWN, WM_NCLBUTTONUP,
+    WM_NCMOUSELEAVE, WM_NCMOUSEMOVE, WM_SETTINGCHANGE, WM_STYLECHANGING, WS_CAPTION,
 };
 
 use crate::chrome::{ChromeHandle, ChromeShared, Hit};
@@ -72,6 +82,13 @@ pub(super) fn install(hwnd: isize, egui: &egui::Context, mica: bool) -> Option<C
         if SetWindowSubclass(hwnd, Some(proc), SUBCLASS_ID, data as usize) == 0 {
             drop(Box::from_raw(data));
             return None;
+        }
+    }
+    if mica {
+        // SAFETY: окно живо; рамку пересчитает `keep_client_size`.
+        unsafe {
+            let style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+            SetWindowLongPtrW(hwnd, GWL_STYLE, style & !(WS_CAPTION as isize));
         }
     }
     apply_backdrop(hwnd, mica);
@@ -154,6 +171,54 @@ fn apply_backdrop(hwnd: HWND, mica: bool) {
             size_of::<i32>() as u32,
         );
     }
+}
+
+/// Развёрнутое окно без заголовка — по рабочей области монитора, как окно с
+/// заголовком: рамка ресайза уходит за край, клиент (`WM_NCCALCSIZE`) — ровно рабочая
+/// область. При автоскрытой панели задач оставляем у её края 1 px, иначе Windows
+/// считает окно полноэкранным и панель не выезжает.
+fn max_to_work_area(hwnd: HWND, mm: &mut MINMAXINFO) {
+    let mut mi = MONITORINFO {
+        cbSize: size_of::<MONITORINFO>() as u32,
+        ..MONITORINFO::default()
+    };
+    // SAFETY: структура на стеке с cbSize.
+    let ok = unsafe {
+        let mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        GetMonitorInfoW(mon, &raw mut mi) != 0
+    };
+    if !ok {
+        return;
+    }
+    let (m, mut w) = (mi.rcMonitor, mi.rcWork);
+    for edge in [ABE_LEFT, ABE_TOP, ABE_RIGHT, ABE_BOTTOM] {
+        let mut abd = APPBARDATA {
+            cbSize: size_of::<APPBARDATA>() as u32,
+            uEdge: edge,
+            rc: m,
+            ..APPBARDATA::default()
+        };
+        // SAFETY: структура на стеке с cbSize; ABM_GETAUTOHIDEBAREX только читает.
+        if unsafe { SHAppBarMessage(ABM_GETAUTOHIDEBAREX, &raw mut abd) } == 0 {
+            continue;
+        }
+        match edge {
+            ABE_LEFT => w.left = w.left.max(m.left + 1),
+            ABE_TOP => w.top = w.top.max(m.top + 1),
+            ABE_RIGHT => w.right = w.right.min(m.right - 1),
+            _ => w.bottom = w.bottom.min(m.bottom - 1),
+        }
+    }
+    let (fx, fy) = frame(hwnd);
+    // Позиция — от начала монитора окна (для другого монитора Windows пересчитает).
+    mm.ptMaxPosition = POINT {
+        x: w.left - m.left - fx,
+        y: w.top - m.top - fy,
+    };
+    mm.ptMaxSize = POINT {
+        x: w.right - w.left + 2 * fx,
+        y: w.bottom - w.top + 2 * fy,
+    };
 }
 
 /// Толщина невидимой рамки ресайза по DPI окна.
@@ -269,6 +334,23 @@ unsafe extern "system" fn proc(
             }
             repaint(c);
             0
+        }
+        WM_STYLECHANGING if c.mica && wparam as i32 == GWL_STYLE => {
+            // winit пересобирает стиль из своих флагов (разворот, ресайз) — заголовок
+            // не возвращаем.
+            // SAFETY: при GWL_STYLE lParam — STYLESTRUCT.
+            let st = unsafe { &mut *(lparam as *mut STYLESTRUCT) };
+            st.styleNew &= !WS_CAPTION;
+            0
+        }
+        WM_GETMINMAXINFO if c.mica => {
+            // Сначала winit: минимальный размер окна.
+            // SAFETY: штатная обработка.
+            let r = unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) };
+            // SAFETY: при WM_GETMINMAXINFO lParam — MINMAXINFO.
+            let mm = unsafe { &mut *(lparam as *mut MINMAXINFO) };
+            max_to_work_area(hwnd, mm);
+            r
         }
         WM_DWMCOMPOSITIONCHANGED | WM_SETTINGCHANGE => {
             apply_backdrop(hwnd, c.mica);
