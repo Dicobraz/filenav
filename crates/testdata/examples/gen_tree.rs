@@ -1,10 +1,12 @@
 //! Дерево для бенчей листинга (S4 §7):
-//! `cargo run -p urfin-testdata --example gen_tree --release -- --n 100000 --seed 1 --out <каталог> [--nav 1000]`.
+//! `cargo run -p urfin-testdata --example gen_tree --release -- --n 100000 --seed 1 [--nav 1000] [--out <каталог>]`.
+//! Без `--out` — датасет `gen-<n>-s<seed>[-nav<d>]` в `%LOCALAPPDATA%\Pets\testdata\urfin`
+//! (H-01): при тех же аргументах берётся готовый. Печатает путь.
 
 use std::path::PathBuf;
 use std::time::Instant;
 
-use urfin_testdata::{Layout, TreeSpec, gen_tree};
+use urfin_testdata::{Layout, TreeSpec, dataset, gen_tree};
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -23,9 +25,18 @@ fn main() {
             other => panic!("unknown argument {other}"),
         }
     }
-    let out = out.expect("--out <каталог>");
+    let spec = TreeSpec { n, seed, layout };
     let t = Instant::now();
-    let r = gen_tree(&out, &TreeSpec { n, seed, layout }).expect("gen_tree");
+    let Some(out) = out else {
+        let name = match layout {
+            Layout::Flat => format!("gen-{n}-s{seed}"),
+            Layout::Nav { dirs } => format!("gen-{n}-s{seed}-nav{dirs}"),
+        };
+        let dir = dataset("urfin", &name, &spec).expect("dataset");
+        println!("{} ({:.1} s)", dir.display(), t.elapsed().as_secs_f64());
+        return;
+    };
+    let r = gen_tree(&out, &spec).expect("gen_tree");
     println!(
         "{} in {:.1} s: {r:?}",
         out.display(),

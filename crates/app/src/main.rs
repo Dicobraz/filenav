@@ -364,8 +364,10 @@ fn smoke(
 ) -> anyhow::Result<()> {
     let root = demo_root();
     let mut boot = Boot::new(root.clone(), root);
+    // Сессия и keymap прогона — в своём временном каталоге; удаляется в конце.
+    let scratch = std::env::temp_dir().join(format!("urfin-smoke-{}", std::process::id()));
     boot.paths = Paths {
-        state_dir: std::env::temp_dir().join("urfin-smoke-state"),
+        state_dir: scratch.join("state"),
         ..paths
     };
     boot.config = config;
@@ -376,7 +378,7 @@ fn smoke(
     register_handlers(&mut core, &smoke_config);
     let _ = urfin_keymap::register(
         &mut core,
-        Paths::in_dir(std::env::temp_dir().join("urfin-smoke-keymap")),
+        Paths::in_dir(scratch.join("keymap")),
         urfin_keymap::KeymapCfg::default(),
         urfin_keymap::FlagRegistry::with_builtin(),
     );
@@ -430,6 +432,7 @@ fn smoke(
     }
     tracing::debug!(commands = n, errors = errors.len(), "smoke done");
     let _ = core.shutdown(Duration::from_millis(500));
+    let _ = std::fs::remove_dir_all(&scratch);
     anyhow::ensure!(
         errors.is_empty(),
         "smoke: {} errors, first: {}",

@@ -71,5 +71,23 @@ function GhTool($exe, $repoName, $tagPrefix, $pattern) {
 GhTool 'cargo-nextest.exe' 'nextest-rs/nextest' 'cargo-nextest-' '*x86_64-pc-windows-msvc.zip'
 GhTool 'cargo-deny.exe' 'EmbarkStudios/cargo-deny' '' '*x86_64-pc-windows-msvc.tar.gz'
 
+# 4. Общий каталог сборки на Dev Drive (H-01): Urfin, Postman и pets делят зависимости
+# (gpui и др. собираются один раз). Только если D: — Dev Drive (ReFS), как в
+# pets/scripts/stand/setup-windows.ps1; иначе не трогаем.
+$vol = Get-Volume -DriveLetter D -ErrorAction SilentlyContinue
+if ($vol -and $vol.FileSystemType -eq 'ReFS') {
+    $current = [Environment]::GetEnvironmentVariable('CARGO_TARGET_DIR', 'User')
+    if ($current -ne 'D:\cargo-target') {
+        New-Item -ItemType Directory -Force 'D:\cargo-target' | Out-Null
+        setx CARGO_TARGET_DIR 'D:\cargo-target' | Out-Null
+        Write-Host 'CARGO_TARGET_DIR=D:\cargo-target (новые окна терминала)'
+    } else {
+        Write-Host 'CARGO_TARGET_DIR уже D:\cargo-target'
+    }
+} else {
+    Write-Host 'Dev Drive D: не найден — CARGO_TARGET_DIR не меняется (target\ в каждом репо)'
+}
+
 Write-Host ''
 Write-Host 'Готово. Проверка: cargo build --workspace; cargo nextest run --workspace'
+Write-Host 'Чистка диска: scripts/stand/clean.ps1 (список), с -Apply — удалить'

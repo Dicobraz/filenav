@@ -3448,6 +3448,9 @@ version = "0.1.0"
 [[package]]
 name = "urfin-testdata"
 version = "0.1.0"
+dependencies = [
+ "tempfile",
+]
 
 [[package]]
 name = "urfin-ui"
