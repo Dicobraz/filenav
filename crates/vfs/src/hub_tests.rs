@@ -231,7 +231,47 @@ fn watches_are_independent() {
     assert_eq!(d.deadline(), None);
 }
 
-/// Пауза пишущего (один flush по тишине) не сбрасывает подсчёт шторма.
+/// Рваный поток (пишущий тормозит, flush'и по тишине), но по многу имён — шторм
+/// с третьего тяжёлого flush'а; одиночные файлы раз в 120 мс — нет.
+#[test]
+fn heavy_bursts_are_a_storm_single_files_are_not() {
+    let t0 = Instant::now();
+    let mut d = deb();
+    let mut i = 0u64;
+    let mut kinds = Vec::new();
+    for burst in 0..5u64 {
+        let at = ms(burst * 120);
+        for _ in 0..40 {
+            d.push(W, added(&format!("f{i}")), t0 + at);
+            i += 1;
+        }
+        kinds.extend(
+            d.take_due(t0 + at + DEB)
+                .into_iter()
+                .map(|(_, c)| c == DirChange::Rescan),
+        );
+    }
+    assert_eq!(
+        kinds,
+        [false, false, true],
+        "storm on the third heavy flush"
+    );
+
+    let mut d = deb();
+    let mut flushes = 0;
+    for k in 0..20u64 {
+        let at = ms(k * 120);
+        d.push(W, added(&format!("one{k}")), t0 + at);
+        for (_, c) in d.take_due(t0 + at + DEB) {
+            assert_ne!(c, DirChange::Rescan, "single files never storm");
+            flushes += 1;
+        }
+    }
+    assert_eq!(flushes, 20);
+}
+
+/// Пауза пишущего (один flush по тишине) не сбрасывает подсчёт шторма. Поток
+/// «лёгкий» (< `STORM_NAMES` за окно): проверяется именно счёт по `max_latency`.
 #[test]
 fn storm_survives_a_short_pause() {
     let t0 = Instant::now();
@@ -243,7 +283,7 @@ fn storm_survives_a_short_pause() {
         while t < to {
             d.push(W, added(&format!("f{i}")), t0 + t);
             i += 1;
-            t += ms(1);
+            t += ms(10);
         }
     };
     let mut kinds = Vec::new();

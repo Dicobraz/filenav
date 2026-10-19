@@ -13,6 +13,11 @@ name = "urfin"
 path = "src/main.rs"
 
 
+[features]
+# `--screens <dir>`: снимки экранов S2 §2 (S2-21). В обычной сборке нет — фикстуры
+# не нужны пользователю.
+screens = ["urfin-ui/screens"]
+
 [dependencies]
 anyhow.workspace = true
 eframe.workspace = true

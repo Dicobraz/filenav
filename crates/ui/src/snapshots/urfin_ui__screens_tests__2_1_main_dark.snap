@@ -1,0 +1,143 @@
+---
+source: crates/ui/src/screens_tests.rs
+expression: y
+---
+- fill [0, 0, 1280, 768] #202020ff
+- fill [8, 40, 636, 696] #272727ff
+- stroke [8, 40, 636, 696] #00000019 1
+- fill [16, 40, 628, 43] #5babffff
+- fill [644, 40, 1272, 696] #272727ff
+- stroke [644, 40, 1272, 696] #00000019 1
+- text "test:C:\\work\\urfin>" at (20, 712) #ffffffc5
+- fill [8, 8, 104, 40] #272727ff
+- text "urfin" at (20, 16) #ffffffff
+- text "\u{e711}" at (88, 18) #ffffffc5
+- text "\u{e710}" at (119, 17) #ffffffc5
+- fill [644, 8, 740, 40] #272727ff
+- text "photos" at (656, 16) #ffffffff
+- text "\u{e711}" at (724, 18) #ffffffc5
+- text "\u{e710}" at (755, 17) #ffffffc5
+- fill [10, 736, 132, 760] #ffffff0f
+- text "1" at (18, 741) #ffffffc5
+- text "Помощь" at (29, 741) #ffffff5d
+- fill [136, 736, 259, 760] #ffffff0f
+- text "2" at (144, 741) #ffffffc5
+- text "Польз." at (155, 741) #ffffff5d
+- fill [263, 736, 385, 760] #ffffff0f
+- text "3" at (271, 741) #ffffffc5
+- text "Просм." at (282, 741) #ffffff5d
+- fill [389, 736, 512, 760] #ffffff0f
+- text "4" at (397, 741) #ffffffc5
+- text "Правка" at (408, 741) #ffffff5d
+- fill [516, 736, 638, 760] #ffffff0f
+- text "5" at (524, 741) #ffffffc5
+- text "Копир." at (534, 741) #ffffff5d
+- fill [642, 736, 764, 760] #ffffff0f
+- text "6" at (650, 741) #ffffffc5
+- text "Перен." at (661, 741) #ffffff5d
+- fill [768, 736, 891, 760] #ffffff0f
+- text "7" at (776, 741) #ffffffc5
+- text "Папка" at (787, 741) #ffffff5d
+- fill [895, 736, 1017, 760] #ffffff0f
+- text "8" at (903, 741) #ffffffc5
+- text "Удал." at (914, 741) #ffffff5d
+- fill [1021, 736, 1144, 760] #ffffff0f
+- text "9" at (1029, 741) #ffffffc5
+- text "Меню" at (1040, 741) #ffffffff
+- fill [1148, 736, 1270, 760] #ffffff0f
+- text "10" at (1156, 741) #ffffffc5
+- text "Выход" at (1173, 741) #ffffffff
+- text "C:" at (24, 52) #ffffffc5
+- text "\u{e76c}" at (43, 53) #ffffff8b
+- text "work" at (56, 52) #ffffffc5
+- text "\u{e76c}" at (94, 53) #ffffff8b
+- text "urfin" at (107, 52) #ffffffff
+- text "Имя ˄" at (32, 83) #ffffffc5
+- text "Размер" at (459, 83) #ffffffc5
+- text "Изменён" at (508, 83) #ffffffc5
+- fill [424, 83, 424, 97] #ffffff15
+- fill [504, 83, 504, 97] #ffffff15
+- text ".." at (32, 108) #ffffffff
+- text "crates/" at (32, 132) #ffffffff
+- text "13.10.26 09:12" at (508, 132) #ffffffc5
+- text "docs/" at (32, 156) #ffffffff
+- text "12.10.26 09:12" at (508, 156) #ffffffc5
+- text "target/" at (32, 180) #ffffffff
+- text "14.10.26 09:12" at (508, 180) #ffffffc5
+- text ".git/" at (32, 204) #ffffff8b
+- text "14.10.26 09:12" at (508, 204) #ffffffc5
+- text "Cargo.lock" at (32, 228) #ffffffff
+- text "96,0 КБ" at (453, 228) #ffffffc5
+- text "14.10.26 09:12" at (508, 228) #ffffffc5
+- fill [12, 248, 632, 272] #5da8ff29
+- text "\u{e8fb}" at (19, 253) #90c5ffff
+- text "Cargo.toml" at (32, 252) #90c5ffff
+- text "1,2 КБ" at (461, 252) #ffffffc5
+- text "11.10.26 09:12" at (508, 252) #ffffffc5
+- text "CLAUDE.md" at (32, 276) #ffffffff
+- text "4,2 КБ" at (461, 276) #ffffffc5
+- text "13.10.26 09:12" at (508, 276) #ffffffc5
+- text "deny.toml" at (32, 300) #ffffffff
+- text "2,0 КБ" at (461, 300) #ffffffc5
+- text "14.09.26 09:12" at (508, 300) #ffffffc5
+- text "LICENSE" at (32, 324) #ffffffff
+- text "16,3 КБ" at (453, 324) #ffffffc5
+- text "16.06.26 09:12" at (508, 324) #ffffffc5
+- fill [12, 344, 632, 368] #5da8ff29
+- fill [12, 344, 632, 368] #ffffff15
+- stroke [12, 344, 632, 368] #ffffff8b 1
+- text "\u{e8fb}" at (19, 349) #90c5ffff
+- text "README.md" at (32, 348) #90c5ffff
+- text "3,8 КБ" at (461, 348) #ffffffc5
+- text "09.10.26 09:12" at (508, 348) #ffffffc5
+- text "rust-toolchain.toml" at (32, 372) #ffffffff
+- text "96 Б" at (472, 372) #ffffffc5
+- text "15.08.26 09:12" at (508, 372) #ffffffc5
+- text "urfin.exe" at (32, 396) #6ccb5fff
+- text "14,2 МБ" at (449, 396) #ffffffc5
+- text "14.10.26 09:12" at (508, 396) #ffffffc5
+- text "urfin-0.1.0.zip" at (32, 420) #c6b1e8ff
+- text "6,0 МБ" at (457, 420) #ffffffc5
+- text "12.10.26 09:12" at (508, 420) #ffffffc5
+- fill [12, 76, 632, 77] #ffffff15
+- fill [12, 664, 632, 665] #ffffff15
+- text "2 выбрано · 5,0 КБ" at (24, 671) #ffffffc5
+- text "D:" at (660, 52) #ffffffc5
+- text "\u{e76c}" at (680, 53) #ffffff8b
+- text "backup" at (693, 52) #ffffffc5
+- text "\u{e76c}" at (745, 53) #ffffff8b
+- text "photos" at (758, 52) #ffffffff
+- text "Имя ˄" at (668, 83) #ffffffc5
+- fill [854, 104, 855, 664] #ffffff15
+- fill [1060, 104, 1061, 664] #ffffff15
+- fill [648, 104, 854, 128] #ffffff0a
+- text ".." at (668, 108) #ffffffff
+- text "2026-09/" at (668, 132) #ffffffff
+- text "2026-10/" at (668, 156) #ffffffff
+- text "photo-001.jpg" at (668, 180) #ffffffff
+- text "photo-002.jpg" at (668, 204) #ffffffff
+- text "photo-003.jpg" at (668, 228) #ffffffff
+- text "photo-004.jpg" at (668, 252) #ffffffff
+- text "photo-005.jpg" at (668, 276) #ffffffff
+- text "photo-006.jpg" at (668, 300) #ffffffff
+- text "photo-007.jpg" at (668, 324) #ffffffff
+- text "photo-008.jpg" at (668, 348) #ffffffff
+- text "photo-009.jpg" at (668, 372) #ffffffff
+- text "photo-010.jpg" at (668, 396) #ffffffff
+- text "photo-011.jpg" at (668, 420) #ffffffff
+- text "photo-012.jpg" at (668, 444) #ffffffff
+- text "photo-013.jpg" at (668, 468) #ffffffff
+- text "photo-014.jpg" at (668, 492) #ffffffff
+- text "photo-015.jpg" at (668, 516) #ffffffff
+- text "photo-016.jpg" at (668, 540) #ffffffff
+- text "photo-017.jpg" at (668, 564) #ffffffff
+- text "photo-018.jpg" at (668, 588) #ffffffff
+- text "photo-019.jpg" at (668, 612) #ffffffff
+- text "photo-020.jpg" at (668, 636) #ffffffff
+- text "photo-021.jpg" at (874, 108) #ffffffff
+- text "photo-022.jpg" at (874, 132) #ffffffff
+- text "photo-023.jpg" at (874, 156) #ffffffff
+- text "photo-024.jpg" at (874, 180) #ffffffff
+- fill [648, 76, 1268, 77] #ffffff15
+- fill [648, 664, 1268, 665] #ffffff15
+- text "26 объектов · 57,2 МБ" at (660, 671) #ffffffc5

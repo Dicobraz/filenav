@@ -113,16 +113,21 @@ struct Drag {
 pub(crate) struct TabsMemo {
     key: Vec<(TabId, CompactString, bool)>,
     galleys: Vec<Arc<Galley>>,
-    style: (u32, u32),
+    style: (u32, u32, u64),
     pub scroll: f32,
     active: Option<TabId>,
     drag: Option<Drag>,
 }
 
 impl TabsMemo {
-    /// Подписи — пересчёт только при смене табов, активного, шрифта или масштаба.
+    /// Подписи — пересчёт только при смене табов, активного, шрифта, масштаба или
+    /// поколения стиля (атлас шрифтов пересоздан).
     fn refresh(&mut self, ctx: &egui::Context, p: &Panel, fonts: &FontSet, size: f32) {
-        let style = (size.to_bits(), ctx.pixels_per_point().to_bits());
+        let style = (
+            size.to_bits(),
+            ctx.pixels_per_point().to_bits(),
+            crate::style_gen(),
+        );
         let same = self.style == style
             && self.key.len() == p.tabs.len()
             && self

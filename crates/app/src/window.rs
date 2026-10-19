@@ -98,6 +98,8 @@ pub struct Launch {
     pub open: Vec<Command>,
     /// `--selftest <dir>`: сценарий самопроверки и отчёт в `dir`.
     pub selftest: Option<std::path::PathBuf>,
+    /// `--screens <dir>`: снимки экранов S2 §2 (S2-21).
+    pub screens: Option<std::path::PathBuf>,
 }
 
 pub fn run(launch: Launch) -> anyhow::Result<()> {
@@ -324,6 +326,7 @@ fn create_app(
     // Масштаб — только командой `ui.zoom` (S0 v3 №13).
     ctx.options_mut(|o| o.zoom_with_keyboard = false);
     let resumed = matches!(from, Origin::Resume(_));
+    let mut screens_dir = None;
     let (core, keys, key_warnings, waker, startup, ipc, selftest) = match from {
         Origin::Launch(launch) => {
             let Launch {
@@ -332,7 +335,9 @@ fn create_app(
                 ipc,
                 open,
                 selftest,
+                screens,
             } = *launch;
+            screens_dir = screens;
             let services = crate::vfs_services(&boot.config);
             let (config, paths) = (boot.config.clone(), boot.paths.clone());
             startup.window = window_started.elapsed();
@@ -439,6 +444,7 @@ fn create_app(
         ipc,
         activate: 0,
         selftest,
+        screens: screens_dir.map(crate::screens::ScreensRun::new),
         lost,
         restart,
         #[cfg(debug_assertions)]
@@ -471,6 +477,8 @@ struct App {
     /// Сколько кадров ещё выводить окно вперёд после запроса второго запуска.
     activate: u8,
     selftest: Option<crate::selftest::SelfTest>,
+    /// `--screens`: вместо состояния Core — экраны S2 §2 по очереди.
+    screens: Option<crate::screens::ScreensRun>,
     /// Устройство потеряно (`gpu::watch_device`): окно — заново, на следующей попытке.
     lost: Arc<AtomicBool>,
     restart: Restart,
@@ -608,6 +616,16 @@ impl eframe::App for App {
                 })
                 .collect();
             tracing::trace!(target: "frame", rev = s.rev, ?tabs, causes = ?ui.ctx().repaint_causes(), "frame");
+        }
+        if let Some(run) = &mut self.screens {
+            if run.frame(ui, &mut self.ui) {
+                if !self.first_frame_done {
+                    self.first_frame_done = true;
+                    self.reveal = true;
+                }
+                return;
+            }
+            self.screens = None;
         }
         let ev = core.take_ui_events();
         let t_ui = Instant::now();

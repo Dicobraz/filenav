@@ -53,6 +53,10 @@ pub enum DirChange {
 pub const MAX_NAMES: usize = 4096;
 /// Столько flush'ей подряд по `max_latency` — шторм.
 const STORM_FLUSHES: u8 = 3;
+/// «Тяжёлый» flush — от стольких имён (или `Rescan`); три тяжёлых за
+/// `STORM_PERIOD` — шторм, даже если поток событий рвётся (пишущий тормозит) и
+/// flush'и идут по тишине. Работа по одному файлу тяжёлых flush'ей не даёт.
+const STORM_NAMES: usize = 32;
 /// В шторм — только `Rescan`, не чаще.
 const STORM_PERIOD: Duration = Duration::from_secs(1);
 /// Тишина, после которой шторм кончается.
@@ -78,6 +82,8 @@ struct WState {
     t_last: Option<Instant>,
     /// Счёт flush'ей: по `max_latency` +1, по тишине −1; ≥ 3 — шторм.
     capped: u8,
+    /// Время двух предыдущих тяжёлых flush'ей.
+    heavy: [Option<Instant>; 2],
     storm: bool,
     last_flush: Option<Instant>,
     /// Не сбрасывать (листинг ещё идёт).
@@ -209,6 +215,12 @@ impl Debouncer {
             } else {
                 s.capped.saturating_sub(1)
             };
+            if s.rescan || s.names.len() >= STORM_NAMES {
+                if s.heavy[0].is_some_and(|t| now < t + STORM_PERIOD) {
+                    s.storm = true;
+                }
+                s.heavy = [s.heavy[1], Some(now)];
+            }
             if s.capped >= STORM_FLUSHES {
                 s.storm = true;
             }

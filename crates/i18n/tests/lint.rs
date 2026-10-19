@@ -262,7 +262,8 @@ fn mask(src: &str) -> Masked {
 }
 
 /// Исходники `crates/*/src/**/*.rs` без тестов (`tests.rs`, `*_tests.rs`, хвост после
-/// `#[cfg(test)]`).
+/// `#[cfg(test)]`) и фикстур (`*_fixtures.rs`: демо-данные снапшотов и скриншотов —
+/// имена файлов, заголовки задач — не строки интерфейса).
 fn sources() -> Vec<(PathBuf, String)> {
     let crates = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
     let mut out = Vec::new();
@@ -282,6 +283,7 @@ fn sources() -> Vec<(PathBuf, String)> {
                 .is_some_and(|e| e.eq_ignore_ascii_case("rs"))
                 && name != "tests.rs"
                 && !name.ends_with("_tests.rs")
+                && !name.ends_with("_fixtures.rs")
             {
                 let text = std::fs::read_to_string(&path).unwrap();
                 let text = match text.find("\n#[cfg(test)]") {

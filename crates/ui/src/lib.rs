@@ -27,6 +27,11 @@ pub mod layout;
 pub mod menu;
 mod panel;
 mod prompt_bar;
+/// Демо-экраны S2 §2 (снапшоты и `urfin --screens`): фикстуры, не строки UI.
+#[cfg(any(test, feature = "screens"))]
+#[doc(hidden)]
+#[path = "screens_fixtures.rs"]
+pub mod screens;
 pub mod state;
 pub mod sys;
 mod tabs;
@@ -59,6 +64,15 @@ use crate::tokens::{Metric, Role, Tokens};
 const TOAST_TTL: Duration = Duration::from_secs(4);
 /// Не больше стольких тостов сразу (S2 §3).
 const TOASTS_MAX: usize = 3;
+
+/// Поколение стиля и атласа шрифтов: galley, разложенные раньше, указывают на
+/// старые места текстуры (мусор вместо букв после установки шрифтов или смены
+/// темы). Растёт вместе с `UrfinUi::style_epoch`.
+static STYLE_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+pub(crate) fn style_gen() -> u64 {
+    STYLE_GEN.load(std::sync::atomic::Ordering::Relaxed)
+}
 
 /// Регистрирует handler `ui`; `UiState` появится в `ext` в первом pump.
 pub fn register(core: &mut Core) {
@@ -103,6 +117,8 @@ pub struct UrfinUi {
     atlas_fill: f32,
     /// Языковые шаблоны ячеек и эпоха языка, для которой собраны.
     fmt: (u64, fmt_cell::FmtCfg),
+    /// Пояс дат в ячейках: ОС; тесты экранов фиксируют UTC.
+    zone: sys::Zone,
     /// Применённые настройки вида: тема, масштаб, `look` ОС.
     applied: Option<(ThemeMode, u16, sys::Look)>,
     /// Своя рамка окна (Windows); `None` — системная.
@@ -193,8 +209,25 @@ impl UrfinUi {
                     sys::Zone::system(),
                 ),
             ),
+            zone: sys::Zone::system(),
             applied: None,
         }
+    }
+
+    /// Новое поколение стиля: шрифты, тема, масштаб, пересозданный атлас. Кэши
+    /// galley вне `RowCache` (табы, breadcrumb) сверяются с [`style_gen`].
+    fn bump_style(&mut self) {
+        self.style_epoch += 1;
+        STYLE_GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Пояс для дат в ячейках (снапшоты экранов — UTC, независимо от машины).
+    #[doc(hidden)]
+    pub fn set_zone(&mut self, zone: sys::Zone) {
+        self.zone = zone;
+        // Шаблоны пересоберутся в следующем кадре.
+        self.fmt.0 = u64::MAX;
+        self.rows.sync_epochs(u64::MAX, self.style_epoch);
     }
 
     /// Меню из `menu.toml` каталога конфига вместо вшитого; ошибки — тостами, при
@@ -253,7 +286,7 @@ impl UrfinUi {
         }
         if let Some(list) = self.fallback_rx.as_ref().and_then(|rx| rx.try_recv().ok()) {
             fonts::add_fallbacks(ctx, &list);
-            self.style_epoch += 1;
+            self.bump_style();
             self.fallback_rx = None;
         }
     }
@@ -299,11 +332,11 @@ impl UrfinUi {
         if (ppp - self.last_ppp).abs() > f32::EPSILON {
             // Другой монитор или масштаб ОС: разметка ячеек — заново (S2 §5).
             self.last_ppp = ppp;
-            self.style_epoch += 1;
+            self.bump_style();
         }
         let fill = atlas_fill(&ctx);
         if fill + 1e-6 < self.atlas_fill {
-            self.style_epoch += 1;
+            self.bump_style();
         }
         self.rows.sync_epochs(urfin_i18n::epoch(), self.style_epoch);
         self.tokens.set_theme(ctx.theme());
@@ -314,10 +347,7 @@ impl UrfinUi {
             .refresh(&i18n, epoch, &self.registered, self.hints.as_ref());
         if self.fmt.0 != epoch {
             let iso = self.cfg.date_format.eq_ignore_ascii_case("iso");
-            self.fmt = (
-                epoch,
-                fmt_cell::FmtCfg::new(&i18n, iso, sys::Zone::system()),
-            );
+            self.fmt = (epoch, fmt_cell::FmtCfg::new(&i18n, iso, self.zone.clone()));
         }
 
         if let Some(c) = &self.chrome {
@@ -469,7 +499,7 @@ impl UrfinUi {
             tokens::style::apply(ctx, &self.tokens, &self.fonts);
         }
         self.applied = Some(want);
-        self.style_epoch += 1;
+        self.bump_style();
         ctx.set_theme(match (mode, self.look.theme) {
             (ThemeMode::Light, _) | (ThemeMode::System, Some(egui::Theme::Light)) => {
                 egui::ThemePreference::Light
@@ -763,3 +793,7 @@ pub fn version() -> &'static str {
 
 #[cfg(test)]
 mod tests;
+
+// Пути экранов (`C:\…`) разбираются по правилам ОС — снапшоты только Windows.
+#[cfg(all(test, windows))]
+mod screens_tests;
