@@ -19,6 +19,7 @@
 | 0015 | [Где действует контекст `global` keymap](0015-global-context.md) |
 | 0016 | [Быстрый поиск ведёт keymap (S3), ui рисует](0016-quick-search-owner.md) |
 | 0017 | [Финальный порядок большого листинга считает core](0017-core-final-order.md) |
+| 0018 | [UI на GPUI вместо egui/eframe/wgpu](0018-ui-gpui.md) |
 
 Новые ADR — со следующего свободного номера: `NNNN-кратко.md`.
 
