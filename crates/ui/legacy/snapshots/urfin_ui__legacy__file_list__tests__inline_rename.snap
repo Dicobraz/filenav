@@ -1,0 +1,76 @@
+---
+source: crates/ui/legacy/file_list_tests.rs
+expression: yaml
+---
+- galley: [24, 52, 5.03125, 16] text.secondary "/"
+- icon: [33.03125, 54, 12, 12] text.tertiary "U+E76C"
+- galley: [49.03125, 52, 31.15625, 16] text.secondary "work"
+- icon: [84.1875, 54, 12, 12] text.tertiary "U+E76C"
+- galley: [100.1875, 52, 29.75, 16] text.primary "urfin"
+- text: [32, 84, 30, 12] text.secondary "Имя ˄"
+- text: [436, 84, 36, 12] text.secondary "Размер"
+- text: [480, 84, 42, 12] text.secondary "Изменён"
+- rect: [395.5, 83, 1, 14] stroke.divider
+- rect: [475.5, 83, 1, 14] stroke.divider
+- galley: [32, 108, 6.875, 16] ".. #E4000000"
+- galley: [32, 132, 25.21875, 16] ".git/ #E4000000"
+- galley: [480, 132, 92.46875, 16] text.secondary "14.10.26 09:10"
+- galley: [32, 156, 42.90625, 16] "crates/ #E4000000"
+- galley: [480, 156, 92.46875, 16] text.secondary "14.10.26 08:55"
+- galley: [32, 180, 33.78125, 16] "docs/ #E4000000"
+- galley: [480, 180, 92.46875, 16] text.secondary "13.10.26 22:41"
+- galley: [32, 204, 32.09375, 16] "i18n/ #E4000000"
+- galley: [480, 204, 92.46875, 16] text.secondary "13.10.26 22:40"
+- galley: [32, 228, 43.90625, 16] "target/ #E4000000"
+- galley: [480, 228, 92.46875, 16] text.secondary "14.10.26 09:11"
+- galley: [32, 252, 60.5625, 16] ".gitignore #72000000"
+- galley: [436.5625, 252, 35.4375, 16] text.secondary "118 Б"
+- galley: [480, 252, 92.46875, 16] text.secondary "02.10.26 09:03"
+- rect: [12, 272, 592, 24] accent.subtle
+- galley: [19, 277, 6, 14] accent.text "\u{e8fb}"
+- galley: [32, 276, 65.59375, 16] "Cargo.lock #004B87"
+- galley: [424.71875, 276, 47.28125, 16] text.secondary "47,1 КБ"
+- galley: [480, 276, 92.46875, 16] text.secondary "14.10.26 08:59"
+- rect: [12, 296, 592, 24] accent.subtle
+- galley: [19, 301, 6, 14] accent.text "\u{e8fb}"
+- galley: [32, 300, 69.71875, 16] "Cargo.toml #004B87"
+- galley: [432.625, 300, 39.375, 16] text.secondary "1,2 КБ"
+- galley: [480, 300, 92.46875, 16] text.secondary "14.10.26 08:58"
+- galley: [32, 324, 68.78125, 16] "clippy.toml #E4000000"
+- galley: [444.4375, 324, 27.5625, 16] text.secondary "96 Б"
+- galley: [480, 324, 92.46875, 16] text.secondary "02.10.26 09:03"
+- rect: [12, 344, 592, 24] accent.subtle
+- galley: [19, 349, 6, 14] accent.text "\u{e8fb}"
+- galley: [32, 348, 62.84375, 16] "deny.toml #004B87"
+- galley: [432.625, 348, 39.375, 16] text.secondary "1,3 КБ"
+- galley: [480, 348, 92.46875, 16] text.secondary "03.10.26 07:20"
+- galley: [32, 372, 107.25, 16] "LICENSE-APACHE #E4000000"
+- galley: [424.71875, 372, 47.28125, 16] text.secondary "10,6 КБ"
+- galley: [480, 372, 92.46875, 16] text.secondary "02.10.26 09:03"
+- galley: [32, 396, 78.9375, 16] "LICENSE-MIT #E4000000"
+- galley: [428.65625, 396, 43.34375, 16] text.secondary "1023 Б"
+- galley: [480, 396, 92.46875, 16] text.secondary "02.10.26 09:03"
+- rect: [12, 416, 592, 24] fill.cursor
+- stroke: [12, 416, 592, 24] stroke.strong
+- rect: [30, 417, 442, 22] fill.control.input
+- rect: [30, 437, 442, 2] accent.fill
+- region: [30, 417, 442, 22] "rename"
+- galley: [480, 420, 92.46875, 16] text.secondary "14.10.26 09:12"
+- galley: [32, 444, 118.9375, 16] "rust-toolchain.toml #E4000000"
+- galley: [444.4375, 444, 27.5625, 16] text.secondary "92 Б"
+- galley: [480, 444, 92.46875, 16] text.secondary "02.10.26 09:03"
+- galley: [32, 468, 80.1875, 16] "rustfmt.toml #E4000000"
+- galley: [444.4375, 468, 27.5625, 16] text.secondary "41 Б"
+- galley: [480, 468, 92.46875, 16] text.secondary "02.10.26 09:03"
+- galley: [32, 492, 188.375, 16] "отчёт_по_производству.docx #E4000000"
+- galley: [428.90625, 492, 43.09375, 16] text.secondary "2,0 МБ"
+- galley: [480, 492, 92.46875, 16] text.secondary "12.10.26 18:40"
+- galley: [32, 516, 60.84375, 16] "setup.exe #0F7B0F"
+- galley: [421, 516, 51, 16] text.secondary "13,6 МБ"
+- galley: [480, 516, 92.46875, 16] text.secondary "30.09.26 06:02"
+- galley: [32, 540, 62.5, 16] "backup.7z #8764B8"
+- galley: [424.4375, 540, 47.5625, 16] text.secondary "977 МБ"
+- galley: [480, 540, 92.46875, 16] text.secondary "01.10.26 09:15"
+- rect: [12, 76, 592, 1] stroke.divider
+- rect: [12, 568, 592, 1] stroke.divider
+- text: [24, 576, 216, 12] text.secondary "Enter — переименовать · Esc — отмена"

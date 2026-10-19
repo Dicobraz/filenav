@@ -1,0 +1,14 @@
+---
+source: crates/ui/legacy/views_draw_tests.rs
+expression: yaml
+---
+- rect: [644, 76, 592, 1] stroke.divider
+- rect: [644, 568, 592, 1] stroke.divider
+- icon: [656, 54, 12, 12] text.secondary "U+E7C3"
+- text: [674, 53, 325.59998, 14] text.primary "README.md"
+- text: [656, 576, 78, 12] text.secondary "F3 — просмотр"
+- text: [1110, 54, 114, 12] text.secondary "UTF-8 · LF · 3,8 КБ"
+- text: [656, 84.8, 568, 14] text.primary "# Urfin"
+- text: [656, 104.4, 568, 14] text.primary ""
+- text: [656, 124, 568, 14] text.primary "Быстрый файловый менеджер."
+- text: [656, 143.6, 568, 14] text.primary "    отступ"

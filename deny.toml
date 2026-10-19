@@ -5,6 +5,19 @@ all-features = false
 
 [advisories]
 yanked = "deny"
+# «Unmaintained» (не уязвимости) в транзитивных зависимостях gpui-kit 0.7.3 (ADR-0018,
+# G-01): уйдут с обновлением снимка GPUI. rustls-pemfile — только wasm-сборка
+# gpui-kit-assets; zbus/zvariant — Linux (D-Bus).
+ignore = [
+    { id = "RUSTSEC-2024-0384", reason = "instant: gpui-base" },
+    { id = "RUSTSEC-2024-0436", reason = "paste: gpui-component, metal" },
+    { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile: reqwest only on wasm" },
+    { id = "RUSTSEC-2026-0206", reason = "rustybuzz: gpui text on Linux" },
+    { id = "RUSTSEC-2026-0192", reason = "ttf-parser: gpui text on Linux" },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names: gpui Linux D-Bus" },
+    { id = "RUSTSEC-2026-0370", reason = "zvariant: gpui Linux D-Bus" },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive: gpui Linux D-Bus" },
+]
 
 [licenses]
 # S1 §3 + BSD-3-Clause (S0 v5, «Зависимости и политика»: encoding_rs).
@@ -29,6 +42,12 @@ unused-allowed-license = "allow"
 # S2 заменит их на системные Segoe и вшитый JetBrains Mono.
 exceptions = [
     { crate = "epaint_default_fonts", allow = ["OFL-1.1", "Ubuntu-font-1.0"] },
+    # GPUI (ADR-0018, G-01): транзитивные зависимости gpui-kit — public domain / 0BSD.
+    { crate = "enum-iterator", allow = ["0BSD"] },
+    { crate = "enum-iterator-derive", allow = ["0BSD"] },
+    { crate = "hexf-parse", allow = ["CC0-1.0"] },
+    { crate = "notify", allow = ["CC0-1.0"] },
+    { crate = "tiny-keccak", allow = ["CC0-1.0"] },
 ]
 
 [bans]

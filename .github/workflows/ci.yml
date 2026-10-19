@@ -78,7 +78,7 @@ jobs:
           tool: cargo-nextest
       - name: Linux deps
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev libgl1-mesa-dev libx11-dev
+        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev libgl1-mesa-dev libx11-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb1-dev libfontconfig1-dev
       - name: Python
         run: echo "PY=$(command -v python3 || command -v python)" >> "$GITHUB_ENV"
 
@@ -94,11 +94,11 @@ jobs:
       - name: No diagnostic features in release (profile, dhat-heap, count-alloc)
         run: $PY ci/release_features.py
       - run: cargo build --release -p urfin-app --locked
-      # Бюджет 15 МиБ меряется на Windows (S0-decisions); Linux/macOS — только
+      # Бюджет 25 МиБ (S0-decisions №54) меряется на Windows; Linux/macOS — только
       # сводка и предупреждение, без блокировки (нюансы — docs/macos-notes.md).
-      - name: Binary size ≤ 15 MB
+      - name: Binary size ≤ 25 MB
         continue-on-error: ${{ runner.os != 'Windows' }}
-        run: $PY ci/size.py "$BIN" 15
+        run: $PY ci/size.py "$BIN" 25
       - name: Smoke
         run: '"$BIN" --smoke'
 
