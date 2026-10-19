@@ -327,6 +327,12 @@ impl I18n {
         self.format(key, Some(attr), None)
     }
 
+    /// Необязательный атрибут: `None` без предупреждения, если его нет ни в одном
+    /// бандле (`.menu-key` — буква меню по умолчанию — первая буква подписи).
+    pub fn attr_opt(&self, key: &str, attr: &str) -> Option<String> {
+        self.lookup(key, Some(attr), None)
+    }
+
     /// Текст сообщения с аргументами.
     pub fn fmt(&self, key: &str, args: &FluentArgs) -> String {
         self.format(key, None, Some(args))
@@ -341,6 +347,18 @@ impl I18n {
     }
 
     fn format(&self, key: &str, attr: Option<&str>, args: Option<&FluentArgs>) -> String {
+        if let Some(text) = self.lookup(key, attr, args) {
+            return text;
+        }
+        self.warn_once(true, key, attr, || "missing".to_owned());
+        match attr {
+            Some(a) => format!("⟨{key}.{a}⟩"),
+            None => format!("⟨{key}⟩"),
+        }
+    }
+
+    /// Первое сообщение (атрибут) по цепочке языков; ошибки подстановки — warn.
+    fn lookup(&self, key: &str, attr: Option<&str>, args: Option<&FluentArgs>) -> Option<String> {
         for bundle in &self.chain {
             let Some(message) = bundle.get_message(key) else {
                 continue;
@@ -359,13 +377,9 @@ impl I18n {
             if !errors.is_empty() {
                 self.warn_once(false, key, attr, || format!("{errors:?}"));
             }
-            return text;
+            return Some(text);
         }
-        self.warn_once(true, key, attr, || "missing".to_owned());
-        match attr {
-            Some(a) => format!("⟨{key}.{a}⟩"),
-            None => format!("⟨{key}⟩"),
-        }
+        None
     }
 
     /// Ошибка подстановки сообщения вне Fluent (шаблон даты и т.п.): один warn на ключ.

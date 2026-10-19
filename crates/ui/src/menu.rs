@@ -173,8 +173,7 @@ fn letter(i18n: &I18n, key: &str) -> Option<char> {
     let lower = |c: char| c.to_lowercase().next().unwrap_or(c);
     let text: String = label(i18n, key).chars().map(lower).collect();
     let attr = i18n
-        .has(key)
-        .then(|| i18n.attr(key, "menu-key"))
+        .attr_opt(key, "menu-key")
         .and_then(|a| a.chars().next().map(lower))
         .filter(|c| text.contains(*c));
     attr.or_else(|| text.chars().find(|c| c.is_alphanumeric()))

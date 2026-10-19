@@ -153,6 +153,14 @@ fn attributes() {
     assert!(warnings.is_empty(), "{warnings:?}");
     assert_eq!(ru.get("cmd-ops-copy"), "Копировать…");
     assert_eq!(ru.attr("cmd-ops-copy", "menu-key"), "К");
+    // Необязательный атрибут: без предупреждения и без записи в пропущенные.
+    assert_eq!(
+        ru.attr_opt("cmd-ops-copy", "menu-key").as_deref(),
+        Some("К")
+    );
+    assert_eq!(ru.attr_opt("cmd-ops-copy", "nope"), None);
+    assert_eq!(ru.attr_opt("no-such-key", "menu-key"), None);
+    assert_eq!(ru.missing_keys(), Vec::<String>::new());
 }
 
 #[test]
