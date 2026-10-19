@@ -72,12 +72,12 @@ fn changes_are_seen_within_one_interval() {
     // по времени листинга).
     let interval = p.interval();
     let changed = Instant::now();
+    // Опрос назначен не позже интервала после изменения. Проверяем расписание,
+    // а не фактический старт: `sleep` на раннере macOS просыпается с опозданием
+    // (docs/macos-notes.md, «Таймеры»).
+    assert!(p.due() <= changed + interval);
     wait_due(&p);
-    // Опрос начат не позже интервала после изменения (сам листинг на медленном
-    // раннере может идти долго — в срок не входит).
-    let started = Instant::now();
-    let ev = p.poll(&CancelToken::new(), started).unwrap();
-    assert!(started.saturating_duration_since(changed) <= interval + Duration::from_millis(50));
+    let ev = p.poll(&CancelToken::new(), Instant::now()).unwrap();
     assert_eq!(summary(&ev), ["+new", "+sub", "-gone", "~grow"]);
 
     // Снимок обновлён: повторный опрос пуст.
