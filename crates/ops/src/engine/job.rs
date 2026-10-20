@@ -18,9 +18,10 @@ use urfin_core::{
 };
 
 use super::finalize::DirNode;
+use super::park::{self, Park, Resolved};
 use super::sched::{Lease, ThreadBudget};
 use super::{ItemResult, JobEngine, OpExec, PlanError, QUEUE_CAP, Reports, Work, worker};
-use crate::api::{FailedItem, Report};
+use crate::api::{FailedItem, Issue, Report};
 
 /// Шаг ожиданий координатора и воркеров: отмена и пауза видны не позже.
 pub(super) const POLL: Duration = Duration::from_millis(10);
@@ -55,7 +56,7 @@ pub(super) struct Ctl {
 }
 
 impl Ctl {
-    fn stopped(&self) -> bool {
+    pub(super) fn stopped(&self) -> bool {
         self.stop.is_cancelled() || self.job.cancel_token().is_cancelled()
     }
 
@@ -88,6 +89,7 @@ impl Ctl {
                 }
             }
             ItemResult::Cancelled => return false,
+            ItemResult::Park(..) => tracing::error!("parked work recorded as a result"),
         }
         true
     }
@@ -144,6 +146,7 @@ pub(super) struct Shared<E: OpExec> {
     pub(super) ctl: Ctl,
     pub(super) exec: E,
     pub(super) events: Sender<Event<E::Dir>>,
+    pub(super) park: Park<E>,
 }
 
 /// Уменьшает счётчик живых потоков движка при выходе (и при раскрутке паники).
@@ -207,15 +210,25 @@ pub(super) fn start<E: OpExec>(
         },
         exec,
         events: ev_tx,
+        park: Park::new(),
     });
     let lease = eng.budget.try_take(want);
     let handles = worker::spawn(cx.rt, &eng.live, &sh, &rx, lease.n);
+    let asker = {
+        let (sh, live) = (Arc::clone(&sh), LiveGuard::enter(&eng.live));
+        cx.rt
+            .spawn_dedicated(format!("ops-ask-{}", id.0), CancelToken::new(), move |_| {
+                let _live = live;
+                park::ask_loop(&sh);
+            })
+    };
     let co = Coord {
         sh,
         tx: Some(tx),
         rx,
         events: ev_rx,
         handles,
+        asker: Some(asker),
         exited: 0,
         sink: cx.rt.sink(),
         live: Arc::clone(&eng.live),
@@ -245,6 +258,8 @@ struct Coord<E: OpExec> {
     rx: Receiver<Work<E>>,
     events: Receiver<Event<E::Dir>>,
     handles: Vec<JoinHandle<()>>,
+    /// Поток вопросов (S5-07).
+    asker: Option<JoinHandle<()>>,
     exited: usize,
     sink: MsgSink,
     live: Arc<AtomicUsize>,
@@ -285,6 +300,7 @@ impl<E: OpExec> Coord<E> {
         while self.exited < self.handles.len() {
             self.service(POLL);
         }
+        self.close_park();
         self.sh.ctl.job.progress().set_phase(Phase::Finalize);
         while let Ok(ev) = self.events.try_recv() {
             self.on_event(ev);
@@ -294,6 +310,28 @@ impl<E: OpExec> Coord<E> {
         }
         drop(lease);
         self.finish();
+    }
+
+    /// Воркеры вышли: поток вопросов — завершить, неразобранное (отмена) — убрать.
+    fn close_park(&mut self) {
+        let sh = &self.sh;
+        sh.park.close();
+        if let Some(h) = self.asker.take() {
+            if sh.ctl.stopped() && sh.park.asking() {
+                // Остановка движка (ошибка плана, паника) не видна `ask`: он ждёт
+                // только отмены job. Открытый вопрос держал бы поток вопросов.
+                sh.ctl.job.cancel_token().cancel();
+            }
+            let _ = h.join();
+        }
+        let left = sh.park.drain();
+        if !left.is_empty() {
+            tracing::info!(n = left.len(), "parked work not processed");
+        }
+        for p in left {
+            sh.ctl.skipped.fetch_add(1, Ordering::Relaxed);
+            sh.exec.discard(p.work.item, &p.issue);
+        }
     }
 
     /// Свободных потоков нет: `Queued`, пока не освободятся; воркеров
@@ -581,6 +619,39 @@ impl<E: OpExec> Plan<'_, E> {
             Err(TrySendError::Disconnected(_)) => Err(Cancelled),
             Err(TrySendError::Full(w)) => co.push_full(w),
         }
+    }
+
+    /// Проблема до работы (S5 §5): работа паркуется, план идёт дальше; есть
+    /// ответ «для всех» — применяется сразу.
+    pub(crate) fn park(
+        &mut self,
+        parent: Option<&Arc<DirNode<E::Dir>>>,
+        item: E::Item,
+        bytes: u64,
+        issue: Issue,
+    ) -> Result<(), Cancelled> {
+        let sh = Arc::clone(&self.co.sh);
+        if let Some(r) = sh.park.decided(issue.kind) {
+            return match sh.exec.resolve(item, &issue, &r) {
+                Resolved::Run(item) => self.push(parent, item, bytes),
+                Resolved::Done(res) => {
+                    self.record(parent, res);
+                    Ok(())
+                }
+            };
+        }
+        let p = sh.ctl.job.progress();
+        p.items_total.fetch_add(1, Ordering::Relaxed);
+        p.bytes_total.fetch_add(bytes, Ordering::Relaxed);
+        if let Some(d) = parent {
+            d.add_child();
+        }
+        let work = Work {
+            item,
+            parent: parent.cloned(),
+        };
+        park::put(&sh, work, issue, bytes);
+        Ok(())
     }
 
     /// Итог, решённый планом без работы воркера (пропуск существующего,

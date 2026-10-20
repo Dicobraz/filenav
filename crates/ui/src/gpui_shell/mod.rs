@@ -139,8 +139,8 @@ pub struct CoreHost {
     menu: menu::Menu,
     /// Остаток прокрутки колесом в строках (по панелям).
     wheel_acc: [f32; 2],
-    /// Выбранный вариант видимого вопроса: (id вопроса, индекс).
-    choice: (u64, usize),
+    /// Выбор в видимом вопросе.
+    choice: overlays::PromptSel,
     focus: FocusHandle,
     input: input::Input,
     out: Vec<Command>,
@@ -213,7 +213,7 @@ impl CoreHost {
             ops_permanent: false,
             menu,
             wheel_acc: [0.0; 2],
-            choice: (u64::MAX, 0),
+            choice: overlays::PromptSel::NONE,
             focus: cx.focus_handle(),
             input: input::Input::new(keys),
             out: Vec::new(),
@@ -380,26 +380,26 @@ impl CoreHost {
     }
 
     /// Клавиши видимого вопроса: Enter — выбранный, Esc — отмена, ←/→/Tab — выбор,
-    /// буква варианта — ответ.
+    /// буква варианта — ответ; Пробел — флажок «для всех», Shift+буква — ответ
+    /// для всех.
     fn prompt_key(&mut self, ks: &gpui_kit::Keystroke) -> Option<Command> {
         let p = self.core.as_ref()?.state().prompts.active()?;
         let n = p.spec.choices.len();
-        if self.choice.0 != p.id.0 {
-            self.choice = (p.id.0, usize::from(p.spec.default).min(n.saturating_sub(1)));
-        }
-        let sel = &mut self.choice.1;
+        self.choice = self.choice.of(p);
+        let cur = &mut self.choice;
         match ks.key.as_str() {
             "escape" => return Some(overlays::cancel(p)),
-            "enter" => return overlays::reply(p, *sel),
-            "left" => *sel = sel.saturating_sub(1),
-            "right" | "tab" => *sel = (*sel + 1).min(n.saturating_sub(1)),
+            "enter" => return overlays::reply(p, cur.sel, cur.all),
+            "left" => cur.sel = cur.sel.saturating_sub(1),
+            "right" | "tab" => cur.sel = (cur.sel + 1).min(n.saturating_sub(1)),
+            "space" => cur.all = !cur.all && p.spec.allow_all,
             k => {
                 let typed = ks.key_char.as_deref().unwrap_or(k).to_lowercase();
                 let i = p.spec.choices.iter().position(|c| {
                     let key = c.key.to_lowercase().to_string();
                     key == k || key == typed
                 })?;
-                return overlays::reply(p, i);
+                return overlays::reply(p, i, cur.all || ks.modifiers.shift);
             }
         }
         None
@@ -619,13 +619,10 @@ impl CoreHost {
 
     /// Шаг `--screens` на кадре: команды сцены, ожидание, снимок в фоне.
     fn drive_screens(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let ready = self
-            .core
-            .as_ref()
-            .is_some_and(|c| screens::ready(c.state()));
         let Some(sc) = self.screens.as_mut() else {
             return;
         };
+        let ready = self.core.as_ref().is_some_and(|c| sc.ready(c.state()));
         match sc.frame(ready) {
             screens::Step::Enter(cmds, to) => {
                 if let Some((w, h)) = to {
@@ -1109,12 +1106,14 @@ impl Render for CoreHost {
             panels = panels.child(div().w(px(w)).flex_none().h_full().flex().child(card));
         }
         let prompt = s.prompts.active().map(|p| {
-            let sel = if self.choice.0 == p.id.0 {
-                self.choice.1
-            } else {
-                usize::from(p.spec.default)
-            };
-            overlays::prompt_bar(p, sel, &self.theme, &click)
+            let sel = self.choice.of(p);
+            let toggle: overlays::Handler =
+                Box::new(cx.listener(move |h: &mut CoreHost, _: &ClickEvent, _, cx| {
+                    h.choice = sel;
+                    h.choice.all = !sel.all;
+                    cx.notify();
+                }));
+            overlays::prompt_bar(p, sel, &self.theme, &click, toggle)
         });
         let root = root
             .child(panels)

@@ -250,7 +250,11 @@ fn pause_takes_effect_within_50ms() {
     let mut h = H::new(64);
     let fake = Arc::new(Fake::new(N, SPIN));
     let id = h.start(4, FakeOp(Arc::clone(&fake)));
-    assert_eq!(h.eng.live_threads(), 5, "coordinator + 4 workers");
+    assert_eq!(
+        h.eng.live_threads(),
+        6,
+        "coordinator, questions + 4 workers"
+    );
     h.pump_until("progress", |h| h.items_done(id) >= 2_000);
     let t0 = Instant::now();
     h.cmd("job.pause", id);
@@ -266,7 +270,7 @@ fn pause_takes_effect_within_50ms() {
     std::thread::sleep(Duration::from_millis(100));
     assert_eq!(h.items_done(id), frozen, "progress must stop while paused");
     assert!(frozen < N, "job must not finish before pause ({paused_at})");
-    assert_eq!(h.eng.live_threads(), 5, "paused threads stay");
+    assert_eq!(h.eng.live_threads(), 6, "paused threads stay");
 
     h.cmd("job.resume", id);
     let st = h.wait_done(id);

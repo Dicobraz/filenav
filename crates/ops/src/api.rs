@@ -334,6 +334,8 @@ pub enum IoClass {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Resolution {
     Overwrite,
+    /// Заменить, если источник новее, иначе пропустить (S5 §2.2, вариант W).
+    OverwriteIfNewer,
     Skip,
     RenameNew,
     RenameExisting,

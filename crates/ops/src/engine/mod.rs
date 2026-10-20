@@ -8,12 +8,16 @@
 //! очередь, воркеры выполняют `exec`, `finalize_dir` закрывает каталог после
 //! всех его детей. Обход (S5-05) и сами операции (S5-06…) — поверх движка;
 //! число воркеров по носителю и AIMD — S5-19, здесь N фиксировано на job.
+//! Проблемы (конфликт имени и т.п.) паркуются и задаются вопросом без
+//! остановки воркеров — [`park`] (S5-07).
 //!
-//! Потоки: координатор `ops-job-N` и воркеры `ops-wN-i`; все завершаются вместе
-//! с job, воркеров всех job не больше `ops.max_threads` ([`ThreadBudget`]).
+//! Потоки: координатор `ops-job-N`, поток вопросов `ops-ask-N` и воркеры
+//! `ops-wN-i`; все завершаются вместе с job, воркеров всех job не больше
+//! `ops.max_threads` ([`ThreadBudget`]).
 
 mod finalize;
 mod job;
+mod park;
 mod sched;
 pub(crate) mod walker;
 mod worker;
@@ -27,10 +31,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use urfin_core::{Cancelled, Cx, JobId, JobRegistry, JobSpec, JobSummary, Level, Location};
 
-use crate::api::{FailedItem, Report};
+use crate::api::{FailedItem, Issue, Report, Resolution};
 
 pub(crate) use finalize::DirNode;
 pub(crate) use job::{ExecCx, Plan};
+pub(crate) use park::Resolved;
 pub(crate) use sched::ThreadBudget;
 
 /// Ёмкость очереди работ (S5 §0: бэкпрешер, память ограничена при любом дереве).
@@ -54,6 +59,15 @@ pub(crate) trait OpExec: Send + Sync + Sized + 'static {
     /// Каталог после всех детей (post-order, поток координатора).
     /// [`DirNode::clean`] — среди детей нет пропущенных и неудачных.
     fn finalize_dir(&self, dir: &DirNode<Self::Dir>, cx: &ExecCx<'_>) -> ItemResult;
+
+    /// Ответ на запаркованную проблему (поток вопросов или план; I/O — только
+    /// короткий, вроде удаления temp). По умолчанию — пропуск.
+    fn resolve(&self, _item: Self::Item, _issue: &Issue, _r: &Resolution) -> Resolved<Self::Item> {
+        Resolved::Done(ItemResult::Skipped)
+    }
+
+    /// Работа осталась без ответа (отмена job): убрать следы (temp).
+    fn discard(&self, _item: Self::Item, _issue: &Issue) {}
 
     /// Итог для пользователя (тост) по отчёту; поток координатора, после всех
     /// работ. `outcome` — то, с чем job завершится.
@@ -79,6 +93,9 @@ pub(crate) enum ItemResult {
     Failed(FailedItem),
     /// Прервано отменой посреди работы: не считается, воркер выходит.
     Cancelled,
+    /// Проблема (S5 §5): работа паркуется до ответа, воркер идёт дальше.
+    /// Байты — сколько из `bytes_total` не перенесётся при пропуске.
+    Park(Box<Issue>, u64),
 }
 
 /// Ошибка плана.

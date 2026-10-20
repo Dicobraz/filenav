@@ -90,6 +90,7 @@ ui-prompt-more = { $count ->
    *[other] { $count } more questions
 }
 ui-prompt-all = For all
+ui-prompt-all-hint = Space; Shift+key answers for all
 ui-prompt-new-name = New name
 ui-button-apply = Apply
 ui-button-back = Back
