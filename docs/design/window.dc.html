@@ -33,11 +33,35 @@ body{margin:0}
 <div style="flex: 1; min-height: 0; display: flex; gap: 1px; background: {{t.b}}; position: relative">
 <sc-if value="{{isPanels}}" hint-placeholder-val="{{ true }}">
 <sc-for list="{{panels}}" as="pn" hint-placeholder-count="2">
-<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; background: {{t.p}}">
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; background: {{t.p}}; position: relative">
 <div style="height: 30px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid {{t.b}}; font-size: 12.5px">
-<span style="{{pn.pathStyle}}">{{pn.path}}</span>
+<span style="display: flex; align-items: flex-end; align-self: stretch; gap: 8px">
+<sc-if value="{{pn.drives}}" hint-placeholder-val="{{ false }}">
+<span style="position: relative; display: flex">
+<button type="button" style="position: relative; z-index: 2; height: 25px; margin-bottom: -1px; padding: 0 10px 1px; display: flex; align-items: center; gap: 6px; border: 1px solid {{t.b}}; border-bottom: 0; border-radius: 8px 8px 0 0; background: {{t.p}}; color: {{t.t}}; font: inherit; font-weight: 500">C: <span style="color: {{t.s}}; font-size: 10px">▾</span></button>
+<svg width="9" height="9" viewBox="0 0 9 9" aria-hidden="true" style="position: absolute; right: -8px; top: calc(100% - 8px); z-index: 3; transform: scaleX(-1)"><path d="M0 9V8.5A8.5 8.5 0 0 0 8.5 0H9V9Z" fill="{{t.p}}"></path><path d="M0 8.5A8.5 8.5 0 0 0 8.5 0" fill="none" stroke="{{t.b}}"></path></svg>
+<div style="position: absolute; left: 0; top: 100%; width: 400px; padding: 6px 4px 4px; box-sizing: border-box; background: {{t.p}}; border: 1px solid {{t.b}}; border-radius: 0 8px 8px 8px; display: flex; flex-direction: column; z-index: 1">
+<sc-for list="{{drives}}" as="dv" hint-placeholder-count="10">
+<sc-if value="{{dv.head}}" hint-placeholder-val="{{ false }}"><div style="padding: 8px 10px 4px; color: {{t.s}}; font-size: 11.5px">{{dv.label}}</div></sc-if>
+<sc-if value="{{dv.item}}" hint-placeholder-val="{{ true }}">
+<button type="button" style="{{dv.style}}">
+<span style="display: inline-flex; color: {{dv.iconColor}}"><sc-if value="{{dv.isDrive}}" hint-placeholder-val="{{ true }}"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="4.5" width="13" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.1"></rect><path d="M4 8h3" stroke="currentColor" stroke-width="1.1"></path><circle cx="11.5" cy="8" r="0.9" fill="currentColor"></circle></svg></sc-if><sc-if value="{{dv.isNet}}" hint-placeholder-val="{{ false }}"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.1"></rect><path d="M8 8.5v3 M3 13.5h10 M8 11.5v2" stroke="currentColor" stroke-width="1.1"></path></svg></sc-if><sc-if value="{{dv.isPlace}}" hint-placeholder-val="{{ false }}"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14s4.5-4 4.5-7.5a4.5 4.5 0 0 0-9 0C3.5 10 8 14 8 14z" fill="none" stroke="currentColor" stroke-width="1.1"></path><circle cx="8" cy="6.5" r="1.5" fill="none" stroke="currentColor" stroke-width="1.1"></circle></svg></sc-if></span>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; text-align: left">
+<span style="display: flex; gap: 8px; align-items: baseline"><span style="font-weight: 500">{{dv.name}}</span><span style="color: {{dv.subColor}}; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{dv.sub}}</span></span>
+<sc-if value="{{dv.hasBar}}" hint-placeholder-val="{{ false }}"><span style="height: 4px; border-radius: 2px; background: {{dv.track}}; overflow: hidden; display: block"><span style="{{dv.bar}}"></span></span></sc-if>
+</span>
+<span style="color: {{dv.subColor}}; font-size: 12px; white-space: nowrap">{{dv.free}}</span>
+</button>
+</sc-if>
+</sc-for>
+</div>
+</span>
+</sc-if>
+<span style="align-self: center; {{pn.pathStyle}}">{{pn.path}}</span>
+</span>
 <span style="color: {{t.s}}">{{pn.info}}</span>
 </div>
+<sc-if value="{{pn.isFull}}" hint-placeholder-val="{{ true }}">
 <div style="height: 24px; display: flex; align-items: center; padding: 0 12px; border-bottom: 1px solid {{t.b}}; color: {{t.s}}; font-size: 11.5px">
 <span style="flex: 1">Имя</span>
 <span style="width: 92px; text-align: right">Размер</span>
@@ -59,6 +83,45 @@ body{margin:0}
 <span style="width: 120px; text-align: right; color: {{r.dateColor}}">{{r.date}}</span>
 </div>
 </sc-for>
+</sc-if>
+<sc-if value="{{pn.isBrief}}" hint-placeholder-val="{{ false }}">
+<div style="{{pn.briefGrid}}">
+<sc-for list="{{pn.rows}}" as="r" hint-placeholder-count="33">
+<div style="{{r.briefStyle}}"><span style="display: inline-flex; width: 14px; flex: none; color: {{r.iconColor}}"><sc-if value="{{r.isDir}}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 3.5h4.5l1.5 1.5h7v8h-13z" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></sc-if><sc-if value="{{r.isFile}}" hint-placeholder-val="{{ true }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z M9.5 1.5v3h3" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></sc-if></span><span style="overflow: hidden; text-overflow: ellipsis">{{r.name}}</span></div>
+</sc-for>
+</div>
+</sc-if>
+<sc-if value="{{pn.isTree}}" hint-placeholder-val="{{ false }}">
+<div style="padding-top: 4px; display: flex; flex-direction: column">
+<sc-for list="{{tree}}" as="n" hint-placeholder-count="20">
+<div style="{{n.style}}"><span style="{{n.indent}}"></span><span style="width: 14px; flex: none; text-align: center; color: {{n.chevColor}}; font-size: 10px">{{n.chev}}</span><span style="display: inline-flex; width: 14px; flex: none; color: {{n.iconColor}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 3.5h4.5l1.5 1.5h7v8h-13z" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></span><span style="font-weight: {{n.weight}}">{{n.name}}</span><span style="margin-left: auto; color: {{n.metaColor}}; font-size: 12px">{{n.meta}}</span></div>
+</sc-for>
+</div>
+</sc-if>
+<sc-if value="{{pn.isInfo}}" hint-placeholder-val="{{ false }}">
+<div style="padding: 20px 20px 16px; display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; gap: 14px; align-items: center">
+<span style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: {{t.h}}; border: 1px solid {{t.b}}; color: {{t.a}}"><svg width="26" height="26" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z M9.5 1.5v3h3 M5.5 8h5 M5.5 10.5h5" fill="none" stroke="currentColor" stroke-width="0.9"></path></svg></span>
+<div style="display: flex; flex-direction: column; gap: 3px"><span style="font-size: 15px; font-weight: 500">Cargo.toml</span><span style="color: {{t.s}}">Файл TOML · 1 214 байт</span></div>
+</div>
+<div style="display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 7px 12px; font-size: 12.5px">
+<sc-for list="{{infoRows}}" as="ir" hint-placeholder-count="8"><span style="color: {{t.s}}">{{ir.k}}</span><span style="{{ir.vs}}">{{ir.v}}</span></sc-for>
+</div>
+<div style="height: 1px; background: {{t.b}}"></div>
+<div style="display: flex; flex-direction: column; gap: 8px; font-size: 12.5px">
+<div style="display: flex; justify-content: space-between"><span><span style="font-weight: 500">C:</span> <span style="color: {{t.s}}">Windows · NTFS</span></span><span style="color: {{t.s}}">214 ГБ свободно из 931 ГБ</span></div>
+<div style="height: 6px; border-radius: 3px; background: {{t.b}}; overflow: hidden"><div style="height: 100%; width: 77%; background: {{t.a}}"></div></div>
+<div style="color: {{t.s}}">Папка C:\Dev\urfin: 12 файлов, 4 папки · 98,2 МБ</div>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{pn.isQv}}" hint-placeholder-val="{{ false }}">
+<div style="padding: 6px 0; font-family: 'Cascadia Mono', Consolas, monospace; font-size: 12.5px">
+<sc-for list="{{qvLines}}" as="ln" hint-placeholder-count="24">
+<div style="height: 20px; display: flex; align-items: center; white-space: pre"><span style="width: 40px; flex: none; padding-right: 12px; box-sizing: border-box; text-align: right; color: {{t.s}}">{{ln.n}}</span><sc-for list="{{ln.segs}}" as="sg" hint-placeholder-count="3"><span style="{{sg.style}}">{{sg.x}}</span></sc-for></div>
+</sc-for>
+</div>
+</sc-if>
 </div>
 </sc-for>
 </sc-if>
@@ -332,7 +395,7 @@ body{margin:0}
 </sc-if>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark","blue","turquoise","grass","sepia"],"default":"light"},"screen":{"editor":"enum","options":["panels","menu","quick","copy","delete","conflict","progress","search","viewer","editor","settings"],"default":"panels"},"density":{"editor":"enum","options":["20","24","28"],"default":"24"},"icons":{"editor":"enum","options":["none","mono","color"],"default":"mono"},"context":{"editor":"enum","options":["none","admin","remote"],"default":"none"},"$preview":{"width":1280,"height":760}}'>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark","blue","turquoise","grass","sepia"],"default":"light"},"screen":{"editor":"enum","options":["panels","menu","quick","brief","tree","info","quickview","drives","copy","delete","conflict","progress","search","viewer","editor","settings"],"default":"panels"},"density":{"editor":"enum","options":["20","24","28"],"default":"24"},"icons":{"editor":"enum","options":["none","mono","color"],"default":"mono"},"context":{"editor":"enum","options":["none","admin","remote"],"default":"none"},"$preview":{"width":1280,"height":760}}'>
 class Component extends DCLogic {
 renderVals() {
 const TH = {
@@ -386,13 +449,38 @@ hlStyle: "background: " + t.hl + "; color: " + t.t + "; border-radius: 2px",
 isUp: kind === "up", isDir: kind === "d", isFile: kind !== "up" && kind !== "d",
 weight: (kind === "d" || kind === "up" || isM) ? 500 : 400,
 iconColor: iconCol, dateColor: isC ? t.ct : t.s,
-rowStyle: "height: " + rowH + "px; display: flex; align-items: center; padding: 0 12px; background: " + (isC ? t.c : "transparent") + "; color: " + col
+rowStyle: "height: " + rowH + "px; display: flex; align-items: center; padding: 0 12px; background: " + (isC ? t.c : "transparent") + "; color: " + col,
+briefStyle: "height: " + rowH + "px; display: flex; align-items: center; gap: 8px; padding: 0 10px; overflow: hidden; white-space: nowrap; font-weight: " + ((kind === "d" || kind === "up") ? 500 : 400) + "; background: " + (isC ? t.c : "transparent") + "; color: " + col
 };
 });
-const panels = [
-{ path: "C:\\Dev\\urfin", info: "16 объектов", pathStyle: "color: " + t.t + "; border-bottom: 2px solid " + t.a + "; padding-bottom: 3px", rows: rows(L, cur) },
-{ path: "\\\\fs01\\share\\presale", info: "12 объектов", pathStyle: "color: " + t.s, rows: rows(R, -1) }
-];
+const actPath = "color: " + t.t + "; border-bottom: 2px solid " + t.a + "; padding-bottom: 3px", pasPath = "color: " + t.s;
+const SRC = ["..","app.rs","breadcrumb.rs","cache.rs","cmdline.rs","columns.rs","commands.rs","conflict.rs","drives.rs","editor.rs","file_list.rs","fonts.rs","icons.rs","info.rs","job_bar.rs","keybar.rs","layout.rs","lib.rs","menu.rs","panel.rs","prompt_bar.rs","quick_search.rs","quick_view.rs","settings.rs","status.rs","tabs.rs","theme.rs","toast.rs","tree.rs","viewer.rs","widgets.rs","window.rs","sys"].map((n) => n === ".." ? ["..","up","",""] : (n === "sys" ? ["sys","d","",""] : [n,"f","",""]));
+const DES = [["..","up","",""],["screens","d","","20.10.26 20:31"],["DESIGN.md","f","9,8 КБ","20.10.26 20:35"],["window.dc.html","f","48,1 КБ","20.10.26 20:31"]];
+const P = (o) => Object.assign({ isFull: false, isBrief: false, isTree: false, isInfo: false, isQv: false, drives: false }, o);
+const full = (path, info, list, c, act, extra) => P(Object.assign({ isFull: true, path, info, rows: rows(list, c), pathStyle: act ? actPath : pasPath }, extra || {}));
+const panels = screen === "brief" ? [P({ isBrief: true, path: "C:\\Dev\\urfin\\crates\\ui\\src", info: "32 объекта", pathStyle: actPath, rows: rows(SRC, 8), briefGrid: "flex: 1; display: grid; grid-auto-flow: column; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(22, " + rowH + "px); padding-top: 4px; align-content: start; background-image: linear-gradient(to right, transparent calc(33.33% - 1px), " + t.b + " calc(33.33% - 1px), " + t.b + " 33.33%, transparent 33.33%, transparent calc(66.66% - 1px), " + t.b + " calc(66.66% - 1px), " + t.b + " 66.66%, transparent 66.66%)" }), full("\\\\fs01\\share\\presale", "12 объектов", R, -1, false)]
+: screen === "tree" ? [P({ isTree: true, path: "C:\\Dev\\urfin", info: "дерево", pathStyle: actPath }), full("C:\\Dev\\urfin\\docs\\design", "3 объекта", DES, -1, false)]
+: screen === "info" ? [full("C:\\Dev\\urfin", "16 объектов", L, 6, true), P({ isInfo: true, path: "Сведения", info: "", pathStyle: pasPath })]
+: screen === "quickview" ? [full("C:\\Dev\\urfin", "16 объектов", L, 6, true), P({ isQv: true, path: "Быстрый просмотр", info: "TOML", pathStyle: pasPath })]
+: screen === "drives" ? [full("\\Dev\\urfin", "16 объектов", L, 6, true, { drives: true }), full("\\\\fs01\\share\\presale", "12 объектов", R, -1, false)]
+: [full("C:\\Dev\\urfin", "16 объектов", L, cur, true), full("\\\\fs01\\share\\presale", "12 объектов", R, -1, false)];
+const TREE = [[0,"urfin","▾",""],[1,".github","▸",""],[1,"assets","▾",""],[2,"icon","",""],[1,"crates","▾",""],[2,"app","▸",""],[2,"core","▾",""],[3,"src","▸",""],[2,"ui","▸",""],[2,"vfs","▸",""],[1,"docs","▾",""],[2,"adr","▸",""],[2,"design","▸","3"],[2,"specs","▸",""],[1,"scripts","▸",""],[1,"target","▸","2,1 ГБ"]];
+const tree = TREE.map(([d, name, chev, meta], i) => {
+const isC = i === 12;
+return { name, chev, meta, weight: d === 0 || isC ? 500 : 400, chevColor: isC ? t.ct : t.s, iconColor: isC ? t.ct : (iconMode === "color" ? t.a : t.s), metaColor: isC ? t.ct : t.s,
+indent: "width: " + (d * 16) + "px; flex: none; align-self: stretch; background-image: repeating-linear-gradient(to right, transparent 0 7px, " + t.b + " 7px 8px, transparent 8px 16px)",
+style: "height: " + rowH + "px; display: flex; align-items: center; gap: 6px; padding: 0 12px; background: " + (isC ? t.c : "transparent") + "; color: " + (isC ? t.ct : t.t) };
+});
+const infoRows = [["Путь","C:\\Dev\\urfin\\Cargo.toml"],["Изменён","19.10.26 22:40:12"],["Создан","01.09.26 12:00:03"],["Открыт","20.10.26 13:50:41"],["Атрибуты","архивный"],["Владелец","a.antropov"],["Права","полный доступ"],["Ссылки","1 · не символическая"]].map(([k, v]) => ({ k, v, vs: "overflow: hidden; text-overflow: ellipsis; white-space: nowrap" }));
+const bar = (pct, col) => "display: block; height: 100%; width: " + pct + "%; background: " + col;
+const DRV = [["h","Диски"],["d","C:","Windows · NTFS","214 ГБ своб.",77,true],["d","D:","Dev Drive · ReFS","380 ГБ своб.",24,false],["d","E:","KINGSTON · exFAT · съёмный","12,1 ГБ своб.",58,false],["h","Сеть"],["n","\\\\fs01\\share","подключён как S:","",0,false],["n","\\\\nas\\backup","нет связи","",0,false],["h","Места"],["p","Рабочий стол","C:\\Users\\a.antropov\\Desktop","",0,false],["p","Загрузки","C:\\Users\\a.antropov\\Downloads","",0,false],["p","Корзина","38 объектов · 1,2 ГБ","",0,false]];
+const drives = DRV.map((d) => d[0] === "h" ? { head: true, item: false, label: d[1] } : (() => {
+const on = d[5], off = d[2] === "нет связи";
+return { head: false, item: true, isDrive: d[0] === "d", isNet: d[0] === "n", isPlace: d[0] === "p", name: d[1], sub: d[2], free: d[3], hasBar: d[0] === "d",
+bar: bar(d[4], on ? t.ct : (d[4] > 75 ? t.k : t.a)), track: on ? t.p : t.b,
+iconColor: on ? t.ct : (off ? t.s : t.a), subColor: on ? t.ct : (off ? t.k : t.s),
+style: "min-height: 40px; display: flex; align-items: center; gap: 12px; padding: 4px 10px; border: 0; border-radius: 4px; font: inherit; background: " + (on ? t.c : "transparent") + "; color: " + (on ? t.ct : t.t) };
+})());
 const RES = [
 ["crates\\urfin-core\\src\\ops\\copy.rs",142,"handles.push(pool.","(move || copy_file(src, dst, &cancel)));"],
 ["crates\\urfin-core\\src\\ops\\delete.rs",57,"pool.","(move || remove_tree(path, &cancel))"],
@@ -490,6 +578,11 @@ const STATUS = {
 panels: ["Cargo.toml · 1,2 КБ · 19.10.26 22:40","Выделено 1 из 16 · 1,2 КБ","C: 214 ГБ свободно"],
 copy: ["README.md · 4,8 КБ · 17.10.26 21:33","Выделено 3 из 16 · 72,5 КБ","C: 214 ГБ свободно"],
 quick: ["Cargo.lock · 58,3 КБ · 20.10.26 13:50","Выделено 0 из 16","C: 214 ГБ свободно"],
+brief: ["drives.rs · 7,9 КБ · 20.10.26 19:58","Выделено 0 из 32","C: 214 ГБ свободно"],
+tree: ["docs\\design · 3 объекта","","C: 214 ГБ свободно"],
+info: ["","Выделено 0 из 16",""],
+quickview: ["Cargo.toml · 1,2 КБ · 19.10.26 22:40","стр 1–26 из 41",""],
+drives: ["","",""],
 search: ["Поиск «spawn_blocking» в C:\\Dev\\urfin\\crates","9 совпадений","готово за 0,4 с"],
 viewer: ["Стр 1–27 из 212 · 13 %","5 отметок «Исправлено»","9,4 КБ · UTF-8 · CRLF"],
 editor: ["Стр 6, Кол 18","41 строка","TOML · Пробелы: 4 · UTF-8 · LF · Вставка"],
@@ -498,6 +591,7 @@ delete: ["CHANGELOG.md · 9,4 КБ · 18.10.26 17:05","Выделено 2 из 1
 };
 const KEYS = {
 menu: [["← →","Меню"],["↑ ↓","Пункт"],["Enter","Выбрать"],["Esc","Закрыть"]],
+drives: [["Enter","Открыть"],["Del","Извлечь или отключить"],["Alt+Enter","Свойства тома"],["Esc","Закрыть"]],
 quick: [["Ctrl+Enter","Следующее"],["Ctrl+Shift+Enter","Предыдущее"],["Enter","Открыть"],["Esc","Закрыть"]],
 panels: [["F1","Помощь"],["F2","Меню"],["F3","Смотр"],["F4","Ред"],["F5","Коп"],["F6","Перен"],["F7","Папка"],["F8","Удал"],["F9","Конф"],["F10","Выход"]],
 copy: [["Tab","Следующее поле"],["Alt+↓","История путей"]],
@@ -514,14 +608,15 @@ return {
 t, icons, ctx, tabs, panels, results, preview, viewLines, editLines, mini, viewportStyle, foldCol, gutterStyle, marks, tagStyle, segOn: segBtn(true), segOff: segBtn(false), nav, cards, densOpts, iconOpts, followOs, keys, keybarStyle,
 toggleOs: () => this.setState({ followOs: !followOs }),
 status: STATUS[screen] || STATUS.panels,
-isPanels: ["panels","menu","quick","copy","delete","conflict","progress"].indexOf(screen) >= 0,
-isDelete: screen === "delete", isConflict: screen === "conflict", isMenu: screen === "menu", isQuick: screen === "quick",
+isPanels: ["panels","menu","quick","brief","tree","info","quickview","drives","copy","delete","conflict","progress"].indexOf(screen) >= 0,
+isDelete: screen === "delete", isConflict: screen === "conflict", isMenu: screen === "menu", isQuick: screen === "quick", tree, infoRows, drives,
+qvLines: EL.slice(0, 26).map((line, i) => ({ n: i + 1, segs: tomlSegs(line).map((sg) => ({ x: sg.x, style: "color: " + sg.c })) })),
 menuBar: ["Левая","Файлы","Команды","Параметры","Правая"].map((label, i) => ({ label, open: i === 1, filletL: true, filletR: true, listStyle: "position: absolute; left: -40px; top: 100%; width: 330px; padding: 6px 4px 4px; box-sizing: border-box; background: " + t.p + "; border: 1px solid " + t.b + "; border-radius: 8px; display: flex; flex-direction: column; z-index: 1", style: i === 1 ? "position: relative; z-index: 2; height: 27px; margin-bottom: -1px; padding: 0 12px 1px; border: 1px solid " + t.b + "; border-bottom: 0; border-radius: 8px 8px 0 0; font: inherit; font-weight: 500; background: " + t.p + "; color: " + t.t : "height: 24px; margin-bottom: 3px; padding: 0 12px; border: 1px solid transparent; border-radius: 4px; font: inherit; background: transparent; color: " + t.t })),
 menuItems: [["Просмотр","F3"],["Редактировать","F4"],["Копировать","F5"],["Переместить или переименовать","F6"],["Создать папку","F7"],["Удалить","F8"],null,["Отметить группу","Num +"],["Снять отметку с группы","Num −"],["Инвертировать отметку","Num *"],null,["Атрибуты и права","Ctrl+A"],["Сравнить каталоги","›"],["Свойства","Alt+Enter"]].map((m, i) => m ? ({ item: true, sep: false, label: m[0], key: m[1], keyStyle: "font-size: 12px; color: " + (i === 2 ? t.ct : t.s), style: "height: 28px; display: flex; align-items: center; gap: 16px; padding: 0 10px; border: 0; border-radius: 4px; font: inherit; background: " + (i === 2 ? t.c : "transparent") + "; color: " + (i === 2 ? t.ct : t.t) }) : ({ item: false, sep: true })),
 showJobs: screen === "progress" || screen === "conflict",
 jobs: (screen === "conflict" ? [["Копирование","3 объекта → \\\\fs01\\share\\presale",35,"ждёт ответа: конфликт 4 из 12",t.rem,"Пауза"]] : [["Копирование","48 файлов → \\\\fs01\\share\\presale",35,"1,2 из 3,4 ГБ · 48 МБ/с · ещё 47 с",t.a,"Пауза"],["Удаление","target\\debug → Корзина",70,"9 012 из 12 870 · ещё 4 с",t.a,"Пауза"]]).map(([name, what, pct, info, col, act]) => ({ name, what, info, act, infoColor: col === t.a ? t.s : col, bar: "height: 100%; width: " + pct + "%; background: " + col })),
 isCopy, isSearch: screen === "search", isViewer: screen === "viewer", isEditor: screen === "editor", isSettings: screen === "settings",
-showCli: ["panels","menu","quick","copy","delete","conflict","progress","search"].indexOf(screen) >= 0,
+showCli: ["panels","menu","quick","brief","tree","info","quickview","drives","copy","delete","conflict","progress","search"].indexOf(screen) >= 0,
 showToast: screen === "panels",
 inputStyle, chipOn: chip(true), chipOff: chip(false), btn, btnPrimary,
 btnDanger: "height: 30px; padding: 0 14px; border: 1px solid " + t.k + "; border-radius: 4px; background: " + t.k + "; color: " + t.p + "; font: inherit; display: flex; gap: 8px; align-items: center"
