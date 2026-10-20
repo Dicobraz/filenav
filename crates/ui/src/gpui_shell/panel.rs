@@ -77,7 +77,7 @@ pub(super) fn panel(
             d.child(col_header(side, theme, cx))
         })
         .child(list(t, side, active, theme, rows, cols, cx))
-        .child(footer(t, theme))
+        .child(footer(s, t, side, active, theme))
 }
 
 fn path_bar(t: &Tab, theme: &Theme) -> Div {
@@ -281,9 +281,56 @@ fn row(
     d.into_any_element()
 }
 
-fn footer(t: &Tab, theme: &Theme) -> Div {
+/// Подвал: итоги или выделение; при быстром поиске — маска и число совпадений,
+/// при незаконченном аккорде — его начало.
+fn footer(s: &AppState, t: &Tab, side: Side, active: bool, theme: &Theme) -> Div {
     let i18n = urfin_i18n::current();
     let mut args = FluentArgs::new();
+    let keys = s.ext.get::<urfin_keymap::KeymapView>();
+    if let Some(q) = keys.and_then(|k| k.qs.as_ref()).filter(|q| q.side == side) {
+        args.set("count", u64::from(q.matches));
+        let miss = q.miss_at.is_some();
+        return div()
+            .h(px(theme.m(Metric::HPanelFooter)))
+            .flex_none()
+            .flex()
+            .items_center()
+            .gap_2()
+            .px(px(theme.m(Metric::PadRowX)))
+            .bg(theme.c(Role::FillControlInput))
+            .border_b_2()
+            .border_color(theme.c(if miss {
+                Role::CriticalFg
+            } else {
+                Role::AccentFill
+            }))
+            .child(
+                div()
+                    .font_family("Segoe Fluent Icons")
+                    .text_color(theme.c(Role::TextSecondary))
+                    .child(SharedString::from("\u{E721}")),
+            )
+            .child(div().flex_1().child(SharedString::from(q.mask.to_string())))
+            .child(
+                div()
+                    .text_size(px(theme.m(Metric::TypeCaption)))
+                    .text_color(theme.c(Role::TextSecondary))
+                    .child(SharedString::from(i18n.fmt("ui-qs-matches", &args))),
+            );
+    }
+    if active && let Some(chord) = keys.and_then(|k| k.pending.as_deref()) {
+        args.set("chord", chord.to_owned());
+        return div()
+            .h(px(theme.m(Metric::HPanelFooter)))
+            .flex_none()
+            .flex()
+            .items_center()
+            .px(px(theme.m(Metric::PadRowX)))
+            .border_t_1()
+            .border_color(theme.c(Role::StrokeDivider))
+            .text_size(px(theme.m(Metric::TypeCaption)))
+            .child(SharedString::from(i18n.fmt("ui-chord-pending", &args)));
+    }
     let text = if t.selection.is_empty() {
         let st = &t.listing.stats;
         args.set("count", u64::from(st.files + st.dirs));

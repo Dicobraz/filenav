@@ -156,6 +156,36 @@ impl CoreHost {
         }
     }
 
+    /// Какие панели видны и их ширины: Ctrl+O — ни одной; узкое окно (< 720) — только
+    /// активная; иначе — по `ui.split` (S2-07).
+    fn layout(theme: &Theme, s: &urfin_core::AppState, width: f32) -> [Option<f32>; 2] {
+        let st = s.ext.get::<crate::UiState>();
+        if st.is_some_and(|u| u.panels_hidden) {
+            return [None, None];
+        }
+        let gap = theme.m(Metric::GapPanels);
+        let avail = width - 2.0 * gap;
+        let shown = [s.panel(Side::Left).visible, s.panel(Side::Right).visible];
+        let narrow = width < crate::layout::SINGLE_PANEL_BELOW;
+        match (shown, narrow) {
+            ([true, true], false) => {
+                let split = st.map_or(0.5, |u| u.split).clamp(0.1, 0.9);
+                let l = (avail - gap) * split;
+                [Some(l), Some(avail - gap - l)]
+            }
+            ([true, true], true) => {
+                if s.active == Side::Left {
+                    [Some(avail), None]
+                } else {
+                    [None, Some(avail)]
+                }
+            }
+            ([true, false], _) => [Some(avail), None],
+            ([false, true], _) => [None, Some(avail)],
+            _ => [None, None],
+        }
+    }
+
     /// Сетка каждой панели — в Core (`panel.viewport`): по ней он держит курсор в
     /// видимой странице и считает PgUp/PgDn и ←/→ в колонках.
     fn sync_viewport(&mut self, window: &Window) {
@@ -163,14 +193,16 @@ impl CoreHost {
             return;
         };
         let size = window.viewport_size();
-        let gap = self.theme.m(Metric::GapPanels);
-        let w = (f32::from(size.width) - 3.0 * gap) / 2.0;
+        let widths = Self::layout(&self.theme, core.state(), f32::from(size.width));
         let h = f32::from(size.height)
             - self.theme.m(Metric::HTitlebar)
             - self.theme.m(Metric::HCmdline)
             - self.theme.m(Metric::HKeybar);
         for (i, side) in [Side::Left, Side::Right].into_iter().enumerate() {
             let mode = core.state().panel(side).tab().view_mode;
+            let Some(w) = widths[i] else {
+                continue;
+            };
             let g = panel::grid(&self.theme, mode, w, h);
             if g == self.grid[i] {
                 continue;
@@ -585,10 +617,21 @@ impl Render for CoreHost {
             window.is_maximized(),
             &click,
         ));
+        let widths = Self::layout(&self.theme, s, f32::from(window.viewport_size().width));
         let mut panels = div().flex_1().min_h_0().flex().flex_row().gap(gap).px(gap);
         for (i, side) in [Side::Left, Side::Right].into_iter().enumerate() {
+            let Some(w) = widths[i] else {
+                continue;
+            };
             let (rows, cols) = self.grid[i];
-            panels = panels.child(panel::panel(s, side, &self.theme, rows, cols, cx));
+            panels = panels.child(
+                div()
+                    .w(px(w))
+                    .flex_none()
+                    .h_full()
+                    .flex()
+                    .child(panel::panel(s, side, &self.theme, rows, cols, cx)),
+            );
         }
         let prompt = s.prompts.active().map(|p| {
             let sel = if self.choice.0 == p.id.0 {
