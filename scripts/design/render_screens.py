@@ -78,6 +78,8 @@ SHOTS = [
     ("screen-errors", {"screen": "errors"}),
     ("screen-terminal", {"screen": "terminal"}),
     ("screen-termhalf", {"screen": "termhalf"}),
+    ("screen-context", {"screen": "context"}),
+    ("screen-select", {"screen": "select"}),
     ("screen-copy", {"screen": "copy"}),
     ("screen-delete", {"screen": "delete"}),
     ("screen-conflict", {"screen": "conflict"}),
