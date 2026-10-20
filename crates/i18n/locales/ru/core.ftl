@@ -19,3 +19,7 @@ ops-dest-empty = Не указано, куда
 ops-dest-file = Назначение — файл: { $path }
 ops-open-failed = Не открыть { $name }: { $error }
 core-settings-not-saved = Настройки не сохранены в { $file }: { $error }
+ops-mkdir-failed = Не создать { $name }: { $error }
+ops-rename-failed = Не переименовать { $name }: { $error }
+ops-exists = { $name } уже есть
+ops-rename-bad = В имени не может быть \ и / — перенести в другую папку можно через F6

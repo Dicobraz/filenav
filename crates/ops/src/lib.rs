@@ -12,6 +12,7 @@ pub mod dest;
 mod engine;
 mod handler;
 pub mod names;
+pub mod ops;
 pub mod sys;
 
 pub use api::{

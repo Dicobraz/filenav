@@ -19,3 +19,7 @@ ops-dest-empty = Destination is empty
 ops-dest-file = Destination is a file: { $path }
 ops-open-failed = Cannot open { $name }: { $error }
 core-settings-not-saved = Settings not saved to { $file }: { $error }
+ops-mkdir-failed = Cannot create { $name }: { $error }
+ops-rename-failed = Cannot rename { $name }: { $error }
+ops-exists = { $name } already exists
+ops-rename-bad = A name cannot contain \ or / — use Move (F6) to put it elsewhere
