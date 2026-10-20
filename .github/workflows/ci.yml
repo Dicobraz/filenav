@@ -53,21 +53,17 @@ jobs:
       - uses: actions/checkout@v7.0.1
       - uses: EmbarkStudios/cargo-deny-action@v2.1.1
 
+  # Только Windows (решение владельца 2026-10-20): Linux и macOS не собираются и не
+  # тестируются. fmt, deny и заголовок PR — на ubuntu: приложение там не собирается.
   test:
     if: github.event.action != 'edited'
-    name: test (${{ matrix.os }})
-    # macOS в пассиве: джоб собирает и тестирует, но не блокирует мерж (docs/macos-notes.md).
-    continue-on-error: ${{ matrix.os == 'macos-latest' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+    name: test (windows)
+    runs-on: windows-latest
     defaults:
       run:
         shell: bash
     env:
-      BIN: target/release/urfin${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+      BIN: target/release/urfin.exe
     steps:
       - uses: actions/checkout@v7.0.1
       # Ставит тулчейн из rust-toolchain.toml (rustup ≥1.28 не делает этого в `rustup show`).
@@ -76,28 +72,19 @@ jobs:
       - uses: taiki-e/install-action@v2.87.28
         with:
           tool: cargo-nextest
-      - name: Linux deps
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev libgl1-mesa-dev libx11-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb1-dev libfontconfig1-dev
       - name: Python
         run: echo "PY=$(command -v python3 || command -v python)" >> "$GITHUB_ENV"
 
+      # `--all-targets` проверяет и бенчи (S1-14); их числа — на стенде (docs/perf/).
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo nextest run --workspace --locked --profile ci
       - run: cargo test --doc --workspace --locked
-      # Бенчи собираются (S1-14); числа — на стенде (docs/perf/baseline.md). Профиль bench
-      # = release с fat LTO, поэтому только на одном раннере.
-      - name: Benches compile
-        if: runner.os == 'Linux'
-        run: cargo bench --workspace --no-run --locked
 
       - name: No diagnostic features in release (profile, dhat-heap, count-alloc)
         run: $PY ci/release_features.py
       - run: cargo build --release -p urfin-app --locked
-      # Бюджет 25 МиБ (S0-decisions №54) меряется на Windows; Linux/macOS — только
-      # сводка и предупреждение (нюансы — docs/macos-notes.md). До G-06 в бинаре и
-      # egui, и GPUI (~30 МиБ) — предупреждение и на Windows (решение владельца
-      # 2026-10-20); G-06 возвращает блокировку.
+      # Бюджет 25 МиБ (S0-decisions №54). До G-06 в бинаре и egui, и GPUI (~30 МиБ) —
+      # предупреждение (решение владельца 2026-10-20); G-06 возвращает блокировку.
       - name: Binary size ≤ 25 MB
         continue-on-error: true
         run: $PY ci/size.py "$BIN" 25
@@ -106,38 +93,5 @@ jobs:
 
       - uses: actions/upload-artifact@v7.0.2
         with:
-          name: urfin-${{ runner.os }}
+          name: urfin-Windows
           path: ${{ env.BIN }}
-
-      # Набор самопроверки для Mac (окно на Mac руками не проверяется):
-      # universal-бинарь + scripts/mac/selftest.sh. Права x теряются в артефакте —
-      # скрипт запускается через `zsh`, бинарь он копирует и делает исполняемым.
-      - name: macOS selftest kit
-        if: runner.os == 'macOS'
-        run: |
-          rustup target add x86_64-apple-darwin
-          cargo build --release -p urfin-app --locked --target x86_64-apple-darwin
-          mkdir -p kit
-          lipo -create -output kit/urfin "$BIN" target/x86_64-apple-darwin/release/urfin
-          lipo -info kit/urfin
-          cp scripts/mac/selftest.sh scripts/mac/README.txt kit/
-      - uses: actions/upload-artifact@v7.0.2
-        if: runner.os == 'macOS'
-        with:
-          name: urfin-macos-selftest
-          path: kit/
-      # Пробный прогон набора на раннере (ВМ, паравиртуальный GPU): набор рабочий
-      # до того, как его запустит владелец. Результат — отдельным артефактом.
-      - name: macOS selftest kit dry run
-        if: runner.os == 'macOS'
-        run: |
-          zsh -n kit/selftest.sh
-          mkdir -p ~/Desktop
-          zsh kit/selftest.sh kit/urfin
-      - uses: actions/upload-artifact@v7.0.2
-        if: runner.os == 'macOS'
-        with:
-          name: urfin-macos-selftest-ci-results
-          path: ~/Desktop/urfin-selftest-*.tgz
-          retention-days: 7
-          if-no-files-found: error
