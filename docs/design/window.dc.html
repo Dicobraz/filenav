@@ -25,10 +25,12 @@ body{margin:0}
 </sc-if>
 <sc-if value="{{twoSets}}" hint-placeholder-val="{{ false }}">
 <div style="width: 628px; flex: none; display: flex; align-items: flex-end; gap: 2px">
+<sc-if value="{{leftSet}}" hint-placeholder-val="{{ true }}">
 <sc-for list="{{tabsL}}" as="tb" hint-placeholder-count="2">
 <button type="button" aria-label="{{tb.aria}}" title="{{tb.aria}}" style="{{tb.style}}"><sc-if value="{{tb.icon}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.1"></rect><path d="M8 2.5v11 M1.5 5.5h13" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></sc-if>{{tb.label}}<sc-if value="{{tb.close}}" hint-placeholder-val="{{ false }}"><span style="color: {{t.s}}; font-size: 11px" aria-hidden="true">×</span></sc-if></button>
 </sc-for>
 <button type="button" aria-label="Новая вкладка" style="height: 32px; padding: 0 12px; border: 0; background: transparent; color: {{t.s}}; font: inherit">+</button>
+</sc-if>
 </div>
 <div style="width: 1px; height: 16px; flex: none; align-self: center; margin-top: 8px; background: {{t.b}}"></div>
 <div style="flex: 1; min-width: 0; display: flex; align-items: flex-end; gap: 2px; padding-left: 12px">
@@ -661,7 +663,8 @@ isPanels: ["panels","terminal","termhalf","menu","quick","archive","errors","bri
 showTerm: screen === "terminal" || screen === "termhalf",
 cliCmd: screen === "terminal" || screen === "termhalf" ? "" : "cargo build --release",
 oneSet: ["viewer","editor","settings","search"].indexOf(screen) >= 0,
-twoSets: ["viewer","editor","settings","search"].indexOf(screen) < 0,
+twoSets: ["viewer","editor","settings","search","terminal"].indexOf(screen) < 0,
+leftSet: screen !== "termhalf",
 tabsL: [[(panels[0].path || "C:\\Dev\\urfin").split("\\").filter(Boolean).pop(), 1], ["logs", 0]].map(([label, on]) => ({ label, close: on && screen !== "termhalf", style: on ? (screen === "termhalf" ? tabStyle(true) + "; color: " + t.s : tabStyle(true)) : tabStyle(false) })),
 tabsR: [[(panels[1] && panels[1].path ? panels[1].path : "presale").split("\\").filter(Boolean).pop(), 1], ["backup", 0], ["clients", 0]].map(([label, on]) => ({ label, close: on && screen === "termhalf", style: on ? (screen === "termhalf" ? tabStyle(true) : tabStyle(true) + "; color: " + t.s) : tabStyle(false) })),
 termLines: (() => {
