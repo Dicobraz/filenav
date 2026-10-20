@@ -74,9 +74,9 @@ Ext-сортировка в этом PR ускорена с 12,7 / 170 мс до
 ## Как повторить
 
 ```
-cargo run -p urfin-testdata --example gen_tree --release -- --n 100000 --seed 1 --out %TEMP%\urfin-bench-gen-100k
-cargo run -p urfin-vfs --example vfs_bench --release -- %TEMP%\urfin-bench-gen-100k --runs 7 --json run.json
-cargo run -p urfin-vfs --example vfs_bench --release -- %TEMP%\urfin-bench-gen-100k --runs 7 --core-only
+cargo run -p urfin-testdata --example gen_tree --release -- --n 100000 --seed 1
+cargo run -p urfin-vfs --example vfs_bench --release -- %LOCALAPPDATA%\Pets\testdata\urfin\gen-100000-s1 --runs 7 --json run.json
+cargo run -p urfin-vfs --example vfs_bench --release -- %LOCALAPPDATA%\Pets\testdata\urfin\gen-100000-s1 --runs 7 --core-only
 cargo bench -p urfin-vfs --bench list
 cargo bench -p urfin-vfs --bench sort
 ```

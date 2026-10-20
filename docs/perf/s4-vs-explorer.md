@@ -26,8 +26,8 @@ Urfin — `vfs_bench --core-only` (тот же каталог, `VfsListing` и c
 ## Как повторить
 
 ```
-cargo run -p urfin-testdata --example gen_tree --release -- --n 100000 --seed 1 --out %TEMP%\urfin-bench-gen-100k
-cargo run -p urfin-vfs --example vfs_bench --release -- %TEMP%\urfin-bench-gen-100k --runs 7 --core-only
+cargo run -p urfin-testdata --example gen_tree --release -- --n 100000 --seed 1
+cargo run -p urfin-vfs --example vfs_bench --release -- %LOCALAPPDATA%\Pets\testdata\urfin\gen-100000-s1 --runs 7 --core-only
 ```
 
 Скрипт замера Проводника (PowerShell 5.1, ASCII): ищет окно `CabinetWClass` с именем каталога, ждёт первый `ListItem` и текст вида `…: N` с ожидаемым N. Переменные PowerShell без учёта регистра — не называть цикл `$t` при `$T = [TreeScope]`.

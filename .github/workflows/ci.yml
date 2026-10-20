@@ -67,7 +67,7 @@ jobs:
       run:
         shell: bash
     env:
-      BIN: target/release/urfin${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+      EXE: ${{ matrix.os == 'windows-latest' && '.exe' || '' }}
     steps:
       - uses: actions/checkout@v7.0.1
       # Ставит тулчейн из rust-toolchain.toml (rustup ≥1.28 не делает этого в `rustup show`).
@@ -81,6 +81,12 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev libgl1-mesa-dev libx11-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb1-dev libfontconfig1-dev
       - name: Python
         run: echo "PY=$(command -v python3 || command -v python)" >> "$GITHUB_ENV"
+      # Каталог сборки — из cargo metadata, не `target/` (H-01: CARGO_TARGET_DIR может быть общим).
+      - name: Target dir
+        run: |
+          T=$(cargo metadata --format-version 1 --no-deps | "$PY" -c 'import json,sys; print(json.load(sys.stdin)["target_directory"].replace("\\", "/"))')
+          echo "TARGET_DIR=$T" >> "$GITHUB_ENV"
+          echo "BIN=$T/release/urfin$EXE" >> "$GITHUB_ENV"
 
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo nextest run --workspace --locked --profile ci
@@ -118,7 +124,7 @@ jobs:
           rustup target add x86_64-apple-darwin
           cargo build --release -p urfin-app --locked --target x86_64-apple-darwin
           mkdir -p kit
-          lipo -create -output kit/urfin "$BIN" target/x86_64-apple-darwin/release/urfin
+          lipo -create -output kit/urfin "$BIN" "$TARGET_DIR/x86_64-apple-darwin/release/urfin"
           lipo -info kit/urfin
           cp scripts/mac/selftest.sh scripts/mac/README.txt kit/
       - uses: actions/upload-artifact@v7.0.2
