@@ -3,9 +3,14 @@
 //! `WindowControlArea`: перетаскивание, Snap Layouts на «□»), cmdline и строка F-клавиш.
 
 use gpui_kit::prelude::*;
-use gpui_kit::{Div, Hsla, SharedString, Stateful, WindowControlArea, div, px, rgb};
+use gpui_kit::{
+    ClickEvent, Context, Div, Hsla, IntoElement, Render, SharedString, Stateful, WeakEntity,
+    Window, WindowControlArea, div, px, rgb,
+};
 use urfin_core::{AppState, Command, Side, Tab};
 
+use super::CoreHost;
+use super::panel::Listen;
 use super::theme::Theme;
 use crate::keybar::{Item, Mods};
 use crate::tokens::{Metric, Role};
@@ -265,4 +270,72 @@ pub(super) fn keybar(
         bar = bar.child(slot);
     }
     bar
+}
+
+/// Кэшируемые части каркаса (G-07): табы в заголовке и низ окна (cmdline + F-клавиши).
+/// Сам заголовок с «─ □ ✕» не кэшируется: gpui не повторяет `WindowControlArea` из кэша.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Part {
+    Tabs,
+    Bottom,
+}
+
+pub(super) struct ChromeView {
+    pub host: WeakEntity<CoreHost>,
+    pub part: Part,
+}
+
+impl Render for ChromeView {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let Some(host) = self.host.upgrade() else {
+            return div();
+        };
+        let h = host.read(cx);
+        let Some(core) = h.core.as_ref() else {
+            return div();
+        };
+        let s = core.state();
+        let l = Listen(self.host.clone());
+        let click = |cmd: Command| -> super::overlays::Handler {
+            Box::new(l.listener(move |h: &mut CoreHost, _: &ClickEvent, w, cx| {
+                h.run(cmd.clone(), w, cx);
+            }))
+        };
+        match self.part {
+            Part::Tabs => panel_tabs(s, &h.theme, &click),
+            Part::Bottom => div()
+                .size_full()
+                .flex()
+                .flex_col()
+                .child(cmdline(s, &h.theme))
+                .child(keybar(h.keybar.items(h.mods), h.mods, &h.theme, &click)),
+        }
+    }
+}
+
+/// Отпечаток табов: имена и активные табы обеих панелей, тема, язык.
+pub(super) fn tabs_print(s: &AppState, dark: bool) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::hash::DefaultHasher::new();
+    (dark, urfin_i18n::epoch()).hash(&mut h);
+    for side in [Side::Left, Side::Right] {
+        let p = s.panel(side);
+        p.active.hash(&mut h);
+        for t in &p.tabs {
+            (t.id.0, tab_title(t)).hash(&mut h);
+        }
+    }
+    h.finish()
+}
+
+/// Отпечаток низа: путь активной панели, подписи F-клавиш, модификаторы, тема.
+pub(super) fn bottom_print(s: &AppState, items: &[Item], mods: Mods, dark: bool) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::hash::DefaultHasher::new();
+    (dark, urfin_i18n::epoch(), format!("{mods:?}")).hash(&mut h);
+    s.panel(s.active).tab().loc.path.hash(&mut h);
+    for it in items {
+        (it.n, &it.label, it.enabled).hash(&mut h);
+    }
+    h.finish()
 }

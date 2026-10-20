@@ -143,6 +143,10 @@ pub struct CoreHost {
     /// Панели — кэшируемые view (G-07) и отпечатки их последней отрисовки.
     panels: [Entity<panel::PanelView>; 2],
     prints: [u64; 2],
+    /// Табы в заголовке и низ окна — кэшируемые view, отпечатки как у панелей.
+    tabs: Entity<chrome::ChromeView>,
+    bottom: Entity<chrome::ChromeView>,
+    chrome_prints: [u64; 2],
 }
 
 impl std::fmt::Debug for CoreHost {
@@ -175,6 +179,14 @@ impl CoreHost {
                 side,
             })
         });
+        let tabs = cx.new(|_| chrome::ChromeView {
+            host: host.clone(),
+            part: chrome::Part::Tabs,
+        });
+        let bottom = cx.new(|_| chrome::ChromeView {
+            host: host.clone(),
+            part: chrome::Part::Bottom,
+        });
         CoreHost {
             core: Some(core),
             signal,
@@ -199,6 +211,9 @@ impl CoreHost {
             out: Vec::new(),
             panels,
             prints: [0; 2],
+            tabs,
+            bottom,
+            chrome_prints: [0; 2],
         }
     }
 
@@ -788,6 +803,19 @@ fn in_window(
         .is_ok()
 }
 
+/// View в кадре: отпечаток тот же — из кэша gpui (без раскладки и paint), изменился —
+/// рисуется заново. `notify` дочерней view из `render` родителя сработал бы только в
+/// следующем кадре, поэтому изменённая view в этом кадре идёт без `cached`.
+fn cached<V: Render>(view: &Entity<V>, print: u64, last: &mut u64) -> gpui_kit::AnyElement {
+    if std::mem::replace(last, print) == print {
+        view.clone()
+            .cached(gpui_kit::StyleRefinement::default().size_full())
+            .into_any_element()
+    } else {
+        view.clone().into_any_element()
+    }
+}
+
 impl Render for CoreHost {
     #[allow(clippy::too_many_lines, reason = "сборка зон окна")]
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -840,9 +868,14 @@ impl Render for CoreHost {
             .get::<crate::UiState>()
             .and_then(crate::menu::open_id)
             .map(str::to_owned);
+        let dark = self.theme.tokens.theme() == crate::color::Theme::Dark;
         let content = match &open {
             Some(id) => self.menu.bar(id, &self.theme, &click),
-            None => chrome::panel_tabs(s, &self.theme, &click),
+            None => div().flex_1().min_w_0().h_full().flex().child(cached(
+                &self.tabs,
+                chrome::tabs_print(s, dark),
+                &mut self.chrome_prints[0],
+            )),
         };
         root = root.child(chrome::titlebar(
             content,
@@ -872,20 +905,8 @@ impl Render for CoreHost {
                 );
             }
             // Изменилась — рисуется заново (без кэша в этом кадре), иначе кадр из кэша.
-            let print = panel::fingerprint(
-                s,
-                side,
-                self.grid[i],
-                self.theme.tokens.theme() == crate::color::Theme::Dark,
-                self.field.as_ref(),
-            );
-            let view = self.panels[i].clone();
-            let card = if std::mem::replace(&mut self.prints[i], print) == print {
-                view.cached(gpui_kit::StyleRefinement::default().size_full())
-                    .into_any_element()
-            } else {
-                view.into_any_element()
-            };
+            let print = panel::fingerprint(s, side, self.grid[i], dark, self.field.as_ref());
+            let card = cached(&self.panels[i], print, &mut self.prints[i]);
             panels = panels.child(div().w(px(w)).flex_none().h_full().flex().child(card));
         }
         let prompt = s.prompts.active().map(|p| {
@@ -907,13 +928,19 @@ impl Render for CoreHost {
                 &click_all,
             ))
             .children(prompt)
-            .child(chrome::cmdline(s, &self.theme))
-            .child(chrome::keybar(
-                self.keybar.items(self.mods),
-                self.mods,
-                &self.theme,
-                &click,
-            ))
+            .child(
+                div()
+                    .flex_none()
+                    .h(px(
+                        self.theme.m(Metric::HCmdline) + self.theme.m(Metric::HKeybar)
+                    ))
+                    .flex()
+                    .child(cached(
+                        &self.bottom,
+                        chrome::bottom_print(s, self.keybar.items(self.mods), self.mods, dark),
+                        &mut self.chrome_prints[1],
+                    )),
+            )
             .children(open.as_ref().map(|_| {
                 // Щит под меню: клик мимо закрывает его и не уходит в панель.
                 div()
