@@ -8,6 +8,7 @@ pub mod api;
 pub mod config;
 pub mod dest;
 mod handler;
+pub mod names;
 pub mod sys;
 
 pub use api::{
