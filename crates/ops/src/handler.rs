@@ -300,6 +300,26 @@ impl Handler for OpsHandler {
                 };
                 mkdir(cx, name)
             }
+            "ops.retry" | "job.retry" => {
+                // `id` обязателен (проверен реестром); чужой или отрицательный — «нечего».
+                let id = a
+                    .int("id")
+                    .and_then(|v| u64::try_from(v).ok())
+                    .map(urfin_core::JobId);
+                let found = id.and_then(|id| {
+                    cx.state
+                        .ext
+                        .get::<crate::engine::Reports>()
+                        .and_then(|r| r.retry(id))
+                });
+                let started = found.and_then(|(report, retry)| {
+                    crate::ops::copy::start_retry(&self.engine, cx, &report, &retry)
+                });
+                if started.is_none() {
+                    return Err(CmdError::Rejected(text("ops-retry-nothing", &[]).into()));
+                }
+                Ok(())
+            }
             "ops.rename" => {
                 let Some(to) = a.str("to") else {
                     // Без имени — поле на месте (Shift+F6).

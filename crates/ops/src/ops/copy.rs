@@ -20,6 +20,12 @@
 //! сброшена на диск и её размер равен источнику (S0 №12, S5-08): прерванный
 //! перенос оставляет каждый файл целым хотя бы в одном месте.
 //!
+//! Ошибки (S5-11): занятый, недоступный носитель и сеть повторяются сами
+//! (0,2 / 1 / 4 с), затем — по `ErrorPolicy`: вопрос (Повторить, Пропустить,
+//! «для всех» — по классу ошибки), пропуск в отчёт или остановка job. Упавшие
+//! пары «источник → назначение» — в отчёте; `ops.retry` запускает job только из
+//! них ([`start_retry`]).
+//!
 //! `ConflictPolicy::Ask` (по умолчанию): файл с занятым именем паркуется, вопрос
 //! задаётся без модального окна, остальное копируется дальше (S5-07, движок —
 //! `engine::park`). Имя заняли после плана — данные уже во временном файле,
@@ -42,18 +48,25 @@ use urfin_core::{
 use urfin_vfs::{ListOpts, LocalFs, Vfs};
 
 use crate::api::{
-    ConflictPolicy, DestMode, DirPolicy, FailedItem, IoClass, Issue, IssueId, IssueKind, ItemMeta,
-    ItemOp, LinkMode, OpKind, OpOptions, OpRequest, Preserve, RenameScheme, Report, Resolution,
+    ConflictPolicy, DestMode, DirPolicy, ErrorPolicy, FailedItem, IoClass, Issue, IssueId,
+    IssueKind, ItemMeta, ItemOp, LinkMode, OpKind, OpOptions, OpRequest, Preserve, RenameScheme,
+    Report, Resolution,
 };
 use crate::dest::{DestError, resolve_dest};
 use crate::engine::walker::{Enter, Visit, Walker, loc};
 use crate::engine::{
-    DirNode, ExecCx, ItemResult, JobEngine, Note, OpExec, Plan, PlanError, Resolved, Work,
+    DirNode, ExecCx, ItemResult, JobEngine, Note, OpExec, Plan, PlanError, Resolved, Retry, Work,
 };
 use crate::sys::fs as sys;
 
 /// Воркеров на job по умолчанию (носитель и AIMD — S5-19).
 const WORKERS: u16 = 8;
+/// Паузы автоповтора транзиентных ошибок (S5 §2.2, S5-11).
+const RETRY_WAITS: [Duration; 3] = [
+    Duration::from_millis(200),
+    Duration::from_secs(1),
+    Duration::from_secs(4),
+];
 /// Точность времени FAT/exFAT: сравнение «новее/отличается» с допуском.
 const FAT_TOLERANCE_NS: i64 = 2_000_000_000;
 
@@ -189,6 +202,8 @@ pub(crate) struct Transfer {
     opts: OpOptions,
     mask: Option<Mask>,
     small: u64,
+    /// Повтор (`ops.retry`): пары «источник → назначение» вместо `items`.
+    pairs: Vec<(PathBuf, PathBuf)>,
     /// Метка временных файлов job.
     tag: String,
     info: OnceLock<Info>,
@@ -206,6 +221,72 @@ pub(crate) struct Start {
     pub dest_raw: String,
     pub mask: Option<Mask>,
     pub small_file: u64,
+}
+
+/// Как повторить упавшее: режим и опции исходной job (хранится с отчётом).
+#[derive(Debug)]
+pub(crate) struct RetrySpec {
+    mode: Mode,
+    opts: OpOptions,
+    mask: Option<Mask>,
+    small: u64,
+}
+
+/// `ops.retry` (UI-поток): job только из упавших пар отчёта. `None` — повторять
+/// нечего.
+pub(crate) fn start_retry(
+    eng: &JobEngine,
+    cx: &mut Cx<'_>,
+    report: &Report,
+    retry: &Retry,
+) -> Option<JobId> {
+    let spec = retry.downcast_ref::<RetrySpec>()?;
+    let pairs: Vec<(PathBuf, PathBuf)> = report
+        .failed
+        .iter()
+        .filter_map(|f| f.pair.clone())
+        .collect();
+    let (first_src, first_dst) = pairs.first()?.clone();
+    let names: Vec<CompactString> = pairs
+        .iter()
+        .map(|(s, _)| {
+            s.file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .as_ref()
+                .into()
+        })
+        .collect();
+    let spec_job = JobSpec {
+        kind: if spec.mode == Mode::Move {
+            "move"
+        } else {
+            "copy"
+        },
+        title: job_title(spec.mode, &names),
+        lane: Lane::Bulk,
+        priority: 0,
+        owner_ns: "ops",
+    };
+    let dir = |p: &Path| Location::local(shown(p.parent().unwrap_or(p)));
+    let t = Transfer {
+        mode: spec.mode,
+        base: dir(&first_src),
+        items: Vec::new(),
+        dest: dir(&first_dst),
+        dest_raw: String::new(),
+        opts: spec.opts.clone(),
+        mask: spec.mask.clone(),
+        small: spec.small,
+        pairs,
+        tag: new_tag(),
+        info: OnceLock::new(),
+        gate: Gate::default(),
+        #[cfg(test)]
+        before_commit: None,
+    };
+    let workers = spec.opts.workers.map_or(WORKERS, |n| u16::from(n.get()));
+    Some(eng.start(cx, spec_job, workers, t))
 }
 
 /// Из handler (UI-поток, без I/O): job копирования или переноса.
@@ -292,6 +373,7 @@ impl Transfer {
             opts: s.req.opts,
             mask: s.mask,
             small: s.small_file,
+            pairs: Vec::new(),
             tag: new_tag(),
             info: OnceLock::new(),
             gate: Gate::default(),
@@ -321,6 +403,41 @@ impl Transfer {
             op: self.op(),
             error: error.into(),
             class,
+            pair: None,
+        }
+    }
+
+    /// Ошибка работы, которую можно повторить (`ops.retry`).
+    fn failed_item(&self, it: &Item, error: &str, class: IoClass) -> FailedItem {
+        FailedItem {
+            pair: Some((it.src.clone(), it.dst.clone())),
+            ..self.failed(&it.src, error, class)
+        }
+    }
+
+    /// Ошибка после автоповторов — по `ErrorPolicy` (S5-11).
+    fn on_error(&self, it: &Item, e: &io::Error, cx: &ExecCx<'_>) -> ItemResult {
+        let (text, c) = (io_text(e), class(e));
+        match self.opts.errors {
+            ErrorPolicy::Ask => {
+                let kind = if low_space(e) {
+                    IssueKind::LowSpace
+                } else {
+                    IssueKind::Io(c)
+                };
+                let name = it.src.file_name().unwrap_or_default().to_string_lossy();
+                let mut issue = self.issue(&name, it.size, mtime_of(&it.src), &it.dst, None, None);
+                issue.kind = kind;
+                issue.dst = None;
+                issue.error = Some(text.into());
+                let bytes = if it.rename { 0 } else { it.size };
+                ItemResult::Park(Box::new(issue), bytes)
+            }
+            ErrorPolicy::Skip => ItemResult::Failed(self.failed_item(it, &text, c)),
+            ErrorPolicy::Abort => {
+                cx.abort(&format!("{}: {text}", shown(&it.src)));
+                ItemResult::Failed(self.failed_item(it, &text, c))
+            }
         }
     }
 
@@ -369,7 +486,9 @@ impl Transfer {
         let mut dst = it.dst.clone();
         let mut rename = it.rename;
         let mut temp = it.temp.clone();
-        for _ in 0..4 {
+        let mut waits = RETRY_WAITS.iter();
+        // Конфликты (до 4 попыток) и автоповторы (до 3).
+        for _ in 0..8 {
             let r = if rename {
                 rename_one(&it.src, &dst, how, self.scheme())
             } else {
@@ -430,7 +549,16 @@ impl Transfer {
                 }
                 Err(e) => {
                     drop_temp(&mut temp, it.kind);
-                    return self.fail(&it.src, &e);
+                    if class(&e).transient()
+                        && let Some(d) = waits.next()
+                    {
+                        tracing::debug!(src = %it.src.display(), error = %e, wait = ?d, "retry");
+                        if pause(*d, cx).is_err() {
+                            return ItemResult::Cancelled;
+                        }
+                        continue;
+                    }
+                    return self.on_error(it, &e, cx);
                 }
             }
         }
@@ -551,6 +679,7 @@ impl Transfer {
             }),
             op: self.op(),
             temp,
+            error: None,
         }
     }
 
@@ -569,13 +698,18 @@ impl Transfer {
             excl,
             symlink: false,
         };
-        sys::copy_file(&it.src, to, flags, &mut |done| {
+        let r = sys::copy_file(&it.src, to, flags, &mut |done| {
             if done > last {
                 cx.add_bytes(done - last);
                 last = done;
             }
             cx.checkpoint().is_ok()
-        })?;
+        });
+        if let Err(e) = r {
+            // Недописанное не считается: повтор посчитает файл заново.
+            cx.progress().bytes_done.fetch_sub(last, Ordering::Relaxed);
+            return Err(e);
+        }
         if it.size > last {
             cx.add_bytes(it.size - last);
         }
@@ -813,15 +947,41 @@ fn io_text(e: &io::Error) -> String {
     }
 }
 
-/// Класс ошибки (S5-11 уточнит по кодам ОС).
+/// Класс ошибки по коду Win32 (S5-11): занятость и сеть повторяются сами.
 fn class(e: &io::Error) -> IoClass {
-    match (e.kind(), e.raw_os_error()) {
-        (io::ErrorKind::PermissionDenied, _) => IoClass::Permission,
-        (io::ErrorKind::NotFound, _) => IoClass::NotFound,
-        (_, Some(32 | 33)) => IoClass::Sharing,
-        (_, Some(53 | 59 | 64 | 121 | 1231)) => IoClass::Network,
-        _ => IoClass::Other,
+    match e.raw_os_error() {
+        // SHARING_VIOLATION, LOCK_VIOLATION, USER_MAPPED_FILE.
+        Some(32 | 33 | 1224) => IoClass::Sharing,
+        // NOT_READY, BUSY, BUSY_DRIVE, DEVICE_IN_USE, DEVICE_NOT_AVAILABLE.
+        Some(21 | 170 | 142 | 2404 | 4319) => IoClass::Busy,
+        // BAD_NETPATH, UNEXP_NET_ERR, NETNAME_DELETED, BAD_NET_NAME, SEM_TIMEOUT,
+        // NETWORK_UNREACHABLE, HOST_UNREACHABLE, CONNECTION_ABORTED, NETWORK_BUSY.
+        Some(53 | 59 | 64 | 67 | 121 | 1231 | 1232 | 1236 | 54) => IoClass::Network,
+        // ACCESS_DENIED, NETWORK_ACCESS_DENIED, PRIVILEGE_NOT_HELD.
+        Some(5 | 65 | 1314) => IoClass::Permission,
+        // FILE_NOT_FOUND, PATH_NOT_FOUND, BAD_NETPATH уже выше.
+        Some(2 | 3) => IoClass::NotFound,
+        _ => match e.kind() {
+            io::ErrorKind::PermissionDenied => IoClass::Permission,
+            io::ErrorKind::NotFound => IoClass::NotFound,
+            _ => IoClass::Other,
+        },
     }
+}
+
+/// Нет места (`DISK_FULL`, `HANDLE_DISK_FULL`): отдельный вопрос, без «для всех».
+fn low_space(e: &io::Error) -> bool {
+    matches!(e.raw_os_error(), Some(112 | 39))
+}
+
+/// Пауза автоповтора с отменой и паузой job.
+fn pause(d: Duration, cx: &ExecCx<'_>) -> Result<(), Cancelled> {
+    let end = std::time::Instant::now() + d;
+    while std::time::Instant::now() < end {
+        cx.checkpoint()?;
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    Ok(())
 }
 
 /// Атрибуты записи → `FILE_ATTRIBUTE_*` для каталога назначения.
@@ -1124,6 +1284,9 @@ impl OpExec for Transfer {
 
     #[allow(clippy::too_many_lines, reason = "план: назначение, корень, элементы")]
     fn plan(&self, p: &mut Plan<'_, Self>) -> Result<(), PlanError> {
+        if !self.pairs.is_empty() {
+            return self.plan_pairs(p);
+        }
         let base = verbatim(&self.base.path);
         let dest = verbatim(&self.dest.path);
         let kind = std::fs::metadata(&dest).ok().map(|m| {
@@ -1281,6 +1444,17 @@ impl OpExec for Transfer {
     }
 
     fn resolve(&self, mut it: Item, issue: &Issue, r: &Resolution) -> Resolved<Item> {
+        if let IssueKind::Io(_) | IssueKind::LowSpace = issue.kind {
+            if *r == Resolution::Retry {
+                return Resolved::Run(it);
+            }
+            let c = match issue.kind {
+                IssueKind::Io(c) => c,
+                _ => IoClass::Other,
+            };
+            let text = issue.error.as_deref().unwrap_or_default();
+            return Resolved::Done(ItemResult::Failed(self.failed_item(&it, text, c)));
+        }
         it.temp.clone_from(&issue.temp);
         let newer = match (&issue.src, &issue.dst) {
             (Some(s), Some(d)) => {
@@ -1307,6 +1481,15 @@ impl OpExec for Transfer {
             }
         }
         Resolved::Run(it)
+    }
+
+    fn retry(&self) -> Option<Retry> {
+        Some(Arc::new(RetrySpec {
+            mode: self.mode,
+            opts: self.opts.clone(),
+            mask: self.mask.clone(),
+            small: self.small,
+        }))
     }
 
     fn discard(&self, it: Item, issue: &Issue) {
@@ -1340,6 +1523,74 @@ impl OpExec for Transfer {
 }
 
 impl Transfer {
+    /// План повтора (`ops.retry`): каждая упавшая пара заново — файл или каталог
+    /// целиком в своё назначение; каталог назначения создаётся при нужде.
+    fn plan_pairs(&self, p: &mut Plan<'_, Self>) -> Result<(), PlanError> {
+        let (src0, dst0) = &self.pairs[0];
+        let parent = |x: &Path| {
+            x.parent()
+                .map_or_else(|| x.to_path_buf(), Path::to_path_buf)
+        };
+        self.setup(&parent(src0), &parent(dst0));
+        let mut touch: SmallVec<[Location; 2]> = SmallVec::new();
+        for (s, d) in &self.pairs {
+            for l in [
+                Location::local(shown(&parent(d))),
+                Location::local(shown(&parent(s))),
+            ] {
+                if (self.mode == Mode::Move || l.path != parent(s)) && !touch.contains(&l) {
+                    touch.push(l);
+                }
+            }
+        }
+        let root = p.dir(
+            None,
+            DirData {
+                src: None,
+                dst: parent(dst0),
+                mtime: i64::MIN,
+                attrs: 0,
+                created: false,
+                remove_src: false,
+                touch,
+            },
+        )?;
+        let mut pl = Planner {
+            t: self,
+            fs: LocalFs::new(),
+        };
+        let mut walker = Walker::new(self.mask.clone(), self.opts.links, p.cx().cancel_token());
+        for (src, dst) in &self.pairs {
+            let (sp, dp) = (parent(src), parent(dst));
+            if let Err(e) = std::fs::create_dir_all(&dp) {
+                pl.fail(p, &root, &dp, &e);
+                continue;
+            }
+            let name = src.file_name().unwrap_or_default().to_string_lossy();
+            let e = match pl.fs.stat_entry(&loc(&sp), &name, Attrs::default()) {
+                Ok(e) => e,
+                Err(err) => {
+                    let f = self.failed(src, &err.to_string(), IoClass::NotFound);
+                    p.record(Some(&root), ItemResult::Failed(f));
+                    continue;
+                }
+            };
+            let ctx = Ctx {
+                dst: dp,
+                index: Index::Stat,
+            };
+            if e.kind == EntryKind::Dir {
+                if let Some((node, c)) = pl.put_dir(p, &root, &ctx, src.clone(), &e, dst.clone())? {
+                    walker.walk(p, &mut pl, src.clone(), node, c)?;
+                }
+            } else {
+                pl.put_file(p, &root, &ctx, src.clone(), &e, dst.clone())?;
+            }
+        }
+        p.close(&root);
+        Ok(())
+    }
+
     /// Том и ФС: перенос rename-ом, допуск времени, ограничение параллельности.
     fn setup(&self, base: &Path, root: &Path) {
         use urfin_vfs::volume::{FsKind, Media};

@@ -3,12 +3,13 @@ retries = 1
 fail-fast = false
 slow-timeout = "30s"
 
-# Перф-тест шторма наблюдения (S4-14): мерит частоту перечитываний под потоком
-# созданий файлов — без соседей, иначе пишущий поток голодает.
+# Перф-тесты без соседей: шторм наблюдения (S4-14) мерит частоту перечитываний
+# под потоком созданий файлов (иначе пишущий поток голодает); перенос в пределах
+# тома (S5-08) — < 50 мс на job, соседи с записью на диск сбивают замер.
 [[profile.default.overrides]]
-filter = "test(storm_is_rate_limited)"
+filter = "test(storm_is_rate_limited) | test(move_same_volume_tree_is_one_rename)"
 threads-required = "num-test-threads"
 
 [[profile.ci.overrides]]
-filter = "test(storm_is_rate_limited)"
+filter = "test(storm_is_rate_limited) | test(move_same_volume_tree_is_one_rename)"
 threads-required = "num-test-threads"

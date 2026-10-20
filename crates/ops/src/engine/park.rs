@@ -20,7 +20,7 @@ use urfin_core::{Anchor, Attrs, Choice, Entry, EntryKind, PromptDetail, PromptSp
 
 use super::job::{Event, POLL, Shared};
 use super::{ItemResult, OpExec, Work};
-use crate::api::{Issue, IssueId, IssueKind, ItemMeta, Resolution};
+use crate::api::{IoClass, Issue, IssueId, IssueKind, ItemMeta, Resolution};
 
 /// Итог ответа для одной работы.
 #[derive(Debug)]
@@ -244,6 +244,7 @@ const SKIP: &str = "skip";
 const RENAME: &str = "rename";
 const NEWER: &str = "newer";
 const CANCEL: &str = "cancel";
+const RETRY: &str = "retry";
 
 fn resolution(r: &Reply) -> Resolution {
     match r.choice.as_str() {
@@ -251,6 +252,7 @@ fn resolution(r: &Reply) -> Resolution {
         RENAME => Resolution::RenameNew,
         NEWER => Resolution::OverwriteIfNewer,
         CANCEL => Resolution::Abort,
+        RETRY => Resolution::Retry,
         _ => Resolution::Skip,
     }
 }
@@ -280,6 +282,9 @@ pub(super) fn prompt(issue: &Issue, index: u64, total: u64) -> PromptSpec {
         .or(issue.dst.as_ref())
         .map_or_else(String::new, |m| m.name.to_string());
     let mut choices: SmallVec<[Choice; 4]> = SmallVec::new();
+    if let IssueKind::Io(_) | IssueKind::LowSpace = issue.kind {
+        return error_prompt(issue, name, index, total);
+    }
     let (title, cmp) = if issue.kind == IssueKind::Exists {
         choices.push(choice(OVERWRITE, "ops-choice-overwrite", 'r'));
         choices.push(choice(SKIP, "ops-choice-skip", 's'));
@@ -331,6 +336,48 @@ pub(super) fn prompt(issue: &Issue, index: u64, total: u64) -> PromptSpec {
         input: None,
         allow_all: true,
         detail,
+        secret: false,
+    }
+}
+
+/// Вопрос по ошибке после автоповторов (S5-11): Повторить, Пропустить, Отмена;
+/// «для всех» — по классу ошибки (для нехватки места — нет).
+fn error_prompt(issue: &Issue, name: String, index: u64, total: u64) -> PromptSpec {
+    let title = match issue.kind {
+        IssueKind::LowSpace => "ops-issue-low-space",
+        IssueKind::Io(IoClass::Permission) => "ops-issue-permission",
+        IssueKind::Io(IoClass::Sharing) => "ops-issue-sharing",
+        IssueKind::Io(IoClass::Busy) => "ops-issue-busy",
+        IssueKind::Io(IoClass::Network) => "ops-issue-network",
+        IssueKind::Io(IoClass::NotFound) => "ops-issue-not-found",
+        _ => "ops-issue-other",
+    };
+    let choices: SmallVec<[Choice; 4]> = [
+        choice(RETRY, "ops-choice-retry", 'r'),
+        choice(SKIP, "ops-choice-skip", 's'),
+        choice(CANCEL, "ops-choice-cancel", 'c'),
+    ]
+    .into_iter()
+    .collect();
+    let error = issue.error.as_deref().unwrap_or_default().to_owned();
+    let body = tr(
+        "ops-issue-body",
+        &[
+            ("index", index.to_string()),
+            ("total", total.to_string()),
+            ("name", name),
+            ("error", error),
+        ],
+    );
+    PromptSpec {
+        anchor: Anchor::JobBar,
+        title: urfin_i18n::current().get(title),
+        body,
+        choices,
+        default: 0,
+        input: None,
+        allow_all: issue.kind != IssueKind::LowSpace,
+        detail: None,
         secret: false,
     }
 }

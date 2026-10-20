@@ -2,7 +2,8 @@
 //! S5-06): дерево побайтно и со временем изменения, политики конфликтов,
 //! перенос в пределах тома и между «томами», отмена посреди файла, обход с
 //! маской и ссылками, убитый посреди копии процесс (fault injection);
-//! немодальные конфликты с автоответчиком (приёмка S5-07).
+//! немодальные конфликты с автоответчиком (приёмка S5-07); ошибки,
+//! автоповтор и `ops.retry` (приёмка S5-11).
 
 #![allow(clippy::many_single_char_names, reason = "короткие имена в тестах")]
 
@@ -1279,4 +1280,135 @@ fn bench_move_same_volume() {
         );
     }
     assert!(src.exists());
+}
+
+// --- S5-11: ошибки и повтор ---
+
+/// Держатель файла (как другая программа): открыт без общего доступа, пока не
+/// отпущен.
+struct Holder(
+    Option<std::sync::mpsc::Sender<()>>,
+    Option<std::thread::JoinHandle<()>>,
+);
+
+impl Holder {
+    /// Держит `p` до `release` или `for_` (что раньше).
+    fn hold(p: &Path, for_: Duration) -> Holder {
+        use std::os::windows::fs::OpenOptionsExt;
+        let f = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(p)
+            .unwrap();
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        let h = std::thread::spawn(move || {
+            let _ = rx.recv_timeout(for_);
+            drop(f);
+        });
+        Holder(Some(tx), Some(h))
+    }
+
+    fn release(&mut self) {
+        drop(self.0.take());
+        if let Some(h) = self.1.take() {
+            h.join().unwrap();
+        }
+    }
+}
+
+impl Drop for Holder {
+    fn drop(&mut self) {
+        self.release();
+    }
+}
+
+/// Приёмка S5-11: sharing violation снимается автоповтором, если держатель
+/// отпустил файл за 1 с; вопроса нет.
+#[test]
+fn sharing_violation_clears_with_retry() {
+    let d = tmp();
+    let (src, dst) = (d.path().join("s"), d.path().join("d"));
+    let data = bytes(50_000, 3);
+    write(&src.join("held.bin"), &data, old(1_500_000_000));
+    std::fs::create_dir(&dst).unwrap();
+    let _holder = Holder::hold(&src.join("held.bin"), Duration::from_millis(700));
+    let mut h = H::new(64);
+    let r = run(
+        &mut h,
+        transfer(
+            Mode::Copy,
+            &src,
+            &["held.bin"],
+            &dst,
+            None,
+            OpOptions::default(),
+        ),
+    );
+    let s = done(&r);
+    assert_eq!((s.items, s.errors, r.asked), (1, 0, 0));
+    assert!(
+        r.report.elapsed >= Duration::from_millis(200),
+        "retried after a pause"
+    );
+    assert_eq!(std::fs::read(dst.join("held.bin")).unwrap(), data);
+}
+
+/// Приёмка S5-11: ошибка не прошла за автоповторы → вопрос по классу;
+/// «Пропустить» — в отчёт; `ops.retry` (новая job) копирует только упавшие.
+#[test]
+fn retry_copies_only_failed() {
+    let d = tmp();
+    let (src, dst) = (d.path().join("s"), d.path().join("d"));
+    let t = old(1_500_000_000);
+    for i in 0..5 {
+        write(
+            &src.join(format!("t/f{i}.txt")),
+            format!("src-{i}").as_bytes(),
+            t,
+        );
+    }
+    std::fs::create_dir(&dst).unwrap();
+    let mut holder = Holder::hold(&src.join("t/f2.txt"), Duration::from_secs(60));
+    let mut h = H::new(64);
+    h.core.register(Box::new(
+        crate::OpsHandler::new(crate::OpsConfig::default()),
+    ));
+    let t1 = transfer(Mode::Copy, &src, &["t"], &dst, None, OpOptions::default());
+    let id = h.start(4, t1);
+    h.pump_until("question after auto-retries", has_prompt);
+    let spec = reply(&mut h, "skip", false);
+    assert_eq!(spec.choices[0].id, "retry");
+    assert!(spec.body.contains("f2.txt"), "{}", spec.body);
+    assert_eq!(finish(&mut h, id, "skip"), 0);
+    match h.state(id) {
+        JobState::Done(s) => assert_eq!((s.items, s.errors), (4, 1)),
+        st => panic!("{st:?}"),
+    }
+    assert!(!dst.join("t/f2.txt").exists());
+    // Изменим уже скопированный: повтор не должен его трогать.
+    std::fs::write(dst.join("t/f0.txt"), b"mine").unwrap();
+    holder.release();
+    for _ in 0..5 {
+        h.pump();
+    }
+    h.core
+        .dispatch(Command::new("ops.retry").arg("id", i64::try_from(id.0).unwrap()));
+    h.pump_until("retry job", |h| {
+        h.core.state().jobs.iter().any(|j| j.id.0 > id.0)
+    });
+    let id2 = h
+        .core
+        .state()
+        .jobs
+        .iter()
+        .map(|j| j.id)
+        .max_by_key(|j| j.0)
+        .unwrap();
+    h.pump_until("retry job end", |h| !h.state(id2).is_active());
+    match h.state(id2) {
+        JobState::Done(s) => assert_eq!((s.items, s.errors), (1, 0), "only the failed one"),
+        st => panic!("{st:?}"),
+    }
+    assert_eq!(std::fs::read(dst.join("t/f2.txt")).unwrap(), b"src-2");
+    assert_eq!(std::fs::read(dst.join("t/f0.txt")).unwrap(), b"mine");
 }
