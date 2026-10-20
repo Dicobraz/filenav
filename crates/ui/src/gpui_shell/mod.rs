@@ -872,6 +872,9 @@ impl Render for CoreHost {
         self.drive_bench(window, cx);
         if let Some(f) = self.first_frame.take() {
             // Кадр уже на экране к следующему циклу: замер и, для `--bench-startup`, выход.
+            // Следующий цикл просим сразу: кадры по запросу, иначе он придёт, только когда
+            // что-то изменится (замер выходил ~1 с вместо ~0,2).
+            window.request_animation_frame();
             cx.on_next_frame(window, move |h, _, cx| {
                 if f() {
                     h.shutdown(cx);
@@ -1035,8 +1038,13 @@ impl Render for CoreHost {
 
 /// Окно GPUI с Core; возвращается после выхода из цикла (сессия уже сохранена).
 pub fn run(launch: Launch, geom: Option<WindowGeom>) {
-    gpui_kit::application().run(move |cx: &mut App| {
+    let t0 = std::time::Instant::now();
+    let app = gpui_kit::application();
+    tracing::debug!(target: "startup", ms = t0.elapsed().as_secs_f64() * 1e3, "gpui application");
+    app.run(move |cx: &mut App| {
+        tracing::debug!(target: "startup", ms = t0.elapsed().as_secs_f64() * 1e3, "gpui run");
         gpui_kit::init(cx);
+        tracing::debug!(target: "startup", ms = t0.elapsed().as_secs_f64() * 1e3, "gpui-kit init");
         // `--bench` не мешает владельцу: окно на неосновном экране (ноутбук при втором
         // мониторе), без фокуса и без ограничения кадров неактивного окна.
         let bench = launch.bench.is_some();
@@ -1079,6 +1087,7 @@ pub fn run(launch: Launch, geom: Option<WindowGeom>) {
             ..Default::default()
         };
         let opened = gpui_kit::open_window(options, cx, move |window, cx| {
+            tracing::debug!(target: "startup", ms = t0.elapsed().as_secs_f64() * 1e3, "window created");
             let host = cx.new(|cx| CoreHost::new(launch, cx));
             host.update(cx, |h, cx| {
                 window.focus(&h.focus, cx);
@@ -1134,6 +1143,7 @@ pub fn run(launch: Launch, geom: Option<WindowGeom>) {
             .detach();
             host
         });
+        tracing::debug!(target: "startup", ms = t0.elapsed().as_secs_f64() * 1e3, "open_window returned");
         if let Err(e) = opened {
             tracing::error!(error = %e, "gpui window");
             cx.quit();

@@ -84,7 +84,15 @@ pub fn run(launch: Launch) {
     });
     // Первый кадр: длительности старта в лог; `--bench-startup` — JSON и выход (S0 v5 №10).
     let window_at = std::time::Instant::now();
+    // `URFIN_PROF=<файл>`: профиль UI-потока от создания окна до первого кадра (G-07),
+    // только верхушки стека — во время загрузки DLL раскрутка заблокировалась бы.
+    #[cfg(windows)]
+    let mut prof = urfin_ui::sys::prof::start_leaf();
     let first_frame = Box::new(move || {
+        #[cfg(windows)]
+        if let Some(p) = prof.take() {
+            p.finish();
+        }
         startup.window = window_at.elapsed();
         startup.first_frame = startup.process.elapsed();
         tracing::info!(target: "startup", json = %startup.json(), "first frame");

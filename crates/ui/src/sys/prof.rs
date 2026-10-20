@@ -37,8 +37,18 @@ impl std::fmt::Debug for Sampler {
     }
 }
 
-/// Запуск из UI-потока, если задан `URFIN_PROF`.
+/// Запуск из UI-потока, если задан `URFIN_PROF`: стеки целиком.
 pub fn start() -> Option<Sampler> {
+    start_with(DEPTH)
+}
+
+/// Как [`start`], но только верхушка стека: на старте, пока грузятся DLL, раскрутка
+/// (`RtlLookupFunctionEntry`) ждала бы блокировку загрузчика, которую держит остановленный поток.
+pub fn start_leaf() -> Option<Sampler> {
+    start_with(1)
+}
+
+fn start_with(depth: usize) -> Option<Sampler> {
     let out = std::env::var("URFIN_PROF").ok().filter(|s| !s.is_empty())?;
     let mut th: HANDLE = std::ptr::null_mut();
     // SAFETY: псевдодескрипторы текущих процесса и потока; результат — в `th`.
@@ -66,7 +76,7 @@ pub fn start() -> Option<Sampler> {
         while !flag.load(Ordering::Relaxed) {
             std::thread::sleep(std::time::Duration::from_millis(1));
             // SAFETY: поток жив (UI ждёт `finish`); между Suspend и Resume — без аллокаций.
-            let n = unsafe { sample(th, &mut buf) };
+            let n = unsafe { sample(th, &mut buf, depth) };
             if n > 0 {
                 samples.push(buf[..n].to_vec());
             }
@@ -83,7 +93,7 @@ pub fn start() -> Option<Sampler> {
 struct Ctx(CONTEXT);
 
 /// Один стек остановленного потока; 0 — не вышло.
-unsafe fn sample(th: HANDLE, buf: &mut [u64; DEPTH]) -> usize {
+unsafe fn sample(th: HANDLE, buf: &mut [u64; DEPTH], depth: usize) -> usize {
     // SAFETY: см. вызывающего.
     unsafe {
         if SuspendThread(th) == u32::MAX {
@@ -94,7 +104,7 @@ unsafe fn sample(th: HANDLE, buf: &mut [u64; DEPTH]) -> usize {
         ctx.ContextFlags = CONTEXT_CONTROL_AMD64 | CONTEXT_INTEGER_AMD64;
         let mut n = 0;
         if GetThreadContext(th, &raw mut *ctx) != 0 {
-            while n < DEPTH && ctx.Rip != 0 {
+            while n < depth.min(DEPTH) && ctx.Rip != 0 {
                 buf[n] = ctx.Rip;
                 n += 1;
                 let mut base = 0u64;
@@ -265,7 +275,7 @@ mod tests {
         let th = rx.recv().unwrap() as HANDLE;
         let mut buf = [0u64; DEPTH];
         // SAFETY: поток жив до `stop`.
-        let n = unsafe { sample(th, &mut buf) };
+        let n = unsafe { sample(th, &mut buf, DEPTH) };
         let err = std::io::Error::last_os_error();
         stop.store(true, Ordering::Relaxed);
         w.join().unwrap();
