@@ -331,7 +331,11 @@ fn col_header(side: Side, theme: &Theme, cx: &Listen) -> Div {
         .text_color(theme.c(Role::TextSecondary))
         .border_b_1()
         .border_color(theme.c(Role::StrokeDivider))
-        .child(div().w(px(theme.m(Metric::WIcon) + 8.0)).flex_none())
+        .child(
+            div()
+                .w(px(theme.m(Metric::WIcon) + 8.0 + MARK_W))
+                .flex_none(),
+        )
         .child(cell("ui-col-name", "name", None))
         .child(cell("ui-col-size", "size", Some(W_SIZE)))
         .child(cell("ui-col-mtime", "mtime", Some(W_MTIME)))
@@ -345,10 +349,13 @@ struct Line {
     name: SharedString,
     size: Option<SharedString>,
     mtime: Option<SharedString>,
-    bg: Option<Hsla>,
+    /// Помечена: фон `accent.subtle`, галочка, имя `accent.text` (S0-decisions №31).
+    marked: bool,
+    /// Курсор: `Some(true)` — активной панели (заливка и рамка 1 px), `Some(false)` — пассивной.
+    cursor: Option<bool>,
     color: Hsla,
+    /// Иконка: каталог — акцент, скрытый и системный — третичный, прочее — вторичный.
     icon_color: Hsla,
-    bold: bool,
     /// Вместо имени — поле переименования.
     renaming: bool,
 }
@@ -358,6 +365,9 @@ struct Line {
 struct Geo {
     row_h: f32,
     pad: f32,
+    /// Колонка галочки помеченных (как у egui-панели).
+    mark_size: f32,
+    stroke: f32,
     icon_w: f32,
     icon_size: f32,
     radius: f32,
@@ -366,9 +376,14 @@ struct Geo {
 }
 
 impl Geo {
+    /// Левый край иконки в колонке.
+    fn icon_x(&self) -> f32 {
+        ROW_MX + self.pad + MARK_W
+    }
+
     /// Левый край имени в колонке.
     fn name_x(&self) -> f32 {
-        ROW_MX + self.pad + self.icon_w
+        self.icon_x() + self.icon_w
     }
 
     /// Ширина имени в колонке шириной `w`.
@@ -379,6 +394,19 @@ impl Geo {
 
 /// Отступ строки от краёв колонки (`mx_1`).
 const ROW_MX: f32 = 4.0;
+/// Ширина колонки галочки.
+const MARK_W: f32 = 12.0;
+
+/// Цвета строк для `canvas`.
+#[derive(Clone, Copy)]
+struct Pal {
+    secondary: Hsla,
+    marked: Hsla,
+    cursor: Hsla,
+    cursor_passive: Hsla,
+    stroke: Hsla,
+    accent: Hsla,
+}
 
 /// Видимая страница: Full/Wide — одна колонка, Brief/Medium — колонки сверху вниз.
 /// Строки рисует один `canvas` (фон, иконка, текст), без дерева `div`: раскладка taffy
@@ -403,6 +431,8 @@ fn list(
     let geo = Geo {
         row_h: theme.m(Metric::HRow),
         pad: theme.m(Metric::PadRowX) - ROW_MX,
+        mark_size: theme.m(Metric::TypeCaption),
+        stroke: theme.m(Metric::StrokeThin),
         icon_w: theme.m(Metric::WIcon) + 8.0,
         icon_size: theme.m(Metric::WIcon),
         radius: theme.m(Metric::RadiusControl),
@@ -433,17 +463,6 @@ fn list(
             }
             None => break,
         };
-        let bg = if cursor {
-            Some(theme.c(if active {
-                Role::FillCursor
-            } else {
-                Role::FillCursorPassive
-            }))
-        } else if marked {
-            Some(theme.c(Role::AccentSubtle))
-        } else {
-            None
-        };
         let mut col = |kind: ColKind| {
             entry.map(|e| {
                 cell.clear();
@@ -463,30 +482,42 @@ fn list(
             size: bytes,
             mtime: when,
             name,
-            bg,
+            marked,
+            cursor: cursor.then_some(active),
             color: if marked {
                 theme.c(Role::AccentText)
             } else {
                 color.map_or_else(|| theme.c(Role::TextPrimary), super::theme::hsla)
             },
-            icon_color: theme.c(if marked {
-                Role::AccentText
-            } else {
-                Role::TextSecondary
+            icon_color: theme.c(match entry {
+                Some(e)
+                    if e.attrs.has(urfin_core::Attrs::HIDDEN)
+                        || e.attrs.has(urfin_core::Attrs::SYSTEM) =>
+                {
+                    Role::TextTertiary
+                }
+                Some(e) if e.kind.is_dir_like() => Role::AccentText,
+                _ => Role::TextSecondary,
             }),
-            bold: marked,
             renaming: cursor && rename.is_some(),
         });
     }
     let lines = Rc::new(lines);
     let bounds = Rc::new(std::cell::Cell::new(Bounds::<Pixels>::default()));
-    let secondary = theme.c(Role::TextSecondary);
+    let pal = Pal {
+        secondary: theme.c(Role::TextSecondary),
+        marked: theme.c(Role::AccentSubtle),
+        cursor: theme.c(Role::FillCursor),
+        cursor_passive: theme.c(Role::FillCursorPassive),
+        stroke: theme.c(Role::StrokeStrong),
+        accent: theme.c(Role::AccentText),
+    };
     let paint_lines = lines.clone();
     let paint_bounds = bounds.clone();
     let canvas = canvas(
         move |b, _, _| paint_bounds.set(b),
         move |b, (), window, cx| {
-            paint(&paint_lines, b, rows, cols, geo, secondary, window, cx);
+            paint(&paint_lines, b, rows, cols, geo, pal, window, cx);
         },
     )
     .size_full();
@@ -598,25 +629,24 @@ fn list(
     d
 }
 
-/// Рисует строки страницы: фон курсора и выделения, иконку, имя (с «…»), колонки.
+/// Рисует строки страницы как egui-панель (S0-decisions №31–32): фон помеченных и галочка,
+/// курсор — заливка, у активной панели ещё рамка 1 px; иконка, имя (с «…»), колонки.
 #[allow(clippy::too_many_arguments, reason = "плоский вызов отрисовки")]
+#[allow(clippy::too_many_lines, reason = "строка слева направо")]
 fn paint(
     lines: &[Line],
     b: Bounds<Pixels>,
     rows: u32,
     cols: u32,
     geo: Geo,
-    secondary: Hsla,
+    pal: Pal,
     window: &mut Window,
     cx: &mut App,
 ) {
     let style = window.text_style();
     let size = style.font_size.to_pixels(window.rem_size());
     let font = style.font();
-    let bold = Font {
-        weight: FontWeight::SEMIBOLD,
-        ..font.clone()
-    };
+    let check = SharedString::new_static("\u{E8FB}");
     let icons = gpui_kit::font(ICON_FONT);
     let row_h = px(geo.row_h);
     #[allow(clippy::cast_precision_loss, reason = "колонок единицы")]
@@ -646,16 +676,39 @@ fn paint(
                 b.origin.x + px((k as u32 / rows) as f32 * col_w),
                 b.origin.y + row_h * ((k as u32 % rows) as f32),
             );
-            if let Some(bg) = l.bg {
-                let r = Bounds::new(
-                    point(x0 + px(ROW_MX), y),
-                    size2(px(col_w - 2.0 * ROW_MX), row_h),
+            let r = Bounds::new(
+                point(x0 + px(ROW_MX), y),
+                size2(px(col_w - 2.0 * ROW_MX), row_h),
+            );
+            if l.marked {
+                window.paint_quad(gpui_kit::fill(r, pal.marked).corner_radii(px(geo.radius)));
+            }
+            if let Some(active) = l.cursor {
+                let fill = if active {
+                    pal.cursor
+                } else {
+                    pal.cursor_passive
+                };
+                let mut q = gpui_kit::fill(r, fill).corner_radii(px(geo.radius));
+                if active {
+                    q = q.border_widths(px(geo.stroke)).border_color(pal.stroke);
+                }
+                window.paint_quad(q);
+            }
+            if l.marked {
+                let mark = shape(window, &check, &icons, pal.accent, px(geo.mark_size));
+                let _ = mark.paint(
+                    point(x0 + px(ROW_MX + geo.pad), y),
+                    row_h,
+                    TextAlign::Left,
+                    None,
+                    window,
+                    cx,
                 );
-                window.paint_quad(gpui_kit::fill(r, bg).corner_radii(px(geo.radius)));
             }
             let icon = shape(window, &l.glyph, &icons, l.icon_color, px(geo.icon_size));
             let _ = icon.paint(
-                point(x0 + px(ROW_MX + geo.pad), y),
+                point(x0 + px(geo.icon_x()), y),
                 row_h,
                 TextAlign::Left,
                 None,
@@ -663,7 +716,7 @@ fn paint(
                 cx,
             );
             if !l.renaming {
-                let f = if l.bold { &bold } else { &font };
+                let f = &font;
                 let mut line = shape(window, &l.name, f, l.color, size);
                 if line.width > name_w {
                     let runs = [run(l.name.len(), f, l.color)];
@@ -686,7 +739,7 @@ fn paint(
             let mut right = x0 + px(col_w - ROW_MX - geo.pad);
             for (s, w) in [(&l.mtime, geo.mtime_w), (&l.size, geo.size_w)] {
                 if let Some(s) = s {
-                    let line = shape(window, s, &font, secondary, size);
+                    let line = shape(window, s, &font, pal.secondary, size);
                     let _ = line.paint(
                         point(right - line.width, y),
                         row_h,
