@@ -2,7 +2,9 @@
 //! его `pump` только по сигналу [`Signal`] (воркеры Core, вторые запуски) — без таймеров
 //! опроса; в простое кадров нет. Клавиатура — конвейер keymap S3 ([`input`]).
 
+mod chrome;
 mod input;
+mod overlays;
 mod panel;
 mod theme;
 
@@ -15,9 +17,9 @@ use futures::StreamExt as _;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    App, AsyncApp, Bounds, Context, FocusHandle, IntoElement, KeyUpEvent, ModifiersChangedEvent,
-    Render, SharedString, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowOptions, div,
-    point, px, size,
+    App, AsyncApp, Bounds, ClickEvent, Context, FocusHandle, IntoElement, KeyUpEvent,
+    ModifiersChangedEvent, Render, SharedString, TitlebarOptions, WeakEntity, Window, WindowBounds,
+    WindowOptions, div, point, px, size,
 };
 use urfin_core::{Command, Core, Side, WindowGeom};
 
@@ -101,6 +103,13 @@ pub struct CoreHost {
     /// Сетка панелей (строк в колонке, колонок), отправленная в Core (`panel.viewport`).
     grid: [(u32, u32); 2],
     theme: Theme,
+    keybar: crate::keybar::Keybar,
+    registered: Vec<&'static str>,
+    /// Зажатые модификаторы — подписи F-клавиш.
+    mods: crate::keybar::Mods,
+    toasts: Vec<overlays::Toast>,
+    /// Выбранный вариант видимого вопроса: (id вопроса, индекс).
+    choice: (u64, usize),
     focus: FocusHandle,
     input: input::Input,
     out: Vec<Command>,
@@ -125,6 +134,7 @@ impl CoreHost {
             theme,
         } = launch;
         listen(wake, cx);
+        let registered = crate::keybar::registered(core.registry());
         CoreHost {
             core: Some(core),
             signal,
@@ -132,6 +142,11 @@ impl CoreHost {
             rev: u64::MAX,
             grid: [(0, 0); 2],
             theme,
+            keybar: crate::keybar::Keybar::default(),
+            registered,
+            mods: crate::keybar::Mods::None,
+            toasts: Vec::new(),
+            choice: (u64::MAX, 0),
             focus: cx.focus_handle(),
             input: input::Input::new(keys),
             out: Vec::new(),
@@ -147,7 +162,10 @@ impl CoreHost {
         let size = window.viewport_size();
         let gap = self.theme.m(Metric::GapPanels);
         let w = (f32::from(size.width) - 3.0 * gap) / 2.0;
-        let h = f32::from(size.height) - 2.0 * gap;
+        let h = f32::from(size.height)
+            - self.theme.m(Metric::HTitlebar)
+            - self.theme.m(Metric::HCmdline)
+            - self.theme.m(Metric::HKeybar);
         for (i, side) in [Side::Left, Side::Right].into_iter().enumerate() {
             let mode = core.state().panel(side).tab().view_mode;
             let g = panel::grid(&self.theme, mode, w, h);
@@ -181,6 +199,7 @@ impl CoreHost {
             self.shutdown(cx);
             return;
         }
+        self.take_events(cx);
         // Режим вида мог смениться: сетка панели другая.
         self.sync_viewport(window);
         let Some(core) = self.core.as_ref() else {
@@ -196,6 +215,66 @@ impl CoreHost {
     fn dispatch(&mut self, cmd: &'static str, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(core) = self.core.as_mut() {
             core.dispatch(Command::new(cmd));
+        }
+        self.pump(window, cx);
+    }
+
+    /// События UI из Core: тосты (дедлайн — будильником); job-бар ≤ 30 кадров/с.
+    fn take_events(&mut self, cx: &mut Context<Self>) {
+        let Some(core) = self.core.as_mut() else {
+            return;
+        };
+        let now = std::time::Instant::now();
+        for ev in core.take_ui_events() {
+            if let urfin_core::UiEvent::Toast { level, text } = ev {
+                self.toasts.push(overlays::Toast::new(level, text, now));
+                cx.notify();
+            }
+        }
+        let before = self.toasts.len();
+        self.toasts.retain(|t| t.until > now);
+        if self.toasts.len() != before {
+            cx.notify();
+        }
+        if let Some(next) = self.toasts.iter().map(|t| t.until).min() {
+            urfin_core::Waker::wake_after(&*self.signal, next - now);
+        }
+        if overlays::jobs_running(core.state()) {
+            urfin_core::Waker::wake_after(&*self.signal, Duration::from_millis(33));
+            cx.notify();
+        }
+    }
+
+    /// Клавиши видимого вопроса: Enter — выбранный, Esc — отмена, ←/→/Tab — выбор,
+    /// буква варианта — ответ.
+    fn prompt_key(&mut self, ks: &gpui_kit::Keystroke) -> Option<Command> {
+        let p = self.core.as_ref()?.state().prompts.active()?;
+        let n = p.spec.choices.len();
+        if self.choice.0 != p.id.0 {
+            self.choice = (p.id.0, usize::from(p.spec.default).min(n.saturating_sub(1)));
+        }
+        let sel = &mut self.choice.1;
+        match ks.key.as_str() {
+            "escape" => return Some(overlays::cancel(p)),
+            "enter" => return overlays::reply(p, *sel),
+            "left" => *sel = sel.saturating_sub(1),
+            "right" | "tab" => *sel = (*sel + 1).min(n.saturating_sub(1)),
+            k => {
+                let typed = ks.key_char.as_deref().unwrap_or(k).to_lowercase();
+                let i = p.spec.choices.iter().position(|c| {
+                    let key = c.key.to_lowercase().to_string();
+                    key == k || key == typed
+                })?;
+                return overlays::reply(p, i);
+            }
+        }
+        None
+    }
+
+    /// Команда от мыши (табы, F-клавиши).
+    fn run(&mut self, cmd: Command, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(core) = self.core.as_mut() {
+            core.dispatch(cmd.from(urfin_core::Origin::Mouse));
         }
         self.pump(window, cx);
     }
@@ -265,8 +344,13 @@ impl CoreHost {
             return false;
         };
         // Видимый вопрос разбирает клавиши сам (S2-15).
-        if crate::prompt_takes_keys(core.state()) {
-            return false;
+        if core.state().prompts.active().is_some() {
+            if let Some(cmd) = self.prompt_key(ks) {
+                self.out.push(cmd.from(urfin_core::Origin::Key));
+            }
+            self.after_input(None, window, cx);
+            cx.notify();
+            return true;
         }
         let o = self.input.key_down(ks, core.state(), &mut self.out);
         let consumed = o.consumed;
@@ -288,6 +372,17 @@ impl CoreHost {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let m = ev.modifiers;
+        let mods = match (m.shift, m.control, m.alt) {
+            (true, false, false) => crate::keybar::Mods::Shift,
+            (false, true, false) => crate::keybar::Mods::Ctrl,
+            (false, false, true) => crate::keybar::Mods::Alt,
+            _ => crate::keybar::Mods::None,
+        };
+        if mods != self.mods {
+            self.mods = mods;
+            cx.notify();
+        }
         let o = match self.core.as_ref() {
             Some(core) => self
                 .input
@@ -356,27 +451,64 @@ fn pump_in_window(this: &WeakEntity<CoreHost>, cx: &mut AsyncApp) -> bool {
 }
 
 impl Render for CoreHost {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let gap = px(self.theme.m(Metric::GapPanels));
+        let i18n = urfin_i18n::current();
+        self.keybar.refresh(
+            &i18n,
+            urfin_i18n::epoch(),
+            &self.registered,
+            &crate::keybar::FarStub,
+        );
         let mut root = div()
             .track_focus(&self.focus)
             .on_key_up(cx.listener(Self::key_up))
             .on_modifiers_changed(cx.listener(Self::modifiers))
             .size_full()
             .flex()
-            .flex_row()
-            .gap(gap)
-            .p(gap)
+            .flex_col()
             .bg(self.theme.c(Role::BgBase))
+            .text_color(self.theme.c(Role::TextPrimary))
             .text_size(px(self.theme.m(Metric::TypeBody)));
-        if let Some(core) = &self.core {
-            let s = core.state();
-            for (i, side) in [Side::Left, Side::Right].into_iter().enumerate() {
-                let (rows, cols) = self.grid[i];
-                root = root.child(panel::panel(s, side, &self.theme, rows, cols));
-            }
+        let Some(core) = &self.core else {
+            return root;
+        };
+        let s = core.state();
+        let click = |cmd: Command| -> overlays::Handler {
+            Box::new(cx.listener(move |h: &mut CoreHost, _: &ClickEvent, w, cx| {
+                h.run(cmd.clone(), w, cx);
+            }))
+        };
+        root = root.child(chrome::titlebar(
+            s,
+            &self.theme,
+            window.is_maximized(),
+            &click,
+        ));
+        let mut panels = div().flex_1().min_h_0().flex().flex_row().gap(gap).px(gap);
+        for (i, side) in [Side::Left, Side::Right].into_iter().enumerate() {
+            let (rows, cols) = self.grid[i];
+            panels = panels.child(panel::panel(s, side, &self.theme, rows, cols));
         }
-        root
+        let prompt = s.prompts.active().map(|p| {
+            let sel = if self.choice.0 == p.id.0 {
+                self.choice.1
+            } else {
+                usize::from(p.spec.default)
+            };
+            overlays::prompt_bar(p, sel, &self.theme, &click)
+        });
+        root.child(panels)
+            .children(overlays::job_bar(s, &self.theme))
+            .children(prompt)
+            .child(chrome::cmdline(s, &self.theme))
+            .child(chrome::keybar(
+                self.keybar.items(self.mods),
+                self.mods,
+                &self.theme,
+                &click,
+            ))
+            .children(overlays::toasts(&self.toasts, &self.theme))
     }
 }
 
@@ -398,8 +530,10 @@ pub fn run(launch: Launch, geom: Option<WindowGeom>) {
         };
         let options = WindowOptions {
             window_bounds: Some(window_bounds),
+            // Свой заголовок с табами (S2 §1.4): системный скрыт.
             titlebar: Some(TitlebarOptions {
                 title: Some(SharedString::new_static("Urfin")),
+                appears_transparent: true,
                 ..Default::default()
             }),
             ..Default::default()
