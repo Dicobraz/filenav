@@ -30,12 +30,12 @@ pub fn run(launch: Launch) {
         startup.core = t.elapsed();
         core
     };
-    // Команды keymap — в реестре (конвейер клавиш GPUI — G-03).
+    // Конвейер клавиш keymap (S3) — в окно GPUI.
     let (cfg, warning) = config.section::<KeymapCfg>("keymap");
     if let Some(w) = warning {
         tracing::warn!(key = %w.key, msg = %w.msg, "[keymap] section ignored");
     }
-    let _keys = urfin_keymap::register(&mut core, paths, cfg, FlagRegistry::with_builtin());
+    let keys = urfin_keymap::register(&mut core, paths, cfg, FlagRegistry::with_builtin());
     for c in open {
         core.dispatch(c);
     }
@@ -64,6 +64,7 @@ pub fn run(launch: Launch) {
             wake,
             signal,
             poll,
+            keys,
         },
         geom,
     );

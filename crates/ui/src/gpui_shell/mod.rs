@@ -1,7 +1,8 @@
 //! Интерфейс на GPUI (ADR-0018). G-02 — каркас: [`CoreHost`] владеет `Core` и качает
 //! его `pump` только по сигналу [`Signal`] (воркеры Core, вторые запуски) — без таймеров
-//! опроса; в простое кадров нет. Вид пока отладочный: две панели текстом (как `DebugUi`
-//! S1-13), клавиши навигации захардкожены до G-03 (keymap).
+//! опроса; в простое кадров нет. Клавиатура — конвейер keymap S3 ([`input`]).
+
+mod input;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -10,20 +11,18 @@ use futures::StreamExt as _;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    App, AsyncApp, Bounds, Context, FocusHandle, IntoElement, KeyDownEvent, Render, SharedString,
-    TitlebarOptions, WeakEntity, Window, WindowBounds, WindowOptions, div, point, px, rgb, size,
+    App, AsyncApp, Bounds, Context, FocusHandle, IntoElement, KeyUpEvent, ModifiersChangedEvent,
+    Render, SharedString, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowOptions, div,
+    point, px, rgb, size,
 };
 use urfin_core::{Command, Core, Row, Side, WindowGeom};
 
-// Tab: `gpui_kit::open_window` оборачивает вид в свой `Root`, а тот вешает на Tab
-// переход фокуса (контекст `Root`). Свой контекст глубже — его привязка главнее.
-gpui_kit::actions!(urfin, [SwitchPanel]);
-const KEY_CONTEXT: &str = "Urfin";
-
 /// Бюджет `pump` за один проход (как у egui-окна, S1 §1).
 const PUMP_BUDGET: Duration = Duration::from_millis(4);
-/// Сколько строк таба выводит отладочный вид.
-const DEBUG_ROWS: u32 = 40;
+/// Высота строки списка (S2: 24 px).
+const ROW_H: f32 = 24.0;
+/// Всё по вертикали, кроме строк: поля корня и карточки (по 8 px), рамка, заголовок.
+const LIST_CHROME: f32 = 8.0 * 2.0 + 8.0 * 2.0 + 2.0 + ROW_H;
 
 enum Wake {
     Now,
@@ -79,6 +78,8 @@ pub struct Launch {
     /// Будильник того же `Core`: повторный проход, если `pump` не успел всё.
     pub signal: Arc<Signal>,
     pub poll: Poll,
+    /// Конвейер клавиш keymap (S3).
+    pub keys: urfin_keymap::KeyInput,
 }
 
 impl std::fmt::Debug for Launch {
@@ -94,7 +95,11 @@ pub struct CoreHost {
     signal: Arc<Signal>,
     poll: Poll,
     rev: u64,
+    /// Строк на страницу, отправленных в Core (`panel.viewport`).
+    page: u32,
     focus: FocusHandle,
+    input: input::Input,
+    out: Vec<Command>,
 }
 
 impl std::fmt::Debug for CoreHost {
@@ -112,6 +117,7 @@ impl CoreHost {
             wake,
             signal,
             poll,
+            keys,
         } = launch;
         listen(wake, cx);
         CoreHost {
@@ -119,7 +125,32 @@ impl CoreHost {
             signal,
             poll,
             rev: u64::MAX,
+            page: 0,
             focus: cx.focus_handle(),
+            input: input::Input::new(keys),
+            out: Vec::new(),
+        }
+    }
+
+    /// Сколько строк влезает — в Core (`panel.viewport`): по нему он держит курсор
+    /// в видимой странице и считает PgUp/PgDn.
+    fn sync_viewport(&mut self, window: &Window) {
+        let h = f32::from(window.viewport_size().height);
+        #[allow(clippy::cast_sign_loss, reason = "не меньше 1.0")]
+        let rows = ((h - LIST_CHROME) / ROW_H).floor().max(1.0) as u32;
+        if rows == self.page {
+            return;
+        }
+        self.page = rows;
+        if let Some(core) = self.core.as_mut() {
+            for side in ["left", "right"] {
+                core.dispatch(
+                    Command::new("panel.viewport")
+                        .arg("side", side)
+                        .arg("rows", i64::from(rows))
+                        .arg("cols", 1i64),
+                );
+            }
         }
     }
 
@@ -188,23 +219,76 @@ impl CoreHost {
         core.set_window(g);
     }
 
-    /// Навигация до keymap (G-03): стрелки, страницы, Enter, Backspace, Insert; Tab —
-    /// действием [`SwitchPanel`].
-    fn on_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        let cmd = match ev.keystroke.key.as_str() {
-            "up" => "panel.cursor.up",
-            "down" => "panel.cursor.down",
-            "pageup" => "panel.cursor.page_up",
-            "pagedown" => "panel.cursor.page_down",
-            "home" => "panel.cursor.home",
-            "end" => "panel.cursor.end",
-            "enter" => "panel.enter",
-            "backspace" => "panel.up",
-            "insert" => "sel.toggle",
-            _ => return,
+    /// Команды keymap — в Core, проход `pump`; дедлайн аккорда — будильник.
+    fn after_input(
+        &mut self,
+        o: Option<input::Outcome>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(core) = self.core.as_mut() {
+            for c in self.out.drain(..) {
+                core.dispatch(c);
+            }
+        }
+        if let Some(t) = o.and_then(|o| o.wake_at) {
+            let d = t.saturating_duration_since(std::time::Instant::now());
+            urfin_core::Waker::wake_after(&*self.signal, d);
+        }
+        self.pump(window, cx);
+    }
+
+    /// Нажатие (перехват до привязок gpui): `true` — keymap забрал его.
+    fn key_down(
+        &mut self,
+        ks: &gpui_kit::Keystroke,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(core) = self.core.as_ref() else {
+            return false;
         };
-        cx.stop_propagation();
-        self.dispatch(cmd, window, cx);
+        // Видимый вопрос разбирает клавиши сам (S2-15).
+        if crate::prompt_takes_keys(core.state()) {
+            return false;
+        }
+        let o = self.input.key_down(ks, core.state(), &mut self.out);
+        let consumed = o.consumed;
+        self.after_input(Some(o), window, cx);
+        consumed
+    }
+
+    fn key_up(&mut self, ev: &KeyUpEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(core) = self.core.as_ref() {
+            self.input
+                .key_up(&ev.keystroke, core.state(), &mut self.out);
+        }
+        self.after_input(None, window, cx);
+    }
+
+    fn modifiers(
+        &mut self,
+        ev: &ModifiersChangedEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let o = match self.core.as_ref() {
+            Some(core) => self
+                .input
+                .modifiers(ev.modifiers, core.state(), &mut self.out),
+            None => return,
+        };
+        self.after_input(Some(o), window, cx);
+    }
+
+    fn activation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if window.is_window_active() {
+            return;
+        }
+        if let Some(core) = self.core.as_ref() {
+            self.input.focus_lost(core.state(), &mut self.out);
+        }
+        self.after_input(None, window, cx);
     }
 }
 
@@ -259,11 +343,8 @@ impl Render for CoreHost {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let mut root = div()
             .track_focus(&self.focus)
-            .key_context(KEY_CONTEXT)
-            .on_key_down(cx.listener(Self::on_key))
-            .on_action(cx.listener(|h, _: &SwitchPanel, window, cx| {
-                h.dispatch("panel.switch", window, cx);
-            }))
+            .on_key_up(cx.listener(Self::key_up))
+            .on_modifiers_changed(cx.listener(Self::modifiers))
             .size_full()
             .flex()
             .flex_row()
@@ -275,7 +356,7 @@ impl Render for CoreHost {
         if let Some(core) = &self.core {
             let s = core.state();
             for side in [Side::Left, Side::Right] {
-                root = root.child(panel_debug(s, side));
+                root = root.child(panel_debug(s, side, self.page));
             }
         }
         root
@@ -283,7 +364,7 @@ impl Render for CoreHost {
 }
 
 /// Отладочный вывод таба: путь, состояние, строки с курсором и выделением.
-fn panel_debug(s: &urfin_core::AppState, side: Side) -> impl IntoElement {
+fn panel_debug(s: &urfin_core::AppState, side: Side, page: u32) -> impl IntoElement {
     let active = s.active == side;
     let t = s.panel(side).tab();
     let head: SharedString = format!("{}  [{:?}]", t.loc.path.display(), t.listing.status).into();
@@ -296,15 +377,20 @@ fn panel_debug(s: &urfin_core::AppState, side: Side) -> impl IntoElement {
         .bg(rgb(0x00ff_ffff))
         .border_1()
         .border_color(rgb(if active { 0x0000_78d4 } else { 0x00e0_e0e0 }))
-        .child(div().pb_1().child(head));
+        .child(div().h(px(ROW_H)).flex().items_center().child(head));
     let top = t.cursor.top;
-    for r in top..(top + DEBUG_ROWS).min(t.rows()) {
+    for r in top..(top + page.max(1)).min(t.rows()) {
         let (name, marked) = match t.row(r) {
             Some(Row::Parent) => ("..".to_owned(), false),
             Some(Row::Entry { idx, entry }) => (entry.name.to_string(), t.selection.contains(idx)),
             None => (String::new(), false),
         };
-        let mut line = div().px_1().child(SharedString::from(name));
+        let mut line = div()
+            .h(px(ROW_H))
+            .flex()
+            .items_center()
+            .px_1()
+            .child(SharedString::from(name));
         if marked {
             line = line.text_color(rgb(0x0000_78d4));
         }
@@ -320,11 +406,6 @@ fn panel_debug(s: &urfin_core::AppState, side: Side) -> impl IntoElement {
 pub fn run(launch: Launch, geom: Option<WindowGeom>) {
     gpui_kit::application().run(move |cx: &mut App| {
         gpui_kit::init(cx);
-        cx.bind_keys([gpui_kit::KeyBinding::new(
-            "tab",
-            SwitchPanel,
-            Some(KEY_CONTEXT),
-        )]);
         let bounds = match geom {
             Some(g) => Bounds {
                 origin: point(px(g.x), px(g.y)),
@@ -363,10 +444,28 @@ pub fn run(launch: Launch, geom: Option<WindowGeom>) {
                     })
                     .unwrap_or(true)
                 });
-                cx.observe_window_bounds(window, |h, window, _| h.track_bounds(window))
+                cx.observe_window_activation(window, CoreHost::activation)
                     .detach();
+                cx.observe_window_bounds(window, |h, window, cx| {
+                    h.track_bounds(window);
+                    h.sync_viewport(window);
+                    h.pump(window, cx);
+                })
+                .detach();
+                h.sync_viewport(window);
                 h.pump(window, cx);
             });
+            // Клавиши — до привязок gpui-kit (его `Root` забирает Tab на переход фокуса).
+            let weak = host.downgrade();
+            cx.intercept_keystrokes(move |ev, window, cx| {
+                let consumed = weak
+                    .update(cx, |h, cx| h.key_down(&ev.keystroke, window, cx))
+                    .unwrap_or(false);
+                if consumed {
+                    cx.stop_propagation();
+                }
+            })
+            .detach();
             host
         });
         if let Err(e) = opened {
