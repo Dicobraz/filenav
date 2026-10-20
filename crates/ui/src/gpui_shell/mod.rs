@@ -3,6 +3,7 @@
 //! опроса; в простое кадров нет. Клавиатура — конвейер keymap S3 ([`input`]).
 
 mod chrome;
+mod field;
 mod input;
 mod menu;
 mod overlays;
@@ -109,6 +110,10 @@ pub struct CoreHost {
     /// Зажатые модификаторы — подписи F-клавиш.
     mods: crate::keybar::Mods,
     toasts: Vec<overlays::Toast>,
+    /// Открытое поле ввода (черновик, переименование).
+    field: Option<field::Field>,
+    /// Черновик удаления — сразу насовсем (Shift+F8 или корзины нет).
+    ops_permanent: bool,
     menu: menu::Menu,
     /// Остаток прокрутки колесом в строках (по панелям).
     wheel_acc: [f32; 2],
@@ -151,6 +156,8 @@ impl CoreHost {
             registered,
             mods: crate::keybar::Mods::None,
             toasts: Vec::new(),
+            field: None,
+            ops_permanent: false,
             menu,
             wheel_acc: [0.0; 2],
             choice: (u64::MAX, 0),
@@ -264,11 +271,37 @@ impl CoreHost {
             return;
         };
         let now = std::time::Instant::now();
+        let mut drafts = Vec::new();
         for ev in core.take_ui_events() {
-            if let urfin_core::UiEvent::Toast { level, text } = ev {
-                self.toasts.push(overlays::Toast::new(level, text, now));
-                cx.notify();
+            match ev {
+                urfin_core::UiEvent::Toast { level, text } => {
+                    self.toasts.push(overlays::Toast::new(level, text, now));
+                    cx.notify();
+                }
+                // Черновик операции (F5/F6/F7/F8): строка с полем или кнопками (S2-15).
+                urfin_core::UiEvent::Ext { id, args } if id.as_str() == "ops.draft" => {
+                    let command = args.str("command").unwrap_or_default().to_owned();
+                    let arg = match command.as_str() {
+                        "ops.copy" | "ops.move" => "dest",
+                        "ops.mkdir" => "name",
+                        _ => "confirmed",
+                    };
+                    self.ops_permanent = args.bool("permanent").unwrap_or(false);
+                    drafts.push(
+                        Command::new("ui.draft")
+                            .arg("command", command.as_str())
+                            .arg("arg", arg),
+                    );
+                }
+                _ => {}
             }
+        }
+        if !drafts.is_empty() {
+            for c in drafts {
+                core.dispatch(c);
+            }
+            urfin_core::Waker::wake(&*self.signal);
+            cx.notify();
         }
         let before = self.toasts.len();
         self.toasts.retain(|t| t.until > now);
@@ -479,6 +512,24 @@ impl CoreHost {
         let Some(core) = self.core.as_ref() else {
             return false;
         };
+        // Поле ввода или черновик: Enter — выполнить, Esc — закрыть; остальное — полю.
+        let editing = self.field.is_some()
+            || core
+                .state()
+                .ext
+                .get::<crate::UiState>()
+                .is_some_and(|u| u.draft.is_some());
+        if editing {
+            let cmds = match ks.key.as_str() {
+                "escape" => vec![Command::new("ui.cancel")],
+                "enter" => self.field_commit(ks.modifiers.shift, cx),
+                _ => return false,
+            };
+            self.out
+                .extend(cmds.into_iter().map(|c| c.from(urfin_core::Origin::Key)));
+            self.after_input(None, window, cx);
+            return true;
+        }
         // Открытое меню F9 разбирает клавиши само (S2 §2.6).
         if let Some(open) = core
             .state()
@@ -604,6 +655,7 @@ fn pump_in_window(this: &WeakEntity<CoreHost>, cx: &mut AsyncApp) -> bool {
 impl Render for CoreHost {
     #[allow(clippy::too_many_lines, reason = "сборка зон окна")]
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.sync_field(window, cx);
         let gap = px(self.theme.m(Metric::GapPanels));
         let i18n = urfin_i18n::current();
         self.keybar.refresh(
@@ -679,7 +731,15 @@ impl Render for CoreHost {
                     .flex_none()
                     .h_full()
                     .flex()
-                    .child(panel::panel(s, side, &self.theme, rows, cols, cx)),
+                    .child(panel::panel(
+                        s,
+                        side,
+                        &self.theme,
+                        rows,
+                        cols,
+                        self.field.as_ref(),
+                        cx,
+                    )),
             );
         }
         let prompt = s.prompts.active().map(|p| {
@@ -692,6 +752,13 @@ impl Render for CoreHost {
         });
         root.child(panels)
             .children(overlays::job_bar(s, &self.theme))
+            .children(field::draft_bar(
+                s,
+                self.field.as_ref(),
+                self.ops_permanent,
+                &self.theme,
+                &click_all,
+            ))
             .children(prompt)
             .child(chrome::cmdline(s, &self.theme))
             .child(chrome::keybar(

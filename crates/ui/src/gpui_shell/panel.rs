@@ -52,6 +52,7 @@ pub(super) fn panel(
     theme: &Theme,
     rows: u32,
     cols: u32,
+    field: Option<&super::field::Field>,
     cx: &Context<CoreHost>,
 ) -> Div {
     let active = s.active == side;
@@ -76,7 +77,7 @@ pub(super) fn panel(
         .when(matches!(t.view_mode, ViewMode::Full), |d| {
             d.child(col_header(side, theme, cx))
         })
-        .child(list(t, side, active, theme, rows, cols, cx))
+        .child(list(t, side, active, theme, rows, cols, field, cx))
         .child(footer(s, t, side, active, theme))
 }
 
@@ -135,6 +136,7 @@ fn col_header(side: Side, theme: &Theme, cx: &Context<CoreHost>) -> Div {
 }
 
 /// Видимая страница: Full/Wide — одна колонка, Brief/Medium — колонки сверху вниз.
+#[allow(clippy::too_many_arguments, reason = "плоский вызов отрисовки")]
 fn list(
     t: &Tab,
     side: Side,
@@ -142,6 +144,7 @@ fn list(
     theme: &Theme,
     rows: u32,
     cols: u32,
+    field: Option<&super::field::Field>,
     cx: &Context<CoreHost>,
 ) -> Div {
     let total = t.rows();
@@ -163,19 +166,22 @@ fn list(
             if i >= total {
                 break;
             }
-            col = col.child(row(t, side, i, active, theme, cx));
+            col = col.child(row(t, side, i, active, theme, field, cx));
         }
         grid = grid.child(col);
     }
     grid
 }
 
+#[allow(clippy::too_many_lines, reason = "строка слева направо")]
+#[allow(clippy::too_many_arguments, reason = "плоский вызов отрисовки")]
 fn row(
     t: &Tab,
     side: Side,
     i: u32,
     active: bool,
     theme: &Theme,
+    field: Option<&super::field::Field>,
     cx: &Context<CoreHost>,
 ) -> AnyElement {
     let cursor = i == t.cursor.row;
@@ -251,14 +257,19 @@ fn row(
                 .child(SharedString::from(glyph.to_string())),
         )
         .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
-                .when(marked, |d| d.font_weight(FontWeight::SEMIBOLD))
-                .child(SharedString::from(name)),
+            match super::field::rename_input(field.filter(|_| cursor), t) {
+                // Переименование на месте (S2-16): поле вместо имени.
+                Some(input) => div().flex_1().min_w_0().child(input).into_any_element(),
+                None => div()
+                    .flex_1()
+                    .min_w_0()
+                    .overflow_hidden()
+                    .whitespace_nowrap()
+                    .text_ellipsis()
+                    .when(marked, |d| d.font_weight(FontWeight::SEMIBOLD))
+                    .child(SharedString::from(name))
+                    .into_any_element(),
+            },
         );
     if full && let Some(Row::Entry { entry, .. }) = t.row(i) {
         let mut cell = Cell::new();
