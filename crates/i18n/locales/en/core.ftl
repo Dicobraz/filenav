@@ -33,6 +33,8 @@ ops-copy-into-self = Cannot copy a folder into itself
 ops-copy-type = A file and a folder have the same name
 ops-copy-no-name = No free name for a copy
 ops-move-src-left = Copied, but the source was not deleted: { $error }
+ops-move-size = Copy is { $got } B instead of { $want } B — source kept
+ops-move-flush = Copy not flushed to disk: { $error } — source kept
 ops-copy-job-failed = Operation failed: { $error }
 ops-copy-errors = { $n ->
     [one] 1 item failed

@@ -706,14 +706,20 @@ fn walker_mask_and_links() {
 
 const CHILD_ENV: &str = "URFIN_COPY_KILL_CHILD";
 
-/// Дочерний процесс fault-injection: копирует `src` в `dst` и не выходит
-/// (родитель убивает его посреди копии). Без переменной окружения — ничего.
+/// Дочерний процесс fault-injection: копирует (`copy|src|dst`) или переносит
+/// как между томами (`move|src|dst`) и не выходит — родитель убивает его
+/// посреди работы. Без переменной окружения — ничего.
 #[test]
 fn kill_child() {
-    let Ok(dirs) = std::env::var(CHILD_ENV) else {
+    let Ok(arg) = std::env::var(CHILD_ENV) else {
         return;
     };
-    let (src, dst) = dirs.split_once('|').unwrap();
+    let mut parts = arg.splitn(3, '|');
+    let (mode, src, dst) = (
+        parts.next().unwrap(),
+        parts.next().unwrap(),
+        parts.next().unwrap(),
+    );
     let (src, dst) = (PathBuf::from(src), PathBuf::from(dst));
     let mut h = H::new(64);
     let base = src.parent().unwrap().to_path_buf();
@@ -722,7 +728,19 @@ fn kill_child() {
         workers: std::num::NonZeroU8::new(4),
         ..OpOptions::default()
     };
-    let id = h.start(4, transfer(Mode::Copy, &base, &[&name], &dst, None, o));
+    let t = if mode == "move" {
+        let t = transfer(Mode::Move, &base, &[&name], &dst, None, o);
+        t.info
+            .set(Info {
+                tol_ns: 0,
+                rename: false,
+            })
+            .unwrap();
+        t
+    } else {
+        transfer(Mode::Copy, &base, &[&name], &dst, None, o)
+    };
+    let id = h.start(4, t);
     std::fs::write(dst.with_extension("started"), b"1").unwrap();
     let st = h.wait_done(id);
     // Сюда доходит, только если родитель не успел: тест родителя это видит.
@@ -758,7 +776,10 @@ fn killed_copy_leaves_no_false_complete_files() {
     let exe = std::env::current_exe().unwrap();
     let mut child = std::process::Command::new(exe)
         .args(["--exact", "ops::copy::tests::kill_child", "--nocapture"])
-        .env(CHILD_ENV, format!("{}|{}", src.display(), dst.display()))
+        .env(
+            CHILD_ENV,
+            format!("copy|{}|{}", src.display(), dst.display()),
+        )
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
@@ -1061,4 +1082,201 @@ fn race_parks_with_temp_and_replace_renames_it() {
     assert_eq!(h.wait_done(id2), JobState::Cancelled);
     assert_eq!(std::fs::read(dst2.join("big.bin")).unwrap(), b"raced");
     assert_eq!(temps(&dst2), 0, "temp removed on cancel");
+}
+
+// --- S5-08: перенос ---
+
+/// Приёмка S5-08: перенос между томами, процесс убит посреди работы — каждый
+/// файл целиком хотя бы в одном месте (источник удаляется только после fsync
+/// копии и сверки размера).
+#[test]
+fn killed_move_loses_nothing() {
+    if std::env::var_os(CHILD_ENV).is_some() {
+        return;
+    }
+    let d = tmp();
+    let src = d.path().join("src");
+    let t = old(1_300_000_000);
+    for i in 0..400u64 {
+        let size = match i % 8 {
+            0 => (3 << 20) + i as usize,
+            1 => (1 << 20) + 17,
+            _ => 300_000 + 1_000 * i as usize,
+        };
+        write(
+            &src.join(format!("d{}/f{i}.bin", i % 10)),
+            &bytes(size, i),
+            t,
+        );
+    }
+    let before = snapshot(&src);
+    let dst = d.path().join("dst");
+    std::fs::create_dir(&dst).unwrap();
+    let exe = std::env::current_exe().unwrap();
+    let mut child = std::process::Command::new(exe)
+        .args(["--exact", "ops::copy::tests::kill_child", "--nocapture"])
+        .env(
+            CHILD_ENV,
+            format!("move|{}|{}", src.display(), dst.display()),
+        )
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let started = dst.with_extension("started");
+    let t0 = Instant::now();
+    while !started.exists() {
+        assert!(
+            t0.elapsed() < Duration::from_secs(30),
+            "child did not start"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let total = count_files(&src);
+    while count_files(&src) > total * 9 / 10 && t0.elapsed() < Duration::from_secs(60) {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    child.kill().unwrap();
+    child.wait().unwrap();
+    assert!(
+        !dst.with_extension("finished").exists(),
+        "move finished before kill: make the data bigger"
+    );
+    let (mut moved, mut kept) = (0, 0);
+    for (rel, (dir, h, m)) in &before {
+        if *dir {
+            continue;
+        }
+        let at_src = src.join(rel);
+        let at_dst = dst.join("src").join(rel);
+        let whole = |p: &Path| p.exists() && hash(p) == *h && mtime(p) == *m;
+        if whole(&at_src) {
+            kept += 1;
+        } else {
+            assert!(
+                whole(&at_dst),
+                "{rel}: lost — not whole in source nor in copy"
+            );
+            moved += 1;
+        }
+    }
+    eprintln!("killed move: {moved} moved, {kept} kept of {total}");
+    assert!(moved > 0 && kept > 0);
+}
+
+/// Приёмка S5-08: перенос каталога в пределах тома — один rename, < 50 мс
+/// независимо от числа файлов (дерево глубины 6). Лучший из трёх переносов
+/// туда и обратно: сразу после записи 2000 файлов ОС (антивирус, сброс кэша)
+/// изредка задерживает первый rename на сотню мс.
+#[test]
+fn move_same_volume_tree_is_one_rename() {
+    let d = tmp();
+    let (a, b) = (d.path().join("a"), d.path().join("b"));
+    let t = old(1_500_000_000);
+    for i in 0..2000u64 {
+        let rel = format!(
+            "a{}/b{}/c{}/d{}/e{}/f{i}.txt",
+            i % 2,
+            i % 3,
+            i % 4,
+            i % 5,
+            i % 6
+        );
+        write(&a.join("tree").join(rel), &bytes(1024 + i as usize, i), t);
+    }
+    let before = snapshot(&a.join("tree"));
+    std::fs::create_dir(&b).unwrap();
+    let mut h = H::new(64);
+    let mut best = Duration::MAX;
+    for (from, to) in [(&a, &b), (&b, &a), (&a, &b)] {
+        let r = run(
+            &mut h,
+            transfer(Mode::Move, from, &["tree"], to, None, OpOptions::default()),
+        );
+        let s = done(&r);
+        assert_eq!(s.items, 1, "the directory moves with one rename");
+        assert!(!from.join("tree").exists());
+        best = best.min(r.report.elapsed);
+    }
+    assert!(
+        best < Duration::from_millis(50),
+        "same-volume move took {best:?}"
+    );
+    assert_eq!(snapshot(&b.join("tree")), before);
+}
+
+/// Приёмка S5-08: запаркованный ребёнок (вопрос открыт) не даёт удалить
+/// исходный каталог при межтомном переносе; после «Заменить» каталог удалён.
+#[test]
+fn parked_child_keeps_source_dir() {
+    let d = tmp();
+    let (src, dst) = (d.path().join("s"), d.path().join("d"));
+    let t = old(1_500_000_000);
+    for i in 0..20 {
+        write(
+            &src.join(format!("t/f{i}.txt")),
+            format!("src-{i}").as_bytes(),
+            t,
+        );
+    }
+    write(&dst.join("t/f7.txt"), b"dst", old(1_400_000_000));
+    let tr = transfer(Mode::Move, &src, &["t"], &dst, None, OpOptions::default());
+    tr.info
+        .set(Info {
+            tol_ns: 0,
+            rename: false,
+        })
+        .unwrap();
+    let mut h = H::new(64);
+    let id = h.start(4, tr);
+    h.pump_until("19 moved, question open", |h| {
+        has_prompt(h) && snap(h, id).items_done == 19
+    });
+    // Пока вопрос открыт: в источнике только конфликтный файл, каталог на месте.
+    let left: Vec<String> = snapshot(&src).into_keys().collect();
+    assert_eq!(left, ["t", "t\\f7.txt"], "{left:?}");
+    reply(&mut h, "overwrite", false);
+    assert_eq!(finish(&mut h, id, "skip"), 0);
+    assert!(matches!(h.state(id), JobState::Done(_)));
+    assert_eq!(std::fs::read(dst.join("t/f7.txt")).unwrap(), b"src-7");
+    assert!(
+        !src.join("t").exists(),
+        "source dir removed after the answer"
+    );
+}
+
+/// Замер (не приёмка) S5-08: перенос датасета B2-размера в пределах тома и
+/// обратно. `cargo nextest run --release -p urfin-ops bench_move --run-ignored only --no-capture`.
+#[test]
+#[ignore = "замер на стенде"]
+fn bench_move_same_volume() {
+    let n: usize = std::env::var("URFIN_BENCH_N")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(100_000);
+    let spec = urfin_testdata::TreeSpec {
+        n,
+        seed: 2,
+        layout: urfin_testdata::Layout::Nav { dirs: n / 100 },
+    };
+    let src = urfin_testdata::dataset("urfin", &format!("move-{n}"), &spec).unwrap();
+    let base = src.parent().unwrap().to_path_buf();
+    let name = src.file_name().unwrap().to_string_lossy().into_owned();
+    let side = base.join(format!("{name}.moved"));
+    std::fs::create_dir_all(&side).unwrap();
+    let mut h = H::new(64);
+    for (from, to) in [(base.clone(), side.clone()), (side.clone(), base.clone())] {
+        let r = run(
+            &mut h,
+            transfer(Mode::Move, &from, &[&name], &to, None, OpOptions::default()),
+        );
+        let s = done(&r);
+        eprintln!(
+            "move {n}: {} item(s) in {:?} (job), {}",
+            s.items,
+            r.report.elapsed,
+            to.display()
+        );
+    }
+    assert!(src.exists());
 }

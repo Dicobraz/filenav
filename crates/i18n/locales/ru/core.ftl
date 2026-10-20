@@ -35,6 +35,8 @@ ops-copy-into-self = Нельзя скопировать папку внутрь
 ops-copy-type = Файл и папка с одним именем
 ops-copy-no-name = Нет свободного имени для копии
 ops-move-src-left = Скопировано, но источник не удалён: { $error }
+ops-move-size = Копия { $got } Б вместо { $want } Б — источник не удалён
+ops-move-flush = Копия не сброшена на диск: { $error } — источник не удалён
 ops-copy-job-failed = Операция не выполнена: { $error }
 ops-copy-errors = { $n ->
     [one] Не удалось: { $n } объект
