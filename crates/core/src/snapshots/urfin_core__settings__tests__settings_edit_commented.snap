@@ -1,0 +1,25 @@
+---
+source: crates/core/src/settings.rs
+expression: text
+---
+# Мой конфиг: комментарии должны остаться.
+version = 1
+
+[general]
+# Язык интерфейса.
+language = "ru"   # auto | en | ru
+
+[ui]
+theme = "dark"          # system | light | dark
+accent = "#0067C0"
+# Масштаб — ниже.
+zoom = 120
+split = 0.6
+[ui.tokens.light]         # точечные переопределения
+"accent.fill" = "#0067C0"
+
+[log]
+level = "info"
+
+[keymap]
+preset = "dn"

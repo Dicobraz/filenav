@@ -6720,7 +6720,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
@@ -7358,6 +7358,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "toml 1.1.8+spec-1.1.0",
+ "toml_edit 0.25.17+spec-1.1.0",
  "tracing",
  "urfin-i18n",
 ]
@@ -7405,6 +7406,7 @@ version = "0.1.0"
 dependencies = [
  "bitflags 2.13.2",
  "compact_str",
+ "crossbeam-channel",
  "insta",
  "remove_dir_all",
  "serde",
@@ -7416,6 +7418,7 @@ dependencies = [
  "trash",
  "urfin-core",
  "urfin-i18n",
+ "urfin-vfs",
  "windows-sys 0.61.2",
 ]
 
