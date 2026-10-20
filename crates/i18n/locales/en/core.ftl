@@ -22,3 +22,6 @@ ops-mkdir-failed = Cannot create { $name }: { $error }
 ops-rename-failed = Cannot rename { $name }: { $error }
 ops-exists = { $name } already exists
 ops-rename-bad = A name cannot contain \ or / — use Move (F6) to put it elsewhere
+ops-job-trash = Moving to Recycle Bin
+ops-job-delete = Deleting
+ops-delete-failed = Not deleted: { $error }
