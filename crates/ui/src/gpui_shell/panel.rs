@@ -3,11 +3,15 @@
 //! её держит Core по `panel.viewport` (S0 v3 №3).
 
 use gpui_kit::prelude::*;
-use gpui_kit::{AnyElement, Div, FontWeight, SharedString, div, px};
+use gpui_kit::{
+    AnyElement, ClickEvent, Context, Div, FontWeight, MouseButton, MouseDownEvent,
+    ScrollWheelEvent, SharedString, div, px,
+};
 use urfin_core::{AppState, Row, Side, Tab, ViewMode};
 use urfin_i18n::FluentArgs;
 use urfin_vfs::icons::icon_class;
 
+use super::CoreHost;
 use super::theme::Theme;
 use crate::fmt_cell::{Cell, ColKind, cell_text};
 use crate::tokens::{Metric, Role};
@@ -42,7 +46,14 @@ pub(super) fn grid(theme: &Theme, mode: ViewMode, w: f32, h: f32) -> (u32, u32) 
 }
 
 /// Карточка панели.
-pub(super) fn panel(s: &AppState, side: Side, theme: &Theme, rows: u32, cols: u32) -> Div {
+pub(super) fn panel(
+    s: &AppState,
+    side: Side,
+    theme: &Theme,
+    rows: u32,
+    cols: u32,
+    cx: &Context<CoreHost>,
+) -> Div {
     let active = s.active == side;
     let t = s.panel(side).tab();
     let border = if active {
@@ -63,9 +74,9 @@ pub(super) fn panel(s: &AppState, side: Side, theme: &Theme, rows: u32, cols: u3
         .bg(theme.c(Role::LayerPanel))
         .child(path_bar(t, theme))
         .when(matches!(t.view_mode, ViewMode::Full), |d| {
-            d.child(col_header(theme))
+            d.child(col_header(side, theme, cx))
         })
-        .child(list(t, active, theme, rows, cols))
+        .child(list(t, side, active, theme, rows, cols, cx))
         .child(footer(t, theme))
 }
 
@@ -83,10 +94,25 @@ fn path_bar(t: &Tab, theme: &Theme) -> Div {
         .child(path)
 }
 
-fn col_header(theme: &Theme) -> Div {
+fn col_header(side: Side, theme: &Theme, cx: &Context<CoreHost>) -> Div {
     let i18n = urfin_i18n::current();
-    let cell = |key: &str, w: Option<f32>| {
-        let d = div().px_1().child(SharedString::from(i18n.get(key)));
+    // Клик по колонке — сортировка по ней (повтор — обратная, S2 §2.1).
+    let cell = |key: &str, sort: &'static str, w: Option<f32>| {
+        let d = div()
+            .id(SharedString::from(format!("col-{sort}-{side:?}")))
+            .px_1()
+            .child(SharedString::from(i18n.get(key)))
+            .on_click(cx.listener(move |h, _: &ClickEvent, w, cx| {
+                h.run_all(
+                    vec![
+                        urfin_core::Command::new("panel.focus")
+                            .arg("side", super::chrome::side_name(side)),
+                        urfin_core::Command::new("panel.sort").arg("key", sort),
+                    ],
+                    w,
+                    cx,
+                );
+            }));
         match w {
             Some(w) => d.w(px(w)).flex_none().flex().justify_end(),
             None => d.flex_1().min_w_0(),
@@ -103,17 +129,33 @@ fn col_header(theme: &Theme) -> Div {
         .border_b_1()
         .border_color(theme.c(Role::StrokeDivider))
         .child(div().w(px(theme.m(Metric::WIcon) + 8.0)).flex_none())
-        .child(cell("ui-col-name", None))
-        .child(cell("ui-col-size", Some(W_SIZE)))
-        .child(cell("ui-col-mtime", Some(W_MTIME)))
+        .child(cell("ui-col-name", "name", None))
+        .child(cell("ui-col-size", "size", Some(W_SIZE)))
+        .child(cell("ui-col-mtime", "mtime", Some(W_MTIME)))
 }
 
 /// Видимая страница: Full/Wide — одна колонка, Brief/Medium — колонки сверху вниз.
-fn list(t: &Tab, active: bool, theme: &Theme, rows: u32, cols: u32) -> Div {
+fn list(
+    t: &Tab,
+    side: Side,
+    active: bool,
+    theme: &Theme,
+    rows: u32,
+    cols: u32,
+    cx: &Context<CoreHost>,
+) -> Div {
     let total = t.rows();
     let top = t.cursor.top;
     let rows = rows.max(1);
-    let mut grid = div().flex_1().min_h_0().flex().flex_row().overflow_hidden();
+    let mut grid = div()
+        .flex_1()
+        .min_h_0()
+        .flex()
+        .flex_row()
+        .overflow_hidden()
+        .on_scroll_wheel(cx.listener(move |h, ev: &ScrollWheelEvent, w, cx| {
+            h.wheel(side, ev, w, cx);
+        }));
     for c in 0..cols.max(1) {
         let mut col = div().flex_1().min_w_0().flex().flex_col();
         for r in 0..rows {
@@ -121,17 +163,47 @@ fn list(t: &Tab, active: bool, theme: &Theme, rows: u32, cols: u32) -> Div {
             if i >= total {
                 break;
             }
-            col = col.child(row(t, i, active, theme));
+            col = col.child(row(t, side, i, active, theme, cx));
         }
         grid = grid.child(col);
     }
     grid
 }
 
-fn row(t: &Tab, i: u32, active: bool, theme: &Theme) -> AnyElement {
+fn row(
+    t: &Tab,
+    side: Side,
+    i: u32,
+    active: bool,
+    theme: &Theme,
+    cx: &Context<CoreHost>,
+) -> AnyElement {
     let cursor = i == t.cursor.row;
     let full = matches!(t.view_mode, ViewMode::Full | ViewMode::Wide);
+    // Имя строки для `panel.cursor.to` (у `..` — нет).
+    let target = match t.row(i) {
+        Some(Row::Entry { entry, .. }) => Some(entry.name.to_string()),
+        _ => None,
+    };
+    let right = target.clone();
     let mut d = div()
+        .id(SharedString::from(format!("row-{side:?}-{i}")))
+        .on_click(cx.listener(move |h, ev: &ClickEvent, w, cx| {
+            h.row_click(
+                side,
+                target.as_deref(),
+                ev.click_count(),
+                ev.modifiers().control,
+                w,
+                cx,
+            );
+        }))
+        .on_mouse_down(
+            MouseButton::Right,
+            cx.listener(move |h, _: &MouseDownEvent, w, cx| {
+                h.row_right_click(side, right.as_deref(), w, cx);
+            }),
+        )
         .h(px(theme.m(Metric::HRow)))
         .flex_none()
         .flex()

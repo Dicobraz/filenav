@@ -108,6 +108,8 @@ pub struct CoreHost {
     /// Зажатые модификаторы — подписи F-клавиш.
     mods: crate::keybar::Mods,
     toasts: Vec<overlays::Toast>,
+    /// Остаток прокрутки колесом в строках (по панелям).
+    wheel_acc: [f32; 2],
     /// Выбранный вариант видимого вопроса: (id вопроса, индекс).
     choice: (u64, usize),
     focus: FocusHandle,
@@ -146,6 +148,7 @@ impl CoreHost {
             registered,
             mods: crate::keybar::Mods::None,
             toasts: Vec::new(),
+            wheel_acc: [0.0; 2],
             choice: (u64::MAX, 0),
             focus: cx.focus_handle(),
             input: input::Input::new(keys),
@@ -269,6 +272,103 @@ impl CoreHost {
             }
         }
         None
+    }
+
+    /// Несколько команд мыши подряд.
+    fn run_all(&mut self, cmds: Vec<Command>, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(core) = self.core.as_mut() {
+            for c in cmds {
+                core.dispatch(c.from(urfin_core::Origin::Mouse));
+            }
+        }
+        self.pump(window, cx);
+    }
+
+    /// Клик по строке: панель — активной, курсор — на строку; Ctrl — пометка;
+    /// двойной — вход (S2 §2.1).
+    fn row_click(
+        &mut self,
+        side: Side,
+        name: Option<&str>,
+        clicks: usize,
+        ctrl: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let mut cmds = self.focus_and_cursor(side, name);
+        if ctrl && name.is_some() {
+            cmds.push(Command::new("sel.toggle"));
+        }
+        if clicks >= 2 {
+            cmds.push(Command::new("panel.enter"));
+        }
+        self.run_all(cmds, window, cx);
+    }
+
+    /// ПКМ — пометка строки (как в Far); `..` не помечается.
+    fn row_right_click(
+        &mut self,
+        side: Side,
+        name: Option<&str>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let mut cmds = self.focus_and_cursor(side, name);
+        if name.is_some() {
+            cmds.push(Command::new("sel.toggle"));
+        }
+        self.run_all(cmds, window, cx);
+    }
+
+    fn focus_and_cursor(&self, side: Side, name: Option<&str>) -> Vec<Command> {
+        let active = self.core.as_ref().is_some_and(|c| c.state().active == side);
+        let mut cmds = Vec::with_capacity(3);
+        if !active {
+            cmds.push(Command::new("panel.focus").arg("side", chrome::side_name(side)));
+        }
+        cmds.push(match name {
+            Some(n) => Command::new("panel.cursor.to").arg("name", n),
+            None => Command::new("panel.cursor.home"),
+        });
+        cmds
+    }
+
+    /// Колесо: строки копятся с дробной частью, сдвиг — `panel.viewport{top}`.
+    fn wheel(
+        &mut self,
+        side: Side,
+        ev: &gpui_kit::ScrollWheelEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let row_h = self.theme.m(Metric::HRow);
+        let dy = f32::from(ev.delta.pixel_delta(px(row_h)).y);
+        let i = usize::from(side == Side::Right);
+        self.wheel_acc[i] -= dy / row_h;
+        let whole = self.wheel_acc[i].trunc();
+        self.wheel_acc[i] -= whole;
+        #[allow(clippy::cast_possible_truncation, reason = "строк за событие немного")]
+        let lines = whole as i64;
+        let Some(core) = self.core.as_ref() else {
+            return;
+        };
+        if lines == 0 {
+            return;
+        }
+        let t = core.state().panel(side).tab();
+        let top = (i64::from(t.cursor.top) + lines).max(0);
+        let (rows, cols) = self.grid[i];
+        self.run_all(
+            vec![
+                Command::new("panel.viewport")
+                    .arg("side", chrome::side_name(side))
+                    .arg("rows", i64::from(rows))
+                    .arg("cols", i64::from(cols))
+                    .arg("top", top),
+            ],
+            window,
+            cx,
+        );
     }
 
     /// Команда от мыши (табы, F-клавиши).
@@ -488,7 +588,7 @@ impl Render for CoreHost {
         let mut panels = div().flex_1().min_h_0().flex().flex_row().gap(gap).px(gap);
         for (i, side) in [Side::Left, Side::Right].into_iter().enumerate() {
             let (rows, cols) = self.grid[i];
-            panels = panels.child(panel::panel(s, side, &self.theme, rows, cols));
+            panels = panels.child(panel::panel(s, side, &self.theme, rows, cols, cx));
         }
         let prompt = s.prompts.active().map(|p| {
             let sel = if self.choice.0 == p.id.0 {
