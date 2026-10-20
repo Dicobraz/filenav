@@ -1,0 +1,7 @@
+---
+source: crates/ui/legacy/job_bar_tests.rs
+expression: yaml
+---
+- region: [8, 600, 1264, 32] "jobs.collapsed"
+- text: [1212, 610, 48, 12] text.secondary "Ctrl+J ˄"
+- text: [20, 610, 1176, 12] text.primary "Задачи 5  ·  ▶ #1 70 % ≈ 35 с  ·  ? #2 2 вопроса  ·  ⏸ #3  ·  ✓ #4  ·  ✗ #5"

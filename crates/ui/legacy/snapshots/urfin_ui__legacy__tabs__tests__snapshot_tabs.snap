@@ -1,0 +1,12 @@
+---
+source: crates/ui/legacy/tabs_tests.rs
+expression: yaml
+---
+- clip: [8, 8, 292, 32]
+- rect: [8, 8, 96, 32] layer.panel
+- galley: [20, 16, 29.75, 16] text.primary "urfin"
+- icon: [85, 19, 10, 10] text.secondary "U+E711"
+- galley: [118, 16, 28.75, 16] text.secondary "docs"
+- galley: [216, 16, 35.875, 16] text.secondary "home"
+- clip: [8, 0, 600, 40]
+- icon: [312, 18, 12, 12] text.secondary "U+E710"

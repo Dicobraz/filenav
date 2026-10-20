@@ -1,7 +1,7 @@
 # Реестр команд Urfin
 
 > Генерируется из реестра команд (core + ui + vfs) тестом `commands_doc_is_current`
-> (`crates/ui/src/tests.rs`). Руками не править. Обновить:
+> (`crates/ui/legacy/tests.rs`). Руками не править. Обновить:
 > `URFIN_UPDATE_DOCS=1 cargo nextest run -p urfin-ui commands_doc`.
 
 Команда — имя функции Urfin. Её принимают меню F9 (`menu.toml`), keymap (S3) и командная

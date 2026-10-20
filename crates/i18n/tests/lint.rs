@@ -261,7 +261,8 @@ fn mask(src: &str) -> Masked {
     Masked { code, literals }
 }
 
-/// Исходники `crates/*/src/**/*.rs` без тестов (`tests.rs`, `*_tests.rs`, хвост после
+/// Исходники `crates/*/src/**/*.rs` и `crates/ui/legacy/**/*.rs` (egui до G-06,
+/// ADR-0018) без тестов (`tests.rs`, `*_tests.rs`, хвост после
 /// `#[cfg(test)]`) и фикстур (`*_fixtures.rs`: демо-данные снапшотов и скриншотов —
 /// имена файлов, заголовки задач — не строки интерфейса).
 fn sources() -> Vec<(PathBuf, String)> {
@@ -269,7 +270,10 @@ fn sources() -> Vec<(PathBuf, String)> {
     let mut out = Vec::new();
     let mut stack: Vec<PathBuf> = std::fs::read_dir(&crates)
         .unwrap()
-        .map(|e| e.unwrap().path().join("src"))
+        .flat_map(|e| {
+            let p = e.unwrap().path();
+            [p.join("src"), p.join("legacy")]
+        })
         .filter(|p| p.is_dir())
         .collect();
     while let Some(dir) = stack.pop() {

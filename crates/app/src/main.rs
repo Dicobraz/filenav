@@ -14,6 +14,8 @@
 //! `--ipc-test-server` — первый экземпляр без окна печатает принятый запрос.
 //! `--selftest <dir>` — сценарий самопроверки окна, отчёт и снимки в `dir`
 //! (для платформ без ручной проверки; `scripts/mac/selftest.sh`).
+//! `--ui=gpui` — интерфейс на GPUI (ADR-0018; в G-01 — пустое окно, отдельный
+//! экземпляр); по умолчанию — egui.
 
 // Release — оконное приложение без консоли; debug — с консолью для логов.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -145,7 +147,9 @@ fn run() -> anyhow::Result<()> {
     let request = ipc::Request::from_args(&args);
     let selftest = selftest_dir(&args)?;
     let screens = screens_dir(&args)?;
+    let gpui = flag("--ui=gpui");
     let separate = flag("--new-instance")
+        || gpui
         || flag("--smoke")
         || flag("--bench-startup")
         || selftest.is_some()
@@ -161,6 +165,10 @@ fn run() -> anyhow::Result<()> {
     if flag("--smoke") {
         println!("urfin {}", version());
         return smoke(paths, config, warnings, crashed);
+    }
+    if gpui {
+        urfin_ui::gpui_shell::run();
+        return Ok(());
     }
 
     let t = Instant::now();

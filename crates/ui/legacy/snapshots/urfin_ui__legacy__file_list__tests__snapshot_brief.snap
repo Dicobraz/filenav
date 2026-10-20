@@ -1,0 +1,44 @@
+---
+source: crates/ui/legacy/file_list_tests.rs
+expression: yaml
+---
+- galley: [24, 52, 5.03125, 16] text.secondary "/"
+- icon: [33.03125, 54, 12, 12] text.tertiary "U+E76C"
+- galley: [49.03125, 52, 44.78125, 16] text.primary "backup"
+- text: [32, 84, 30, 12] text.secondary "Имя ˄"
+- rect: [209, 104, 1, 464] stroke.divider
+- rect: [406, 104, 1, 464] stroke.divider
+- galley: [32, 108, 6.875, 16] ".. #E4000000"
+- rect: [12, 128, 197, 24] fill.cursor.passive
+- galley: [32, 132, 36.625, 16] "2024/ #E4000000"
+- galley: [32, 156, 36.625, 16] "2025/ #E4000000"
+- galley: [32, 180, 36.625, 16] "2026/ #E4000000"
+- galley: [32, 204, 24.90625, 16] "old/ #E4000000"
+- galley: [32, 228, 48.875, 16] "photos/ #E4000000"
+- galley: [32, 252, 55.40625, 16] "projects/ #E4000000"
+- galley: [32, 276, 38.53125, 16] "scans/ #E4000000"
+- galley: [32, 300, 23.8125, 16] "vm/ #E4000000"
+- galley: [32, 324, 62.1875, 16] "archive.7z #8764B8"
+- galley: [32, 348, 85.8125, 16] "backup-01.zip #8764B8"
+- galley: [32, 372, 85.8125, 16] "backup-02.zip #8764B8"
+- galley: [32, 396, 85.8125, 16] "backup-03.zip #8764B8"
+- galley: [32, 420, 85.8125, 16] "backup-04.zip #8764B8"
+- galley: [32, 444, 85.8125, 16] "backup-05.zip #8764B8"
+- galley: [32, 468, 98.5625, 16] "db_dump.sql.gz #8764B8"
+- galley: [32, 492, 68.53125, 16] "desktop.ini #72000000"
+- galley: [32, 516, 52.9375, 16] "urfin.log #E4000000"
+- galley: [32, 540, 77.6875, 16] "home.tar.zst #8764B8"
+- galley: [229, 108, 60.375, 16] "keys.kdbx #E4000000"
+- galley: [229, 132, 56.6875, 16] "notes.txt #E4000000"
+- galley: [229, 156, 79.4375, 16] "passport.pdf #E4000000"
+- galley: [229, 180, 97.0625, 16] "photos-2025.7z #8764B8"
+- galley: [229, 204, 71.625, 16] "readme.md #E4000000"
+- galley: [229, 228, 70.875, 16] "restore.ps1 #0F7B0F"
+- galley: [229, 252, 90.1875, 16] "snapshot.vhdx #E4000000"
+- galley: [229, 276, 53.5625, 16] "todo.md #E4000000"
+- galley: [229, 300, 83.84375, 16] "vacation.mp4 #E4000000"
+- galley: [229, 324, 58.8125, 16] "win11.iso #8764B8"
+- galley: [229, 348, 80.5625, 16] "~$draft.docx #72000000"
+- rect: [12, 76, 592, 1] stroke.divider
+- rect: [12, 568, 592, 1] stroke.divider
+- text: [24, 576, 126, 12] text.secondary "29 объектов · 24,6 ГБ"
