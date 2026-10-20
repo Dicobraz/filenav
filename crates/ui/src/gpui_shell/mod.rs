@@ -143,6 +143,8 @@ pub struct CoreHost {
     /// Панели — кэшируемые view (G-07) и отпечатки их последней отрисовки.
     panels: [[Entity<panel::PanelView>; 3]; 2],
     prints: [[u64; 3]; 2],
+    /// Протяжка с зажатой ПКМ (Far): панель, ставить или снимать пометку, последняя строка.
+    rdrag: Option<(Side, bool, String)>,
     /// Табы в заголовке и низ окна — кэшируемые view, отпечатки как у панелей.
     tabs: Entity<chrome::ChromeView>,
     bottom: Entity<chrome::ChromeView>,
@@ -214,6 +216,7 @@ impl CoreHost {
             out: Vec::new(),
             panels,
             prints: [[0; 3]; 2],
+            rdrag: None,
             tabs,
             bottom,
             chrome_prints: [0; 2],
@@ -440,6 +443,50 @@ impl CoreHost {
             cmds.push(Command::new("sel.toggle"));
         }
         self.run_all(cmds, window, cx);
+        // Дальше протяжка ставит строкам то же состояние, что получила эта.
+        self.rdrag = name
+            .zip(self.marked(side))
+            .map(|(n, on)| (side, on, n.to_owned()));
+    }
+
+    /// Строка курсора панели помечена; `None` — на `..` или пусто.
+    fn marked(&self, side: Side) -> Option<bool> {
+        let t = self.core.as_ref()?.state().panel(side).tab();
+        match t.current()? {
+            urfin_core::Row::Entry { idx, .. } => Some(t.selection.contains(idx)),
+            urfin_core::Row::Parent => None,
+        }
+    }
+
+    /// Мышь с зажатой ПКМ над строкой: курсор на неё, пометка — как у первой строки.
+    fn row_right_drag(
+        &mut self,
+        side: Side,
+        name: Option<&str>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((s, on, last)) = self.rdrag.as_ref() else {
+            return;
+        };
+        let (on, Some(name)) = (*on, name) else {
+            return;
+        };
+        if *s != side || last == name {
+            return;
+        }
+        if let Some(d) = self.rdrag.as_mut() {
+            name.clone_into(&mut d.2);
+        }
+        self.run_all(self.focus_and_cursor(side, Some(name)), window, cx);
+        if self.marked(side) == Some(!on) {
+            self.run_all(vec![Command::new("sel.toggle")], window, cx);
+        }
+    }
+
+    /// ПКМ отпущена (или мышь вернулась без неё): протяжка кончилась.
+    fn right_drag_end(&mut self) {
+        self.rdrag = None;
     }
 
     fn focus_and_cursor(&self, side: Side, name: Option<&str>) -> Vec<Command> {

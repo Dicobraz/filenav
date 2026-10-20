@@ -290,6 +290,7 @@ static KNOWN: &[CommandMeta] = &[
     meta("ui.palette", &[], false),
     meta("ui.panel.setup", &[], false),
     meta("ui.panels.toggle_all", &[], false),
+    meta("ui.rename", &[], false),
     meta(
         "ui.path_edit",
         &[

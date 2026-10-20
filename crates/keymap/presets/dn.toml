@@ -27,7 +27,7 @@ extends = "base"
 "Alt+S" = "ui.panel.setup"
 "Ctrl+Shift+GrayPlus" = { cmd = "sel.same", by = "ext", on = true }
 "Ctrl+Shift+GrayMinus" = { cmd = "sel.same", by = "ext", on = false }
-"Alt+F6" = "ops.rename"
+"Alt+F6" = "ui.rename"
 "Alt+E" = "ops.attrs"
 "Ctrl+Alt+F6" = "ops.multi_rename"
 "Ctrl+C" = "ops.compare"

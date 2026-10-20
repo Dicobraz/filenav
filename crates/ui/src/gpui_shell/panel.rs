@@ -7,9 +7,9 @@ use std::rc::Rc;
 
 use gpui_kit::{
     App, Bounds, ClickEvent, ContentMask, Context, Div, Font, FontWeight, Hsla, IntoElement,
-    MouseButton, MouseDownEvent, MouseUpEvent, Pixels, Point, Render, ScrollWheelEvent,
-    SharedString, Stateful, TextAlign, TextRun, TruncateFrom, WeakEntity, Window, canvas, div,
-    point, px, size as size2,
+    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render,
+    ScrollWheelEvent, SharedString, Stateful, TextAlign, TextRun, TruncateFrom, WeakEntity, Window,
+    canvas, div, point, px, size as size2,
 };
 use urfin_core::{AppState, Row, Side, Tab, ViewMode};
 use urfin_i18n::FluentArgs;
@@ -519,6 +519,8 @@ fn list(
     };
     let click_lines = lines.clone();
     let click_hit = hit.clone();
+    let move_lines = lines.clone();
+    let move_hit = hit.clone();
     let right_lines = lines.clone();
     let mut d = div()
         .id(SharedString::from(format!("list-{side:?}")))
@@ -552,6 +554,18 @@ fn list(
                     h.row_right_click(side, target.as_deref(), w, cx);
                 }
             }),
+        )
+        // Протяжка с зажатой ПКМ помечает строки под мышью (Far).
+        .on_mouse_move(cx.listener(move |h, ev: &MouseMoveEvent, w, cx| {
+            if ev.pressed_button != Some(MouseButton::Right) {
+                h.right_drag_end();
+            } else if let Some(target) = move_hit(&move_lines, ev.position) {
+                h.row_right_drag(side, target.as_deref(), w, cx);
+            }
+        }))
+        .on_mouse_up(
+            MouseButton::Right,
+            cx.listener(|h, _: &MouseUpEvent, _, _| h.right_drag_end()),
         );
     // Переименование на месте (S2-16): поле поверх имени в строке курсора.
     if let Some(input) = rename
