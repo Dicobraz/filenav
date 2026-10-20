@@ -51,10 +51,10 @@ impl Handler for RunHandler {
     }
 }
 
-struct H {
-    core: Core,
+pub(crate) struct H {
+    pub(crate) core: Core,
     tx: Sender<Run>,
-    eng: Arc<JobEngine>,
+    pub(crate) eng: Arc<JobEngine>,
     listing: Arc<FakeListing>,
 }
 
@@ -67,7 +67,7 @@ fn dir() -> Location {
 }
 
 impl H {
-    fn new(max_threads: u16) -> H {
+    pub(crate) fn new(max_threads: u16) -> H {
         let listing = Arc::new(FakeListing::default());
         listing.set_dir(dir(), Vec::new());
         let services = Services {
@@ -85,7 +85,7 @@ impl H {
         }
     }
 
-    fn start<E: OpExec>(&mut self, workers: u16, exec: E) -> JobId {
+    pub(crate) fn start<E: OpExec>(&mut self, workers: u16, exec: E) -> JobId {
         let (itx, irx) = crossbeam_channel::bounded(1);
         let eng = Arc::clone(&self.eng);
         let spec = JobSpec {
@@ -104,12 +104,12 @@ impl H {
         irx.recv().unwrap()
     }
 
-    fn pump(&mut self) {
+    pub(crate) fn pump(&mut self) {
         self.core.pump(Duration::from_millis(1));
         std::thread::sleep(Duration::from_millis(1));
     }
 
-    fn pump_until(&mut self, what: &str, done: impl Fn(&H) -> bool) {
+    pub(crate) fn pump_until(&mut self, what: &str, done: impl Fn(&H) -> bool) {
         let t0 = Instant::now();
         while !done(self) {
             assert!(t0.elapsed() < Duration::from_secs(30), "timeout: {what}");
@@ -117,7 +117,7 @@ impl H {
         }
     }
 
-    fn state(&self, id: JobId) -> JobState {
+    pub(crate) fn state(&self, id: JobId) -> JobState {
         self.core.state().jobs.get(id).unwrap().state.clone()
     }
 
@@ -126,20 +126,20 @@ impl H {
         j.progress.items_done.load(Ordering::Relaxed)
     }
 
-    fn cmd(&mut self, name: &'static str, id: JobId) {
+    pub(crate) fn cmd(&mut self, name: &'static str, id: JobId) {
         self.core
             .dispatch(Command::new(name).arg("id", i64::try_from(id.0).unwrap()));
     }
 
     /// Ждёт конца job и выхода всех потоков движка.
-    fn wait_done(&mut self, id: JobId) -> JobState {
+    pub(crate) fn wait_done(&mut self, id: JobId) -> JobState {
         self.pump_until("job end and zero engine threads", |h| {
             !h.state(id).is_active() && h.eng.live_threads() == 0
         });
         self.state(id)
     }
 
-    fn report(&self, id: JobId) -> Arc<crate::api::Report> {
+    pub(crate) fn report(&self, id: JobId) -> Arc<crate::api::Report> {
         let r = self.core.state().ext.get::<Reports>().unwrap();
         Arc::clone(r.get(id).unwrap())
     }
