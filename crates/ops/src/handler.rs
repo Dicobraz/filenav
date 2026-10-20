@@ -231,22 +231,107 @@ impl Handler for OpsHandler {
                 Err(not_yet(cmd))
             }
             "ops.mkdir" => {
-                if a.str("name").is_none() {
+                let Some(name) = a.str("name") else {
                     draft(cx, cmd, false);
                     return Ok(());
-                }
-                Err(not_yet(cmd))
+                };
+                mkdir(cx, name)
             }
             "ops.rename" => {
-                if a.str("to").is_none() {
+                let Some(to) = a.str("to") else {
                     // Без имени — поле на месте (Shift+F6).
                     cx.dispatch(Command::new("ui.rename"));
                     return Ok(());
-                }
-                Err(not_yet(cmd))
+                };
+                rename(cx, to)
             }
             _ => Err(not_yet(cmd)),
         }
+    }
+}
+
+/// Одиночная операция активного таба вне UI-потока (S5-10): по успеху курсор —
+/// на `focus`, листинг перечитывается; ошибка — тостом.
+fn quick(
+    cx: &mut Cx<'_>,
+    name: &'static str,
+    work: impl FnOnce(&std::path::Path) -> Result<Option<CompactString>, String> + Send + 'static,
+) -> Result<(), CmdError> {
+    let t = cx.state.panel(cx.state.active).tab();
+    if !t.loc.is_local() {
+        return Err(CmdError::Rejected(
+            text("ops-not-yet", &[("what", name)]).into(),
+        ));
+    }
+    let (tab, dir) = (t.id, t.loc.path.clone());
+    let sink = cx.rt.sink();
+    cx.rt
+        .spawn(Lane::Interactive, name, cx.rt.token(), move |tcx| {
+            let result = work(&dir);
+            let m = urfin_core::msg(name, move |cx| match result {
+                Ok(focus) => {
+                    if let Some(t) = cx.state.tab_mut(tab)
+                        && focus.is_some()
+                    {
+                        t.pending_focus = focus;
+                    }
+                    cx.dispatch(Command::new("panel.refresh").arg("tab", i64::from(tab.0)));
+                }
+                Err(e) => cx.toast(Level::Error, e),
+            });
+            let _ = sink.send(m, &tcx.cancel);
+        });
+    Ok(())
+}
+
+/// `ops.mkdir {name}`: `a/b/c`, `x;y` (Far); курсор — на первый созданный.
+fn mkdir(cx: &mut Cx<'_>, spec: &str) -> Result<(), CmdError> {
+    let spec = spec.to_owned();
+    quick(cx, "ops.mkdir", move |dir| {
+        crate::ops::mkdir::mkdir(dir, &spec)
+            .map(|made| made.into_iter().next())
+            .map_err(|e| {
+                text(
+                    "ops-mkdir-failed",
+                    &[("name", e.name.as_str()), ("error", &io_text(&e.error))],
+                )
+            })
+    })
+}
+
+/// `ops.rename {to}`: элемент под курсором активного таба, в его каталоге.
+fn rename(cx: &mut Cx<'_>, to: &str) -> Result<(), CmdError> {
+    let t = cx.state.panel(cx.state.active).tab();
+    let Some(Row::Entry { entry, .. }) = t.current() else {
+        return Err(CmdError::Rejected(text("ops-nothing", &[]).into()));
+    };
+    let to = to.trim();
+    if !crate::ops::rename::is_plain_name(to) {
+        return Err(CmdError::Rejected(text("ops-rename-bad", &[]).into()));
+    }
+    let (from, to) = (entry.name.clone(), CompactString::from(to));
+    quick(cx, "ops.rename", move |dir| {
+        crate::ops::rename::rename(dir, &from, &to)
+            .map(|()| Some(to.clone()))
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::AlreadyExists {
+                    text("ops-exists", &[("name", to.as_str())])
+                } else {
+                    text(
+                        "ops-rename-failed",
+                        &[("name", from.as_str()), ("error", &io_text(&e))],
+                    )
+                }
+            })
+    })
+}
+
+/// Текст ошибки ОС без «(os error N)».
+fn io_text(e: &std::io::Error) -> String {
+    let s = e.to_string();
+    match s.rfind(" (os error") {
+        Some(i) => s[..i].to_owned(),
+        None => s,
     }
 }
 

@@ -18,3 +18,7 @@ ops-nothing = Nothing to do: put the cursor on a file or select files
 ops-dest-empty = Destination is empty
 ops-dest-file = Destination is a file: { $path }
 ops-open-failed = Cannot open { $name }: { $error }
+ops-mkdir-failed = Cannot create { $name }: { $error }
+ops-rename-failed = Cannot rename { $name }: { $error }
+ops-exists = { $name } already exists
+ops-rename-bad = A name cannot contain \ or / — use Move (F6) to put it elsewhere
