@@ -46,6 +46,8 @@ enum Ph {
 #[derive(Default)]
 struct Phase {
     frames: Vec<f32>,
+    /// Сборка дерева в `render`, мс.
+    builds: Vec<f32>,
     started: Option<(Instant, f64, f64)>,
     cpu: f32,
     ui_cpu: f32,
@@ -72,31 +74,36 @@ impl Phase {
     }
 
     fn pct(&self, q: f32) -> f32 {
-        if self.frames.is_empty() {
-            return 0.0;
-        }
-        let mut v = self.frames.clone();
-        v.sort_by(f32::total_cmp);
-        #[allow(
-            clippy::cast_precision_loss,
-            clippy::cast_possible_truncation,
-            clippy::cast_sign_loss,
-            reason = "индекс перцентиля"
-        )]
-        let i = ((v.len() - 1) as f32 * q).round() as usize;
-        v[i]
+        pct(&self.frames, q)
     }
 
     fn report(&self, name: &str) -> String {
         format!(
-            "{name}_p50={:.2} {name}_p99={:.2} {name}_max={:.2} {name}_cpu={:.1} {name}_ui_cpu={:.1}",
+            "{name}_p50={:.2} {name}_p99={:.2} {name}_max={:.2} {name}_cpu={:.1} {name}_ui_cpu={:.1} {name}_build_p50={:.2}",
             self.pct(0.5),
             self.pct(0.99),
             self.pct(1.0),
             self.cpu,
-            self.ui_cpu
+            self.ui_cpu,
+            pct(&self.builds, 0.5)
         )
     }
+}
+
+fn pct(frames: &[f32], q: f32) -> f32 {
+    if frames.is_empty() {
+        return 0.0;
+    }
+    let mut v = frames.to_vec();
+    v.sort_by(f32::total_cmp);
+    #[allow(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "индекс перцентиля"
+    )]
+    let i = ((v.len() - 1) as f32 * q).round() as usize;
+    v[i]
 }
 
 /// Сценарий и замеры.
@@ -112,6 +119,9 @@ pub struct Bench {
     idle_until: Option<Instant>,
     /// Размер окна до ресайза.
     size: (f32, f32),
+    /// Сэмплер UI-потока на списке и страницах (`URFIN_PROF`).
+    #[cfg(windows)]
+    prof: Option<crate::sys::prof::Sampler>,
 }
 
 impl std::fmt::Debug for Bench {
@@ -135,6 +145,8 @@ impl Bench {
             idle_frames: 0,
             idle_until: None,
             size,
+            #[cfg(windows)]
+            prof: None,
         }
     }
 
@@ -220,11 +232,32 @@ impl Bench {
         }
     }
 
+    /// Сборка дерева кадра заняла столько (зовёт окно в конце `render`).
+    pub fn built(&mut self, d: Duration) {
+        let p = match self.ph {
+            Ph::List => &mut self.list,
+            Ph::Page => &mut self.page,
+            Ph::Resize => &mut self.resize,
+            _ => return,
+        };
+        p.builds.push(d.as_secs_f32() * 1000.0);
+    }
+
     fn next(&mut self, to: Ph, now: Instant) {
         match self.ph {
             Ph::List => self.list.stop(now),
             Ph::Page => self.page.stop(now),
             Ph::Resize => self.resize.stop(now),
+            _ => {}
+        }
+        #[cfg(windows)]
+        match to {
+            Ph::List => self.prof = crate::sys::prof::start(),
+            Ph::Resize => {
+                if let Some(p) = self.prof.take() {
+                    p.finish();
+                }
+            }
             _ => {}
         }
         self.ph = to;

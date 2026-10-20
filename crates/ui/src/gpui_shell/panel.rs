@@ -3,9 +3,12 @@
 //! её держит Core по `panel.viewport` (S0 v3 №3).
 
 use gpui_kit::prelude::*;
+use std::rc::Rc;
+
 use gpui_kit::{
-    AnyElement, ClickEvent, Context, Div, FontWeight, MouseButton, MouseDownEvent,
-    ScrollWheelEvent, SharedString, div, px,
+    App, Bounds, ClickEvent, ContentMask, Context, Div, Font, FontWeight, Hsla, MouseButton,
+    MouseDownEvent, MouseUpEvent, Pixels, Point, ScrollWheelEvent, SharedString, Stateful,
+    TextAlign, TextRun, TruncateFrom, Window, canvas, div, point, px, size as size2,
 };
 use urfin_core::{AppState, Row, Side, Tab, ViewMode};
 use urfin_i18n::FluentArgs;
@@ -223,8 +226,54 @@ fn col_header(side: Side, theme: &Theme, cx: &Context<CoreHost>) -> Div {
         .child(cell("ui-col-mtime", "mtime", Some(W_MTIME)))
 }
 
+/// Строка видимой страницы для отрисовки: всё готово, `canvas` только рисует.
+struct Line {
+    /// Имя для `panel.cursor.to`; у `..` — нет.
+    target: Option<SharedString>,
+    glyph: SharedString,
+    name: SharedString,
+    size: Option<SharedString>,
+    mtime: Option<SharedString>,
+    bg: Option<Hsla>,
+    color: Hsla,
+    icon_color: Hsla,
+    bold: bool,
+    /// Вместо имени — поле переименования.
+    renaming: bool,
+}
+
+/// Геометрия строки в колонке: отступы и колонки Full/Wide.
+#[derive(Clone, Copy)]
+struct Geo {
+    row_h: f32,
+    pad: f32,
+    icon_w: f32,
+    icon_size: f32,
+    radius: f32,
+    size_w: f32,
+    mtime_w: f32,
+}
+
+impl Geo {
+    /// Левый край имени в колонке.
+    fn name_x(&self) -> f32 {
+        ROW_MX + self.pad + self.icon_w
+    }
+
+    /// Ширина имени в колонке шириной `w`.
+    fn name_w(&self, w: f32) -> f32 {
+        (w - ROW_MX - self.pad - self.size_w - self.mtime_w - self.name_x()).max(0.0)
+    }
+}
+
+/// Отступ строки от краёв колонки (`mx_1`).
+const ROW_MX: f32 = 4.0;
+
 /// Видимая страница: Full/Wide — одна колонка, Brief/Medium — колонки сверху вниз.
+/// Строки рисует один `canvas` (фон, иконка, текст), без дерева `div`: раскладка taffy
+/// для сотни узлов с текстом — половина кадра (G-07, профиль). Клики — по координате.
 #[allow(clippy::too_many_arguments, reason = "плоский вызов отрисовки")]
+#[allow(clippy::too_many_lines, reason = "сборка строк и отрисовка рядом")]
 fn list(
     t: &Tab,
     side: Side,
@@ -234,150 +283,298 @@ fn list(
     cols: u32,
     field: Option<&super::field::Field>,
     cx: &Context<CoreHost>,
-) -> Div {
+) -> Stateful<Div> {
     let total = t.rows();
     let top = t.cursor.top;
     let rows = rows.max(1);
-    let mut grid = div()
+    let cols = cols.max(1);
+    let full = matches!(t.view_mode, ViewMode::Full | ViewMode::Wide);
+    let geo = Geo {
+        row_h: theme.m(Metric::HRow),
+        pad: theme.m(Metric::PadRowX) - ROW_MX,
+        icon_w: theme.m(Metric::WIcon) + 8.0,
+        icon_size: theme.m(Metric::WIcon),
+        radius: theme.m(Metric::RadiusControl),
+        size_w: if full { W_SIZE } else { 0.0 },
+        mtime_w: if matches!(t.view_mode, ViewMode::Full) {
+            W_MTIME
+        } else {
+            0.0
+        },
+    };
+    let rename = super::field::rename_input(field, t);
+    let mut lines = Vec::with_capacity((rows * cols) as usize);
+    let mut cell = Cell::new();
+    for slot in 0..rows * cols {
+        let ix = top + slot;
+        if ix >= total {
+            break;
+        }
+        let cursor = ix == t.cursor.row;
+        let (glyph, name, marked, color, entry) = match t.row(ix) {
+            Some(Row::Parent) => (GLYPH_UP, SharedString::new_static(".."), false, None, None),
+            Some(Row::Entry { idx, entry }) => {
+                let icon = crate::icons::glyph(icon_class(&entry.name, entry.kind, entry.attrs));
+                let group = theme.hl.classify(entry);
+                let color = theme.hl.color(group, &theme.tokens);
+                let name = SharedString::from(entry.name.to_string());
+                (icon, name, t.selection.contains(idx), color, Some(entry))
+            }
+            None => break,
+        };
+        let bg = if cursor {
+            Some(theme.c(if active {
+                Role::FillCursor
+            } else {
+                Role::FillCursorPassive
+            }))
+        } else if marked {
+            Some(theme.c(Role::AccentSubtle))
+        } else {
+            None
+        };
+        let mut col = |kind: ColKind| {
+            entry.map(|e| {
+                cell.clear();
+                cell_text(kind, e, &theme.fmt, &mut cell);
+                SharedString::from(cell.as_str().to_owned())
+            })
+        };
+        let bytes = if full { col(ColKind::Size) } else { None };
+        let when = if geo.mtime_w > 0.0 {
+            col(ColKind::Mtime)
+        } else {
+            None
+        };
+        lines.push(Line {
+            target: entry.map(|_| name.clone()),
+            glyph: SharedString::from(glyph.to_string()),
+            size: bytes,
+            mtime: when,
+            name,
+            bg,
+            color: if marked {
+                theme.c(Role::AccentText)
+            } else {
+                color.map_or_else(|| theme.c(Role::TextPrimary), super::theme::hsla)
+            },
+            icon_color: theme.c(if marked {
+                Role::AccentText
+            } else {
+                Role::TextSecondary
+            }),
+            bold: marked,
+            renaming: cursor && rename.is_some(),
+        });
+    }
+    let lines = Rc::new(lines);
+    let bounds = Rc::new(std::cell::Cell::new(Bounds::<Pixels>::default()));
+    let secondary = theme.c(Role::TextSecondary);
+    let paint_lines = lines.clone();
+    let paint_bounds = bounds.clone();
+    let canvas = canvas(
+        move |b, _, _| paint_bounds.set(b),
+        move |b, (), window, cx| {
+            paint(&paint_lines, b, rows, cols, geo, secondary, window, cx);
+        },
+    )
+    .size_full();
+    // Строка под точкой → цель для `panel.cursor.to` (`None` снаружи — мимо строк).
+    let hit = move |lines: &[Line], p: Point<Pixels>| -> Option<Option<SharedString>> {
+        let b = bounds.get();
+        if !b.contains(&p) {
+            return None;
+        }
+        #[allow(clippy::cast_precision_loss, reason = "колонок единицы")]
+        let col_w = f32::from(b.size.width) / cols as f32;
+        #[allow(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "не меньше 0"
+        )]
+        let c = (f32::from(p.x - b.origin.x) / col_w).floor().max(0.0) as u32;
+        #[allow(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "не меньше 0"
+        )]
+        let r = (f32::from(p.y - b.origin.y) / geo.row_h).floor().max(0.0) as u32;
+        if r >= rows {
+            return None;
+        }
+        lines
+            .get((c.min(cols - 1) * rows + r) as usize)
+            .map(|l| l.target.clone())
+    };
+    let click_lines = lines.clone();
+    let click_hit = hit.clone();
+    let right_lines = lines.clone();
+    let mut d = div()
+        .id(SharedString::from(format!("list-{side:?}")))
         .flex_1()
         .min_h_0()
-        .flex()
-        .flex_row()
+        .relative()
         .overflow_hidden()
+        .child(canvas)
         .on_scroll_wheel(cx.listener(move |h, ev: &ScrollWheelEvent, w, cx| {
             h.wheel(side, ev, w, cx);
-        }));
-    for c in 0..cols.max(1) {
-        let mut col = div().flex_1().min_w_0().flex().flex_col();
-        for r in 0..rows {
-            let i = top + c * rows + r;
-            if i >= total {
-                break;
-            }
-            col = col.child(row(t, side, i, active, theme, field, cx));
-        }
-        grid = grid.child(col);
-    }
-    grid
-}
-
-#[allow(clippy::too_many_lines, reason = "строка слева направо")]
-#[allow(clippy::too_many_arguments, reason = "плоский вызов отрисовки")]
-fn row(
-    t: &Tab,
-    side: Side,
-    i: u32,
-    active: bool,
-    theme: &Theme,
-    field: Option<&super::field::Field>,
-    cx: &Context<CoreHost>,
-) -> AnyElement {
-    let cursor = i == t.cursor.row;
-    let full = matches!(t.view_mode, ViewMode::Full | ViewMode::Wide);
-    // Имя строки для `panel.cursor.to` (у `..` — нет).
-    let target = match t.row(i) {
-        Some(Row::Entry { entry, .. }) => Some(entry.name.to_string()),
-        _ => None,
-    };
-    let right = target.clone();
-    let mut d = div()
-        .id(SharedString::from(format!("row-{side:?}-{i}")))
-        .on_click(cx.listener(move |h, ev: &ClickEvent, w, cx| {
-            h.row_click(
-                side,
-                target.as_deref(),
-                ev.click_count(),
-                ev.modifiers().control,
-                w,
-                cx,
-            );
         }))
-        .on_mouse_down(
-            MouseButton::Right,
-            cx.listener(move |h, _: &MouseDownEvent, w, cx| {
-                h.row_right_click(side, right.as_deref(), w, cx);
+        .on_mouse_up(
+            MouseButton::Left,
+            cx.listener(move |h, ev: &MouseUpEvent, w, cx| {
+                if let Some(target) = click_hit(&click_lines, ev.position) {
+                    h.row_click(
+                        side,
+                        target.as_deref(),
+                        ev.click_count,
+                        ev.modifiers.control,
+                        w,
+                        cx,
+                    );
+                }
             }),
         )
-        .h(px(theme.m(Metric::HRow)))
-        .flex_none()
-        .flex()
-        .items_center()
-        .mx_1()
-        .px(px(theme.m(Metric::PadRowX) - 4.0))
-        .rounded(px(theme.m(Metric::RadiusControl)));
-    let (glyph, name, marked, color) = match t.row(i) {
-        Some(Row::Parent) => (GLYPH_UP, "..".to_owned(), false, None),
-        Some(Row::Entry { idx, entry }) => {
-            let g = crate::icons::glyph(icon_class(&entry.name, entry.kind, entry.attrs));
-            let group = theme.hl.classify(entry);
-            let color = theme.hl.color(group, &theme.tokens);
-            (g, entry.name.to_string(), t.selection.contains(idx), color)
-        }
-        None => return div().into_any_element(),
-    };
-    if cursor {
-        d = d.bg(theme.c(if active {
-            Role::FillCursor
-        } else {
-            Role::FillCursorPassive
-        }));
-    } else if marked {
-        d = d.bg(theme.c(Role::AccentSubtle));
-    }
-    let text = if marked {
-        theme.c(Role::AccentText)
-    } else {
-        color.map_or_else(|| theme.c(Role::TextPrimary), super::theme::hsla)
-    };
-    d = d
-        .text_color(text)
-        .child(
-            div()
-                .w(px(theme.m(Metric::WIcon) + 8.0))
-                .flex_none()
-                .font_family(ICON_FONT)
-                .text_size(px(theme.m(Metric::WIcon)))
-                .text_color(theme.c(if marked {
-                    Role::AccentText
-                } else {
-                    Role::TextSecondary
-                }))
-                .child(SharedString::from(glyph.to_string())),
-        )
-        .child(
-            match super::field::rename_input(field.filter(|_| cursor), t) {
-                // Переименование на месте (S2-16): поле вместо имени.
-                Some(input) => div().flex_1().min_w_0().child(input).into_any_element(),
-                None => div()
-                    .flex_1()
-                    .min_w_0()
-                    .overflow_hidden()
-                    .whitespace_nowrap()
-                    .text_ellipsis()
-                    .when(marked, |d| d.font_weight(FontWeight::SEMIBOLD))
-                    .child(SharedString::from(name))
-                    .into_any_element(),
-            },
+        .on_mouse_down(
+            MouseButton::Right,
+            cx.listener(move |h, ev: &MouseDownEvent, w, cx| {
+                if let Some(target) = hit(&right_lines, ev.position) {
+                    h.row_right_click(side, target.as_deref(), w, cx);
+                }
+            }),
         );
-    if full && let Some(Row::Entry { entry, .. }) = t.row(i) {
-        let mut cell = Cell::new();
-        let mut col = |kind: ColKind, w: f32| {
-            cell.clear();
-            cell_text(kind, entry, &theme.fmt, &mut cell);
+    // Переименование на месте (S2-16): поле поверх имени в строке курсора.
+    if let Some(input) = rename
+        && let Some(k) = lines.iter().position(|l| l.renaming)
+    {
+        #[allow(
+            clippy::cast_possible_truncation,
+            clippy::cast_precision_loss,
+            reason = "номер строки на странице"
+        )]
+        let (top, col, n_cols) = (
+            (k as u32 % rows) as f32 * geo.row_h,
+            (k as u32 / rows) as f32,
+            cols as f32,
+        );
+        d = d.child(
             div()
-                .w(px(w))
-                .flex_none()
+                .absolute()
+                .top(px(top))
+                .h(px(geo.row_h))
+                .left(gpui_kit::relative(col / n_cols))
+                .w(gpui_kit::relative(1.0 / n_cols))
+                .pl(px(geo.name_x()))
+                .pr(px(ROW_MX + geo.pad + geo.size_w + geo.mtime_w))
                 .flex()
-                .justify_end()
-                .text_color(theme.c(Role::TextSecondary))
-                .child(SharedString::from(cell.as_str().to_owned()))
-        };
-        d = d.child(col(ColKind::Size, W_SIZE));
-        if matches!(t.view_mode, ViewMode::Full) {
-            d = d.child(col(ColKind::Mtime, W_MTIME));
-        }
+                .items_center()
+                .child(div().flex_1().min_w_0().child(input)),
+        );
     }
-    d.into_any_element()
+    d
+}
+
+/// Рисует строки страницы: фон курсора и выделения, иконку, имя (с «…»), колонки.
+#[allow(clippy::too_many_arguments, reason = "плоский вызов отрисовки")]
+fn paint(
+    lines: &[Line],
+    b: Bounds<Pixels>,
+    rows: u32,
+    cols: u32,
+    geo: Geo,
+    secondary: Hsla,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let style = window.text_style();
+    let size = style.font_size.to_pixels(window.rem_size());
+    let font = style.font();
+    let bold = Font {
+        weight: FontWeight::SEMIBOLD,
+        ..font.clone()
+    };
+    let icons = gpui_kit::font(ICON_FONT);
+    let row_h = px(geo.row_h);
+    #[allow(clippy::cast_precision_loss, reason = "колонок единицы")]
+    let col_w = f32::from(b.size.width) / cols as f32;
+    let name_w = px(geo.name_w(col_w));
+    let run = |len: usize, font: &Font, color: Hsla| TextRun {
+        len,
+        font: font.clone(),
+        color,
+        background_color: None,
+        underline: None,
+        strikethrough: None,
+    };
+    let shape = |window: &mut Window, s: &SharedString, font: &Font, color: Hsla, sz: Pixels| {
+        window
+            .text_system()
+            .shape_line(s.clone(), sz, &[run(s.len(), font, color)], None)
+    };
+    window.with_content_mask(Some(ContentMask { bounds: b }), |window| {
+        for (k, l) in lines.iter().enumerate() {
+            #[allow(
+                clippy::cast_possible_truncation,
+                clippy::cast_precision_loss,
+                reason = "номер строки на странице"
+            )]
+            let (x0, y) = (
+                b.origin.x + px((k as u32 / rows) as f32 * col_w),
+                b.origin.y + row_h * ((k as u32 % rows) as f32),
+            );
+            if let Some(bg) = l.bg {
+                let r = Bounds::new(
+                    point(x0 + px(ROW_MX), y),
+                    size2(px(col_w - 2.0 * ROW_MX), row_h),
+                );
+                window.paint_quad(gpui_kit::fill(r, bg).corner_radii(px(geo.radius)));
+            }
+            let icon = shape(window, &l.glyph, &icons, l.icon_color, px(geo.icon_size));
+            let _ = icon.paint(
+                point(x0 + px(ROW_MX + geo.pad), y),
+                row_h,
+                TextAlign::Left,
+                None,
+                window,
+                cx,
+            );
+            if !l.renaming {
+                let f = if l.bold { &bold } else { &font };
+                let mut line = shape(window, &l.name, f, l.color, size);
+                if line.width > name_w {
+                    let runs = [run(l.name.len(), f, l.color)];
+                    let (cut, runs) = cx
+                        .text_system()
+                        .line_wrapper(f.clone(), size)
+                        .truncate_line(l.name.clone(), name_w, "…", &runs, TruncateFrom::End);
+                    line = window.text_system().shape_line(cut, size, &runs, None);
+                }
+                let _ = line.paint(
+                    point(x0 + px(geo.name_x()), y),
+                    row_h,
+                    TextAlign::Left,
+                    None,
+                    window,
+                    cx,
+                );
+            }
+            // Колонки прижаты вправо: дата у края, размер левее.
+            let mut right = x0 + px(col_w - ROW_MX - geo.pad);
+            for (s, w) in [(&l.mtime, geo.mtime_w), (&l.size, geo.size_w)] {
+                if let Some(s) = s {
+                    let line = shape(window, s, &font, secondary, size);
+                    let _ = line.paint(
+                        point(right - line.width, y),
+                        row_h,
+                        TextAlign::Left,
+                        None,
+                        window,
+                        cx,
+                    );
+                }
+                right -= px(w);
+            }
+        }
+    });
 }
 
 /// Подвал: итоги или выделение; при быстром поиске — маска и число совпадений,

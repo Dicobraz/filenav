@@ -779,6 +779,7 @@ fn in_window(
 impl Render for CoreHost {
     #[allow(clippy::too_many_lines, reason = "сборка зон окна")]
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let t0 = std::time::Instant::now();
         self.sync_field(window, cx);
         self.sync_theme(window);
         self.drive_bench(window, cx);
@@ -884,7 +885,8 @@ impl Render for CoreHost {
             };
             overlays::prompt_bar(p, sel, &self.theme, &click)
         });
-        root.child(panels)
+        let root = root
+            .child(panels)
             .children(overlays::job_bar(s, &self.theme))
             .children(field::draft_bar(
                 s,
@@ -917,7 +919,11 @@ impl Render for CoreHost {
                 self.menu
                     .flyout(id, &crate::keybar::FarStub, &self.theme, &click_all)
             }))
-            .children(overlays::toasts(&self.toasts, &self.theme))
+            .children(overlays::toasts(&self.toasts, &self.theme));
+        if let Some(b) = self.bench.as_mut() {
+            b.built(t0.elapsed());
+        }
+        root
     }
 }
 

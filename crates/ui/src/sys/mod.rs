@@ -12,6 +12,8 @@ use crate::accent::AccentPalette;
 
 /// Время CPU процесса и потока (бенч G-07).
 pub mod cpu;
+#[cfg(windows)]
+pub mod prof;
 
 /// Записки клавиш keymap с окна GPUI (S3-07).
 #[cfg(windows)]
