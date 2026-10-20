@@ -18,3 +18,4 @@ ops-nothing = Нечего делать: встаньте на файл или �
 ops-dest-empty = Не указано, куда
 ops-dest-file = Назначение — файл: { $path }
 ops-open-failed = Не открыть { $name }: { $error }
+core-settings-not-saved = Настройки не сохранены в { $file }: { $error }
