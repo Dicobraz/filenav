@@ -18,17 +18,16 @@ impl Waker for NoWake {
 
 const N: usize = 100_000;
 
+/// 100k пустых файлов — датасет `%LOCALAPPDATA%\Pets\testdata\urfin\list-100k`
+/// (создаётся один раз, H-01).
 fn dir() -> PathBuf {
-    let d = std::env::temp_dir().join("urfin-bench-100k");
-    let ready = std::fs::read_dir(&d).map_or(0, Iterator::count) == N;
-    if !ready {
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).unwrap();
+    urfin_testdata::dataset_with("urfin", "list-100k", "empty files v1 n=100000", |d| {
         for i in 0..N {
-            std::fs::write(d.join(format!("file-{i:06}.txt")), b"").unwrap();
+            std::fs::write(d.join(format!("file-{i:06}.txt")), b"")?;
         }
-    }
-    d
+        Ok(())
+    })
+    .expect("dataset list-100k")
 }
 
 fn drain(fs: &LocalFs, loc: &Location) -> usize {
@@ -60,8 +59,11 @@ fn bench(c: &mut Criterion) {
     g.finish();
 
     // t_done: от panel.go до Complete в core (чанки, пересорт, Order, Done).
-    let empty = std::env::temp_dir().join("urfin-bench-empty");
-    std::fs::create_dir_all(&empty).unwrap();
+    let empty_dir = tempfile::Builder::new()
+        .prefix("urfin-bench-empty-")
+        .tempdir()
+        .unwrap();
+    let empty = empty_dir.path().to_path_buf();
     let services = Services {
         listing: Arc::new(VfsListing::new(
             Arc::new(VfsRegistry::with_local()),

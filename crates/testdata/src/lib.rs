@@ -4,6 +4,11 @@
 //! Состав: пустые и мелкие файлы, имена «слово + число» (natural-кейсы), 10% длиннее
 //! 24 байт, 3% Unicode (кириллица, эмодзи), 2% скрытых, 1% каталогов, 0,5% ссылок.
 //! Детерминирован по `seed`: одинаковые аргументы — одинаковое дерево.
+//!
+//! Датасеты (H-01, гигиена диска): [`dataset`] кладёт дерево в
+//! `%LOCALAPPDATA%\Pets\testdata\urfin\<имя>` (не в `%TEMP%`) и переиспользует его
+//! при том же сиде, размере и раскладке; [`clean`] удаляет все датасеты приложения
+//! (`cargo run -p urfin-testdata --example testdata -- clean`).
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -196,6 +201,102 @@ fn make_link(target: &Path, link: &Path) -> io::Result<()> {
     std::os::unix::fs::symlink(target, link)
 }
 
+/// Версия генератора: меняется вместе с составом дерева — старые датасеты пересоздаются.
+const GEN_VERSION: u32 = 1;
+
+/// Корень датасетов приложения `app`: Windows — `%LOCALAPPDATA%\Pets\testdata\<app>`,
+/// иначе `$XDG_CACHE_HOME/pets/testdata/<app>` (или `~/.cache/pets/…`).
+pub fn datasets_root(app: &str) -> PathBuf {
+    let var = |k: &str| std::env::var_os(k).map(PathBuf::from);
+    let base = if cfg!(windows) {
+        var("LOCALAPPDATA").map(|p| p.join("Pets"))
+    } else {
+        var("XDG_CACHE_HOME")
+            .map(|p| p.join("pets"))
+            .or_else(|| var("HOME").map(|h| h.join(".cache").join("pets")))
+    };
+    base.unwrap_or_else(|| std::env::temp_dir().join("pets"))
+        .join("testdata")
+        .join(app)
+}
+
+/// Дерево [`gen_tree`] как датасет `name` приложения `app`: готовый каталог, если он
+/// собран с теми же `n`, `seed` и раскладкой, иначе пересоздаётся.
+pub fn dataset(app: &str, name: &str, spec: &TreeSpec) -> io::Result<PathBuf> {
+    dataset_with(app, name, &signature(spec), |dir| {
+        gen_tree(dir, spec).map(|_| ())
+    })
+}
+
+/// Датасет со своим наполнением: `build` заполняет пустой каталог, `signature`
+/// описывает содержимое (сид, размер, версию) — при совпадении каталог берётся как есть.
+pub fn dataset_with(
+    app: &str,
+    name: &str,
+    signature: &str,
+    build: impl FnOnce(&Path) -> io::Result<()>,
+) -> io::Result<PathBuf> {
+    dataset_in(&datasets_root(app), name, signature, build)
+}
+
+/// Метка датасета — рядом с каталогом (`<имя>.pets-dataset`), а не внутри: листинг
+/// каталога не видит лишней записи.
+fn marker(root: &Path, name: &str) -> PathBuf {
+    root.join(format!("{name}.pets-dataset"))
+}
+
+fn dataset_in(
+    root: &Path,
+    name: &str,
+    signature: &str,
+    build: impl FnOnce(&Path) -> io::Result<()>,
+) -> io::Result<PathBuf> {
+    let dir = root.join(name);
+    let mark = marker(root, name);
+    if dir.is_dir() && std::fs::read_to_string(&mark).is_ok_and(|s| s == signature) {
+        return Ok(dir);
+    }
+    let _ = std::fs::remove_file(&mark);
+    if dir.exists() {
+        std::fs::remove_dir_all(&dir)?;
+    }
+    std::fs::create_dir_all(&dir)?;
+    build(&dir)?;
+    std::fs::write(&mark, signature)?;
+    Ok(dir)
+}
+
+fn signature(spec: &TreeSpec) -> String {
+    format!(
+        "gen_tree v{GEN_VERSION} n={} seed={} layout={:?}",
+        spec.n, spec.seed, spec.layout
+    )
+}
+
+/// Удалить все датасеты приложения; возвращает освобождённые байты.
+pub fn clean(app: &str) -> io::Result<u64> {
+    let root = datasets_root(app);
+    if !root.exists() {
+        return Ok(0);
+    }
+    let bytes = size_of_dir(&root);
+    std::fs::remove_dir_all(&root)?;
+    Ok(bytes)
+}
+
+fn size_of_dir(dir: &Path) -> u64 {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    rd.flatten()
+        .map(|e| match e.file_type() {
+            Ok(t) if t.is_dir() => size_of_dir(&e.path()),
+            Ok(_) => e.metadata().map_or(0, |m| m.len()),
+            Err(_) => 0,
+        })
+        .sum()
+}
+
 /// Версия крейта из `Cargo.toml`.
 pub fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")
@@ -214,17 +315,21 @@ mod tests {
     /// Детерминирован и даёт заявленный состав (на 2000 записей — с допуском).
     #[test]
     fn composition() {
-        let tmp = std::env::temp_dir().join(format!("urfin-gen-tree-{}", std::process::id()));
+        let dir = tempfile::Builder::new()
+            .prefix("urfin-gen-tree-")
+            .tempdir()
+            .unwrap();
+        let tmp = dir.path();
         let spec = TreeSpec {
             n: 2000,
             seed: 1,
             layout: Layout::Flat,
         };
-        let r = gen_tree(&tmp, &spec).unwrap();
+        let r = gen_tree(tmp, &spec).unwrap();
         assert_eq!(r.files + r.dirs + r.links + r.links_skipped, 2000);
         assert!((8..=40).contains(&r.dirs), "{r:?}");
         assert!(r.hidden > 10 && r.hidden < 90, "{r:?}");
-        let names: Vec<String> = std::fs::read_dir(&tmp)
+        let names: Vec<String> = std::fs::read_dir(tmp)
             .unwrap()
             .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
             .collect();
@@ -234,6 +339,29 @@ mod tests {
         let mut a = Rng::new(7);
         let mut b = Rng::new(7);
         assert_eq!(name(&mut a, 5, false), name(&mut b, 5, false));
-        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    /// Та же подпись — каталог переиспользуется; другая — пересоздаётся; метка — снаружи.
+    #[test]
+    fn dataset_is_reused_by_signature() {
+        let root = tempfile::Builder::new()
+            .prefix("urfin-datasets-")
+            .tempdir()
+            .unwrap();
+        let mut builds = 0;
+        let mut make = |sig: &str| {
+            dataset_in(root.path(), "d", sig, |d| {
+                builds += 1;
+                std::fs::write(d.join("f"), b"x")
+            })
+            .unwrap()
+        };
+        let a = make("v1");
+        let b = make("v1");
+        assert_eq!(a, b);
+        make("v2");
+        assert_eq!(builds, 2);
+        assert_eq!(std::fs::read_dir(&a).unwrap().count(), 1, "marker outside");
+        assert!(marker(root.path(), "d").exists());
     }
 }

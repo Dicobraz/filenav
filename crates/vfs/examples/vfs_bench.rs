@@ -145,9 +145,11 @@ fn main() {
     }
     let dir = dir.expect("каталог");
     let loc = Location::local(&dir);
-    let empty_dir = std::env::temp_dir().join("urfin-bench-empty");
-    std::fs::create_dir_all(&empty_dir).expect("empty dir");
-    let empty = Location::local(&empty_dir);
+    let empty_dir = tempfile::Builder::new()
+        .prefix("urfin-bench-empty-")
+        .tempdir()
+        .expect("empty dir");
+    let empty = Location::local(empty_dir.path());
 
     // Пик до листинга: процесс, рантайм, пустой Core — вычитается из итогового.
     let services = Services {

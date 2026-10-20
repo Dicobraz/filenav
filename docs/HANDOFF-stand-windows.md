@@ -39,6 +39,13 @@ cargo deny check
 cargo run -p urfin-app
 ```
 
+### Диск (H-01)
+- **Общий каталог сборки.** Если на стенде есть Dev Drive `D:`, `scripts/stand/setup-windows.ps1` ставит `CARGO_TARGET_DIR=D:\cargo-target` (`setx`): Urfin, Postman и pets делят сборку зависимостей (gpui и др. — один раз). Нет Dev Drive — у каждого репо свой `target\`. Скрипты и код не хардкодят `target/`: путь — из `cargo metadata --format-version 1` (`target_directory`).
+- **Чужие таргеты не собирать.** `aarch64-apple-darwin`, `x86_64-unknown-linux-gnu` — это CI; проверка cfg на стенде — `cargo check`/`clippy --target …`, не `build`.
+- **Профиль dev:** `debug = "line-tables-only"`, у зависимостей `debug = false` — стектрейсы с файлом и строкой, PDB в разы меньше.
+- **Временные файлы.** Тесты — только `tempfile` (удаляется при drop), каталоги с префиксом `urfin-`. Датасеты бенчей — `%LOCALAPPDATA%\Pets\testdata\urfin\<имя>`, переиспользуются по сиду; удалить все — `cargo run -p urfin-testdata --example testdata -- clean`.
+- **Чистка** (скрипты — копии pets, рецепт `pets/docs/recipes/disk-hygiene.md`): `scripts/stand/clean.ps1` — объём `incremental`, `criterion`, чужих таргетов, `-Testdata` — датасеты, и %TEMP%-префиксов `urfin-`/`fn-`; с `-Apply` удаляет. Только %TEMP% — `scripts/stand/clean-temp.ps1`. По времени — `cargo sweep --time 14` (если владелец поставит `cargo-sweep`).
+
 ## 4. Поток работы
 1. Задача из `docs/TASKS-M0.md` (далее — следующие пакеты) → ветка `sX/NN-кратко` от актуального `main`.
 2. Реализация + тесты → L0 → push → `gh pr create` (заголовок — Conventional Commits).
