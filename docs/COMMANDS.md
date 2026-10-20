@@ -144,6 +144,37 @@
 |---|---|---|---|---|---|
 | `vfs.dir_size` | `all?:bool` | Directory sizes | Размер папок | — | commands |
 
+## `ops` (15)
+
+| Команда | Аргументы | EN | RU | Клавиши (Far) | Меню F9 |
+|---|---|---|---|---|---|
+| `ops.copy` | `dest?:str`, `current?:bool`, `confirmed?:bool`, `conflict?:str`, `verify?:str`, `filter?:str`, `queue?:str` | Copy | Копировать | F5, Shift+F5 (current=true) | — |
+| `ops.move` | `dest?:str`, `current?:bool`, `confirmed?:bool`, `conflict?:str`, `verify?:str`, `filter?:str`, `queue?:str` | Move or rename | Перенести или переименовать | F6 | — |
+| `ops.delete` | `permanent?:bool`, `current?:bool`, `confirmed?:bool` | Delete | Удалить | F8, Shift+F8 (current=true) | — |
+| `ops.mkdir` | `name?:str`, `current?:bool` | Make folder | Создать папку | F7 | — |
+| `ops.rename` | `to?:str` | Rename | Переименовать | Shift+F6 | — |
+| `ops.multi_rename` | `pattern?:str`, `regex?:bool`, `apply?:bool` | Multi-rename | Групповое переименование | — | — |
+| `ops.attrs` | `set?:str`, `clear?:str` | Attributes | Атрибуты | — | — |
+| `ops.touch` | `mtime?:str` | Set time | Изменить время | — | — |
+| `ops.link` | `kind?:str`, `dest?:str` | Make link | Создать ссылку | Alt+F6 | — |
+| `ops.compare` | `mode?:str` | Compare folders | Сравнить папки | — | — |
+| `ops.sync` | `dir?:str` | Synchronize folders | Синхронизировать папки | — | — |
+| `ops.retry` | `id:int` | Retry failed | Повторить неудавшиеся | — | — |
+| `ops.priority` | `id:int`, `prio?:str` | Operation priority | Приоритет операции | — | — |
+| `ops.run_now` | `id:int` | Run now | Запустить сейчас | — | — |
+| `ops.recover` | `journal:str`, `action:str` | Recover operation | Восстановить операцию | — | — |
+
+## `file` (6)
+
+| Команда | Аргументы | EN | RU | Клавиши (Far) | Меню F9 |
+|---|---|---|---|---|---|
+| `file.open` | `elevated?:bool` | Open | Открыть | — | — |
+| `file.open_with` | — | Open with | Открыть с помощью | — | — |
+| `file.reveal` | — | Show in Explorer | Показать в Проводнике | — | — |
+| `file.clip.copy` | — | Copy to clipboard | Копировать в буфер | — | — |
+| `file.clip.cut` | — | Cut to clipboard | Вырезать в буфер | — | — |
+| `file.clip.paste` | `move?:bool` | Paste from clipboard | Вставить из буфера | — | — |
+
 ## `keymap` (11)
 
 | Команда | Аргументы | EN | RU | Клавиши (Far) | Меню F9 |
