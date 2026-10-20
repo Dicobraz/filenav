@@ -105,6 +105,11 @@ impl ExecCx<'_> {
         self.ctl.job.checkpoint()
     }
 
+    /// Токен отмены job (листинг каталогов между порциями).
+    pub(crate) fn cancel_token(&self) -> CancelToken {
+        self.ctl.job.cancel_token().clone()
+    }
+
     pub(crate) fn progress(&self) -> &Progress {
         self.ctl.job.progress()
     }
@@ -495,12 +500,20 @@ impl<E: OpExec> Coord<E> {
             "job finished"
         );
         let id = ctl.job.id();
+        let note = catch_unwind(AssertUnwindSafe(|| {
+            self.sh.exec.finished(&report, &outcome)
+        }))
+        .ok()
+        .flatten();
         let m = msg("ops.finished", move |cx| {
             if cx.state.ext.get::<Reports>().is_none() {
                 cx.state.ext.insert(Reports::default());
             }
             if let Some(r) = cx.state.ext.get_mut::<Reports>() {
                 r.put(id, report);
+            }
+            if let Some((level, text)) = note {
+                cx.toast(level, text);
             }
         });
         let _ = self.sink.send(m, &CancelToken::new());
@@ -568,6 +581,13 @@ impl<E: OpExec> Plan<'_, E> {
             Err(TrySendError::Disconnected(_)) => Err(Cancelled),
             Err(TrySendError::Full(w)) => co.push_full(w),
         }
+    }
+
+    /// Итог, решённый планом без работы воркера (пропуск существующего,
+    /// ошибка листинга): считается как итог работы, каталог `parent` — «грязный»
+    /// при пропуске и ошибке.
+    pub(crate) fn record(&mut self, parent: Option<&Arc<DirNode<E::Dir>>>, r: ItemResult) {
+        self.co.sh.ctl.record(r, parent);
     }
 
     /// Все дети каталога поставлены; пустой каталог уходит в Finalizer сразу.

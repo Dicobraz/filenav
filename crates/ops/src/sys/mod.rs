@@ -3,6 +3,8 @@
 #[cfg(windows)]
 mod windows;
 
+pub(crate) mod fs;
+
 /// Как открыть файл.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Open {

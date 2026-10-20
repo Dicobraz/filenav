@@ -15,16 +15,17 @@
 mod finalize;
 mod job;
 mod sched;
+pub(crate) mod walker;
 mod worker;
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use urfin_core::{Cancelled, Cx, JobId, JobRegistry, JobSpec, Location};
+use urfin_core::{Cancelled, Cx, JobId, JobRegistry, JobSpec, JobSummary, Level, Location};
 
 use crate::api::{FailedItem, Report};
 
@@ -53,7 +54,16 @@ pub(crate) trait OpExec: Send + Sync + Sized + 'static {
     /// Каталог после всех детей (post-order, поток координатора).
     /// [`DirNode::clean`] — среди детей нет пропущенных и неудачных.
     fn finalize_dir(&self, dir: &DirNode<Self::Dir>, cx: &ExecCx<'_>) -> ItemResult;
+
+    /// Итог для пользователя (тост) по отчёту; поток координатора, после всех
+    /// работ. `outcome` — то, с чем job завершится.
+    fn finished(&self, _report: &Report, _outcome: &Result<JobSummary, String>) -> Option<Note> {
+        None
+    }
 }
+
+/// Тост по итогу job.
+pub(crate) type Note = (Level, String);
 
 /// Работа в очереди: элемент и каталог, которому он принадлежит.
 pub(crate) struct Work<E: OpExec> {
@@ -116,6 +126,7 @@ impl JobEngine {
     }
 
     /// Живых потоков движка (координаторы и воркеры всех job).
+    #[cfg_attr(not(test), allow(dead_code, reason = "тесты; выход с job — S5-12"))]
     pub(crate) fn live_threads(&self) -> usize {
         self.live.load(Ordering::SeqCst)
     }
@@ -127,6 +138,7 @@ impl JobEngine {
 pub(crate) struct Reports(VecDeque<(JobId, Arc<Report>)>);
 
 impl Reports {
+    #[cfg_attr(not(test), allow(dead_code, reason = "ops.retry — S5-11"))]
     pub(crate) fn get(&self, id: JobId) -> Option<&Arc<Report>> {
         self.0.iter().find(|(j, _)| *j == id).map(|(_, r)| r)
     }

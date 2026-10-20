@@ -7418,6 +7418,7 @@ dependencies = [
  "trash",
  "urfin-core",
  "urfin-i18n",
+ "urfin-testdata",
  "urfin-vfs",
  "windows-sys 0.61.2",
 ]

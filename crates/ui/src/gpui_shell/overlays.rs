@@ -88,8 +88,8 @@ pub(super) fn jobs_running(s: &AppState) -> bool {
     s.jobs.iter().any(|j| matches!(j.state, JobState::Running))
 }
 
-/// Job-бар: строка на задачу — заголовок, прогресс-полоса, проценты.
-pub(super) fn job_bar(s: &AppState, theme: &Theme) -> Option<Div> {
+/// Job-бар: строка на задачу — заголовок, прогресс-полоса, проценты, отмена.
+pub(super) fn job_bar(s: &AppState, theme: &Theme, click: Click<'_>) -> Option<Div> {
     let jobs: Vec<_> = s
         .jobs
         .iter()
@@ -162,6 +162,25 @@ pub(super) fn job_bar(s: &AppState, theme: &Theme) -> Option<Div> {
                         .justify_end()
                         .text_color(theme.c(Role::TextSecondary))
                         .child(SharedString::from(format!("{:.0}%", frac * 100.0))),
+                )
+                // Отмена задачи (`job.cancel`): посреди файла — тоже (S5-06).
+                .child(
+                    div()
+                        .id(SharedString::from(format!("job-cancel-{}", j.id.0)))
+                        .w(px(24.0))
+                        .h(px(24.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(theme.m(Metric::RadiusControl)))
+                        .font_family("Segoe Fluent Icons")
+                        .text_color(theme.c(Role::TextSecondary))
+                        .hover(|d| d.bg(theme.c(Role::FillSubtleHover)))
+                        .child(SharedString::from("\u{E711}"))
+                        .on_click(click(
+                            Command::new("job.cancel")
+                                .arg("id", i64::try_from(j.id.0).unwrap_or(i64::MAX)),
+                        )),
                 ),
         );
     }

@@ -25,13 +25,17 @@ urfin-core.workspace = true
 urfin-i18n.workspace = true
 urfin-vfs.workspace = true
 
-# Открытие файлов: ShellExecuteExW (S5 §2.5 `file.open`).
+# Открытие файлов: ShellExecuteExW (S5 §2.5 `file.open`); копирование и перенос:
+# CopyFileExW, MoveFileExW, точки повторной обработки (S5-06).
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Storage_FileSystem",
     "Win32_System_Com",
+    "Win32_System_IO",
+    "Win32_System_Ioctl",
     "Win32_System_Registry",
+    "Win32_System_SystemInformation",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }
@@ -42,6 +46,7 @@ remove_dir_all = "1.0"
 tempfile.workspace = true
 toml.workspace = true
 urfin-core = { workspace = true, features = ["fake"] }
+urfin-testdata.workspace = true
 
 [lints]
 workspace = true

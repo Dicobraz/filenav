@@ -1118,7 +1118,7 @@ impl Render for CoreHost {
         });
         let root = root
             .child(panels)
-            .children(overlays::job_bar(s, &self.theme))
+            .children(overlays::job_bar(s, &self.theme, &click))
             .children(field::draft_bar(
                 s,
                 self.field.as_ref(),

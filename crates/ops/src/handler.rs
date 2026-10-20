@@ -1,8 +1,9 @@
 //! Handlers `ops` и `file` (S5 §2.5): UI-поток, без I/O. Без подтверждения
 //! (`confirmed`, `dest`, `name`) — черновик в окне (`UiEvent::Ext{"ops.draft"}`,
-//! S0 v3 №15); с ним — запрос операции. Движок job — S5-04, операции —
-//! S5-06…S5-10: до них — «ещё не сделано» тостом. `file.open` — системным
-//! открытием (`ShellExecuteExW`) на `Lane::Interactive`.
+//! S0 v3 №15); с ним — запрос операции. Копирование и перенос — задачей
+//! движка (S5-06); остальные операции — S5-09, S5-10, до них — «ещё не
+//! сделано» тостом. `file.open` — системным открытием (`ShellExecuteExW`) на
+//! `Lane::Interactive`.
 
 use compact_str::CompactString;
 use urfin_core::{
@@ -10,9 +11,10 @@ use urfin_core::{
     UiEvent, ValueKind,
 };
 
-use crate::api::{OpKind, OpRequest};
+use crate::api::{ConflictPolicy, OpKind, OpRequest, RenameScheme};
 use crate::config::OpsConfig;
 use crate::dest::{DestError, parse_dest};
+use crate::engine::JobEngine;
 
 const fn arg(name: &'static str, kind: ValueKind, required: bool) -> ArgSpec {
     ArgSpec {
@@ -179,12 +181,73 @@ fn not_yet(cmd: &Command) -> CmdError {
 #[derive(Debug)]
 pub struct OpsHandler {
     cfg: OpsConfig,
+    engine: JobEngine,
 }
 
 impl OpsHandler {
     pub fn new(cfg: OpsConfig) -> OpsHandler {
-        OpsHandler { cfg }
+        let engine = JobEngine::new(cfg.max_threads);
+        OpsHandler { cfg, engine }
     }
+
+    /// Копия или перенос задачей движка (S5-06). Назначение проверяется на ФС
+    /// в плане задачи, не здесь (UI-поток без I/O).
+    fn transfer(
+        &self,
+        cx: &mut Cx<'_>,
+        mut req: OpRequest,
+        dest: urfin_core::Location,
+        raw: String,
+        a: &Args,
+    ) -> Result<(), CmdError> {
+        if !req.base.is_local() || !dest.is_local() {
+            // Архивы и сеть через VFS — S8 (S0 v5 №16).
+            return Err(CmdError::Rejected(
+                text("ops-not-yet", &[("what", "vfs")]).into(),
+            ));
+        }
+        if let Some(c) = a.str("conflict") {
+            req.opts.conflict = parse_conflict(c).ok_or_else(|| {
+                CmdError::Rejected(text("ops-conflict-bad", &[("what", c)]).into())
+            })?;
+        }
+        if let Some(f) = a.str("filter") {
+            req.opts.filter = Some(f.into());
+        }
+        let mask =
+            match req.opts.filter.as_deref() {
+                None | Some("") => None,
+                Some(m) => Some(urfin_core::Mask::parse(m).map_err(|_| {
+                    CmdError::Rejected(text("ops-filter-bad", &[("mask", m)]).into())
+                })?),
+            };
+        let start = crate::ops::copy::Start {
+            req,
+            dest,
+            dest_raw: raw,
+            mask,
+            small_file: u64::from(self.cfg.small_file),
+        };
+        crate::ops::copy::start(&self.engine, cx, start);
+        Ok(())
+    }
+}
+
+/// `conflict=…` команды: политика по имени.
+fn parse_conflict(s: &str) -> Option<ConflictPolicy> {
+    Some(match s {
+        "ask" => ConflictPolicy::Ask,
+        "overwrite" => ConflictPolicy::Overwrite,
+        "skip" => ConflictPolicy::Skip,
+        "newer" => ConflictPolicy::OverwriteIfNewer,
+        "differs" => ConflictPolicy::OverwriteIfDiffers,
+        "identical" => ConflictPolicy::SkipIdentical,
+        "rename" => ConflictPolicy::RenameNew(RenameScheme::Counter),
+        "rename_time" => ConflictPolicy::RenameNew(RenameScheme::Timestamp),
+        "rename_existing" => ConflictPolicy::RenameExisting(RenameScheme::Counter),
+        "rename_existing_time" => ConflictPolicy::RenameExisting(RenameScheme::Timestamp),
+        _ => return None,
+    })
 }
 
 impl Handler for OpsHandler {
@@ -211,9 +274,10 @@ impl Handler for OpsHandler {
                     draft(cx, cmd, false);
                     return Ok(());
                 };
+                let raw = dest.to_owned();
                 let dest = parse_dest(&req.base, dest).map_err(dest_error)?;
                 tracing::info!(target: "ops", kind = ?req.kind, items = req.items.len(), dest = %dest.path.display(), "request");
-                Err(not_yet(cmd))
+                self.transfer(cx, req, dest, raw, a)
             }
             "ops.delete" => {
                 let permanent = a.bool("permanent").unwrap_or(false) || !self.cfg.delete_to_trash;
