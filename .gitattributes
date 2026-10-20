@@ -2,3 +2,6 @@
 *.png binary
 *.ttf binary
 *.otf binary
+# Реестры, куда PR только дописывают строки и разделы: при локальном слиянии
+# брать обе стороны, без конфликта (GitHub-squash драйвер не применяет).
+docs/MANUAL-TESTS.md merge=union
