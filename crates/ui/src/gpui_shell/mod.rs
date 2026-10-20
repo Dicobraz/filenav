@@ -117,6 +117,9 @@ pub struct CoreHost {
     toasts: Vec<overlays::Toast>,
     first_frame: Option<Box<dyn FnOnce() -> bool>>,
     bench: Option<crate::bench::Bench>,
+    /// Таймер простоя бенча уже стоит: не ставить второй (иначе таймеры будят окно
+    /// цепочкой и простой меряет сам себя).
+    bench_timer: bool,
     /// Открытое поле ввода (черновик, переименование).
     field: Option<field::Field>,
     /// Черновик удаления — сразу насовсем (Shift+F8 или корзины нет).
@@ -167,6 +170,7 @@ impl CoreHost {
             toasts: Vec::new(),
             first_frame,
             bench,
+            bench_timer: false,
             field: None,
             ops_permanent: false,
             menu,
@@ -498,11 +502,18 @@ impl CoreHost {
                 window.request_animation_frame();
             }
             crate::bench::Step::Idle(d) => {
-                // Простой: кадров не просим; разбудит таймер, кадр — по notify.
+                // Простой: кадров не просим; один таймер разбудит, кадр — по notify.
+                if self.bench_timer {
+                    return;
+                }
+                self.bench_timer = true;
                 let this = cx.entity().downgrade();
                 cx.spawn_in(window, async move |_, cx| {
                     cx.background_executor().timer(d).await;
-                    let _ = this.update(cx, |_, cx| cx.notify());
+                    let _ = this.update(cx, |h, cx| {
+                        h.bench_timer = false;
+                        cx.notify();
+                    });
                 })
                 .detach();
             }
