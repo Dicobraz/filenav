@@ -13,3 +13,4 @@ core-action-show-logs = Show logs
 core-action-dismiss = Dismiss
 vfs-job-dir-size = Directory sizes
 vfs-dir-size-none = No folders to measure: put the cursor on a folder or select folders
+core-settings-not-saved = Settings not saved to { $file }: { $error }

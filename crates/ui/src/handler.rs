@@ -1,16 +1,20 @@
 //! Handler namespace `ui` (S2 §3): меняет только [`UiState`] и фокус, сам без I/O.
 //! Чтения ФС для breadcrumb (меню подкаталогов, проверка введённого пути) — задачами
 //! на полосе Interactive (ADR-0014, `fs_tasks`).
+//!
+//! Тема, язык, масштаб, раздел панелей и колонки сохраняются в `config.toml`
+//! (`urfin_core::settings`, S2-22) и берутся оттуда при загрузке конфига.
 
 use std::sync::Arc;
 
 use urfin_vfs::VfsRegistry;
 
 use urfin_core::{
-    ArgSpec, Args, CancelToken, CmdError, Command, CommandMeta, Cx, Focus, Handler, Level,
-    OverlayKind, PromptId, Row, Side, UiEvent, ValueKind,
+    ArgSpec, Args, CancelToken, CmdError, Command, CommandMeta, Config, Cx, Focus, Handler, Level,
+    OverlayKind, PromptId, Row, Side, UiEvent, ValueKind, settings,
 };
 
+use crate::config::UiCfg;
 use crate::fs_tasks;
 use crate::state::{Draft, Subdirs, ThemeMode, UiState};
 
@@ -126,6 +130,8 @@ pub struct UiHandler {
     task: Option<CancelToken>,
     /// Чтения режимов панелей (S2-18).
     views: crate::views::ViewTasks,
+    /// Последний виденный конфиг: новый (старт, `app.reload_config`) — `[ui]` в состояние.
+    config: Option<Arc<Config>>,
 }
 
 impl Default for UiHandler {
@@ -134,6 +140,7 @@ impl Default for UiHandler {
             vfs: Arc::new(VfsRegistry::with_local()),
             task: None,
             views: crate::views::ViewTasks::default(),
+            config: None,
         }
     }
 }
@@ -170,6 +177,18 @@ impl Handler for UiHandler {
     }
 
     fn on_pump(&mut self, cx: &mut Cx<'_>) {
+        if !self
+            .config
+            .as_ref()
+            .is_some_and(|c| Arc::ptr_eq(c, &cx.state.config))
+        {
+            let config = Arc::clone(&cx.state.config);
+            // Ошибку секции уже показал баннер core.
+            let (cfg, _) = config.section::<UiCfg>("ui");
+            seed(ui_state(cx), &cfg);
+            cx.state.touch();
+            self.config = Some(config);
+        }
         let focus = cx.state.focus;
         let st = ui_state(cx);
         // Фокус ушёл из оверлея (клик в панель, вопрос core, быстрый поиск keymap) —
@@ -238,21 +257,28 @@ impl Handler for UiHandler {
                 st.jobs_expanded = !st.jobs_expanded;
             }
             "ui.theme" => {
-                let mode = match a.str("mode").unwrap_or_default() {
-                    m if m.eq_ignore_ascii_case("system") => ThemeMode::System,
-                    m if m.eq_ignore_ascii_case("light") => ThemeMode::Light,
-                    m if m.eq_ignore_ascii_case("dark") => ThemeMode::Dark,
-                    _ => {
-                        return Err(CmdError::Arg {
-                            name: "mode".into(),
-                            msg: "expected system | light | dark".into(),
-                        });
-                    }
+                let Some(mode) = ThemeMode::parse(a.str("mode").unwrap_or_default()) else {
+                    return Err(CmdError::Arg {
+                        name: "mode".into(),
+                        msg: "expected system | light | dark".into(),
+                    });
                 };
                 ui_state(cx).theme = Some(mode);
+                settings::set(&["ui", "theme"], mode.as_str()).apply(cx);
             }
-            "ui.zoom" => zoom(ui_state(cx), a.int("delta")),
-            "ui.split" => split(ui_state(cx), a.bool("reset"), a.int("delta")),
+            "ui.zoom" => {
+                let st = ui_state(cx);
+                zoom(st, a.int("delta"));
+                let z = i64::from(st.zoom);
+                settings::set(&["ui", "zoom"], z).apply(cx);
+            }
+            "ui.split" => {
+                let st = ui_state(cx);
+                split(st, a.bool("reset"), a.int("delta"));
+                // Две цифры: в файле 0.55, а не 0.550000011920929.
+                let s = (f64::from(st.split) * 100.0).round() / 100.0;
+                settings::set(&["ui", "split"], s).apply(cx);
+            }
             "ui.lang" => lang(cx, a.str("lang").unwrap_or_default()),
             "ui.panels.toggle_all" => {
                 let st = ui_state(cx);
@@ -272,7 +298,9 @@ impl Handler for UiHandler {
                 cx.toast(Level::Info, text);
             }
             "ui.columns" => {
-                ui_state(cx).columns = Some(a.str("set").unwrap_or_default().into());
+                let set = a.str("set").unwrap_or_default();
+                ui_state(cx).columns = Some(set.into());
+                settings::set(&["ui", "columns"], set).apply(cx);
             }
             _ => return Err(CmdError::Unknown(cmd.id.as_str().into())),
         }
@@ -412,15 +440,33 @@ fn split(st: &mut UiState, reset: Option<bool>, delta: Option<i64>) {
     };
 }
 
-/// Язык на лету: `epoch` растёт, кэши текста сбрасываются (S2 §7).
+/// `[ui]` конфига — в состояние; значения вне пределов приводятся к ним.
+fn seed(st: &mut UiState, cfg: &UiCfg) {
+    st.theme = ThemeMode::parse(&cfg.theme);
+    st.zoom = u16::try_from(i64::from(cfg.zoom).clamp(ZOOM_RANGE.0, ZOOM_RANGE.1)).unwrap_or(100);
+    st.split = if cfg.split.is_finite() {
+        cfg.split.clamp(SPLIT_RANGE.0, SPLIT_RANGE.1)
+    } else {
+        0.5
+    };
+    st.columns = cfg.columns.as_deref().map(Into::into);
+}
+
+/// Язык на лету: `epoch` растёт, кэши текста сбрасываются (S2 §7). Доступный язык
+/// пишется в `[general] language`.
 fn lang(cx: &mut Cx<'_>, lang: &str) {
+    let mut known = true;
     for w in urfin_i18n::set_language(lang) {
         if let urfin_i18n::I18nWarning::UnknownLanguage { requested, .. } = w {
+            known = false;
             let mut args = urfin_i18n::FluentArgs::new();
             args.set("lang", requested);
             let text = urfin_i18n::current().fmt("ui-lang-unavailable", &args);
             cx.toast(Level::Warn, text);
         }
+    }
+    if known {
+        settings::set(&["general", "language"], lang.trim()).apply(cx);
     }
 }
 
@@ -431,3 +477,7 @@ fn prompt_id(cx: &Cx<'_>, a: &Args) -> Option<PromptId> {
         None => cx.state.prompts.active().map(|p| p.id),
     }
 }
+
+#[cfg(test)]
+#[path = "handler_tests.rs"]
+mod tests;

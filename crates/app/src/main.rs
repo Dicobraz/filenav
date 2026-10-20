@@ -352,10 +352,12 @@ fn smoke(
 ) -> anyhow::Result<()> {
     let root = demo_root();
     let mut boot = Boot::new(root.clone(), root);
-    // Сессия и keymap прогона — в своём временном каталоге; удаляется в конце.
+    // Сессия, keymap и запись настроек (`ui.lang`, `ui.split`) прогона — в своём
+    // временном каталоге; удаляется в конце. Конфиг пользователя только читается.
     let scratch = std::env::temp_dir().join(format!("urfin-smoke-{}", std::process::id()));
     boot.paths = Paths {
         state_dir: scratch.join("state"),
+        config_dir: scratch.join("config"),
         ..paths
     };
     boot.config = config;

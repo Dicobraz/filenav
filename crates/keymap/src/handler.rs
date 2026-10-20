@@ -15,7 +15,7 @@ use smallvec::SmallVec;
 use urfin_core::{
     ArgSpec, Banner, CmdError, Command, CommandMeta, CommandRegistry, Config, Core, Cx, Focus, Gen,
     Handler, Lane, Level, Mask, OverlayKind, Paths, Row, Side, Tab, TabId, UiEvent, Value,
-    ValueKind, msg,
+    ValueKind, msg, settings,
 };
 use urfin_i18n::FluentArgs;
 
@@ -254,13 +254,13 @@ impl Handler for KeymapHandler {
             }
             "keymap.reload" => {
                 let cfg = active(cx).map(|a| a.cfg.clone()).unwrap_or_default();
-                self.load(cx, cfg);
+                self.load(cx, cfg, false);
                 cx.keep_rev();
             }
             "keymap.preset" => {
                 let mut cfg = active(cx).map(|a| a.cfg.clone()).unwrap_or_default();
                 cfg.preset = a.str("name").unwrap_or_default().into();
-                self.load(cx, cfg);
+                self.load(cx, cfg, true);
                 cx.keep_rev();
             }
             "keymap.show" => show(cx),
@@ -317,7 +317,7 @@ impl Handler for KeymapHandler {
                 if let Some(w) = warning {
                     tracing::warn!(key = %w.key, msg = %w.msg, "[keymap] section ignored");
                 }
-                self.load(cx, cfg);
+                self.load(cx, cfg, false);
             }
             Some(_) => {}
         }
@@ -336,14 +336,20 @@ impl Handler for KeymapHandler {
 
 impl KeymapHandler {
     /// Загрузка раскладки на `Lane::Bulk`; применяет её Msg в следующем pump.
-    fn load(&self, cx: &mut Cx<'_>, cfg: KeymapCfg) {
+    /// `save` — принятый пресет пишется в `[keymap] preset` (`keymap.preset`, S2-22).
+    fn load(&self, cx: &mut Cx<'_>, cfg: KeymapCfg, save: bool) {
         let r = Arc::clone(&self.reload);
         cx.rt
             .spawn(Lane::Bulk, "keymap.reload", cx.rt.token(), move |tcx| {
                 let (keymap, warnings) =
                     Keymap::load(&r.paths, &cfg, &registry_of(&r.metas), &r.flags, r.os);
                 let apply = msg("keymap.loaded", move |cx| {
-                    loaded(cx, keymap, cfg, &warnings);
+                    let preset = save.then(|| cfg.preset.clone());
+                    if loaded(cx, keymap, cfg, &warnings)
+                        && let Some(p) = preset
+                    {
+                        settings::set(&["keymap", "preset"], p.as_str()).apply(cx);
+                    }
                 });
                 let _ = tcx.sink.send(apply, &tcx.cancel);
             });
@@ -431,7 +437,13 @@ fn broken(w: &KeymapWarning) -> bool {
 }
 
 /// Применить загруженную раскладку (или оставить прежнюю) и баннер.
-fn loaded(cx: &mut Cx<'_>, keymap: Arc<Keymap>, cfg: KeymapCfg, warnings: &[KeymapWarning]) {
+/// `true` — раскладка принята (иначе остаётся прежняя).
+fn loaded(
+    cx: &mut Cx<'_>,
+    keymap: Arc<Keymap>,
+    cfg: KeymapCfg,
+    warnings: &[KeymapWarning],
+) -> bool {
     let kept = warnings.iter().any(broken);
     if !kept {
         if let Some(a) = cx.state.ext.get_mut::<ActiveKeymap>() {
@@ -448,6 +460,7 @@ fn loaded(cx: &mut Cx<'_>, keymap: Arc<Keymap>, cfg: KeymapCfg, warnings: &[Keym
         }
     }
     apply_banner(cx, warnings, kept);
+    !kept
 }
 
 /// Баннер о проблемах раскладки (кроме команд сессий, которых нет в сборке); чистая

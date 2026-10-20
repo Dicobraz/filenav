@@ -13,3 +13,4 @@ core-action-show-logs = Открыть логи
 core-action-dismiss = Скрыть
 vfs-job-dir-size = Размер папок
 vfs-dir-size-none = Нечего считать: встаньте на папку или выделите папки
+core-settings-not-saved = Настройки не сохранены в { $file }: { $error }

@@ -39,6 +39,8 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 # preserve_order: порядок строк keymap важен (S3 §2.4) — для всех крейтов одинаково.
 toml = { version = "1.1", features = ["preserve_order"] }
+# Запись настроек из UI с комментариями (S2-22); та же версия уже в графе (proc-macro gpui).
+toml_edit = "0.25"
 dirs = "7.0"
 thiserror = "2.0"
 # Модификаторы клавиш keymap (S3 §5).
