@@ -8,5 +8,31 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 
+[dependencies]
+bitflags = { workspace = true, features = ["serde"] }
+compact_str = { workspace = true, features = ["serde"] }
+serde.workspace = true
+smallvec.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+urfin-core.workspace = true
+urfin-i18n.workspace = true
+
+# Открытие файлов: ShellExecuteExW (S5 §2.5 `file.open`).
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_System_Registry",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[dev-dependencies]
+insta.workspace = true
+tempfile.workspace = true
+toml.workspace = true
+urfin-core = { workspace = true, features = ["fake"] }
+
 [lints]
 workspace = true
