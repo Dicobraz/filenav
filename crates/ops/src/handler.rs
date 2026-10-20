@@ -182,12 +182,25 @@ fn not_yet(cmd: &Command) -> CmdError {
 pub struct OpsHandler {
     cfg: OpsConfig,
     engine: JobEngine,
+    /// Каталог журналов job (S5-12).
+    journal_dir: Option<std::path::PathBuf>,
+    /// Журналы просканированы (первый pump).
+    scanned: bool,
 }
 
 impl OpsHandler {
     pub fn new(cfg: OpsConfig) -> OpsHandler {
+        OpsHandler::with_journal(cfg, None)
+    }
+
+    pub fn with_journal(cfg: OpsConfig, journal_dir: Option<std::path::PathBuf>) -> OpsHandler {
         let engine = JobEngine::new(cfg.max_threads);
-        OpsHandler { cfg, engine }
+        OpsHandler {
+            cfg,
+            engine,
+            journal_dir,
+            scanned: false,
+        }
     }
 
     /// Копия или перенос задачей движка (S5-06). Назначение проверяется на ФС
@@ -227,6 +240,7 @@ impl OpsHandler {
             dest_raw: raw,
             mask,
             small_file: u64::from(self.cfg.small_file),
+            journal_dir: self.journal_dir.clone(),
         };
         crate::ops::copy::start(&self.engine, cx, start);
         Ok(())
@@ -253,6 +267,67 @@ fn parse_conflict(s: &str) -> Option<ConflictPolicy> {
 impl Handler for OpsHandler {
     fn namespace(&self) -> &'static str {
         "ops"
+    }
+
+    /// Первый pump: прерванные job из журналов → баннер (S5 §6.3).
+    fn on_pump(&mut self, cx: &mut Cx<'_>) {
+        if self.scanned {
+            return;
+        }
+        self.scanned = true;
+        let Some(dir) = self.journal_dir.clone() else {
+            return;
+        };
+        let sink = cx.rt.sink();
+        cx.rt
+            .spawn(Lane::Bulk, "ops.journal.scan", cx.rt.token(), move |_| {
+                let found = crate::journal::scan(&dir);
+                if found.is_empty() {
+                    return;
+                }
+                let m = urfin_core::msg("ops.journal.found", move |cx| {
+                    cx.state.ext.insert(Interrupted(found));
+                    next_banner(cx);
+                });
+                let _ = sink.send(m, &urfin_core::CancelToken::new());
+            });
+    }
+
+    /// Выход при идущих операциях — вопрос (S5 §6.4): «Прервать и выйти»
+    /// оставляет журналы для «Продолжить».
+    fn on_quit(&mut self, cx: &mut Cx<'_>) -> urfin_core::QuitDecision {
+        let n = cx
+            .state
+            .jobs
+            .iter()
+            .filter(|j| j.owner_ns == "ops" && j.state.is_active())
+            .count();
+        if n == 0 {
+            return urfin_core::QuitDecision::Allow;
+        }
+        crate::ops::copy::QUITTING.store(true, std::sync::atomic::Ordering::Relaxed);
+        let i18n = urfin_i18n::current();
+        let choice = |id: &str, key: &str, k: char| urfin_core::Choice {
+            id: id.into(),
+            label: i18n.get(key).into(),
+            key: k,
+        };
+        urfin_core::QuitDecision::Veto(urfin_core::PromptSpec {
+            anchor: urfin_core::Anchor::JobBar,
+            title: text("ops-quit-title", &[("n", &n.to_string())]),
+            body: i18n.get("ops-quit-body"),
+            choices: [
+                choice("wait", "ops-quit-wait", 'w'),
+                choice("quit", "ops-quit-abort", 'q'),
+            ]
+            .into_iter()
+            .collect(),
+            default: 0,
+            input: None,
+            allow_all: false,
+            detail: None,
+            secret: false,
+        })
     }
 
     fn commands(&self) -> &'static [CommandMeta] {
@@ -299,6 +374,12 @@ impl Handler for OpsHandler {
                     return Ok(());
                 };
                 mkdir(cx, name)
+            }
+            "ops.recover" => {
+                let path = std::path::PathBuf::from(a.str("journal").unwrap_or_default());
+                let go = a.str("action") == Some("continue");
+                self.recover(cx, path, go);
+                Ok(())
             }
             "ops.retry" | "job.retry" => {
                 // `id` обязателен (проверен реестром); чужой или отрицательный — «нечего».
@@ -528,7 +609,117 @@ fn draft(cx: &mut Cx<'_>, cmd: &Command, permanent: bool) {
     });
 }
 
+/// Прерванные job, ещё не разобранные баннером (S5-12).
+#[derive(Debug, Default)]
+struct Interrupted(Vec<crate::journal::Interrupted>);
+
+/// Баннер о первой прерванной job: «Продолжить» / «Очистить».
+fn next_banner(cx: &mut Cx<'_>) {
+    if cx.state.banner.is_some() {
+        return;
+    }
+    let Some(i) = cx
+        .state
+        .ext
+        .get_mut::<Interrupted>()
+        .and_then(|l| (!l.0.is_empty()).then(|| l.0.remove(0)))
+    else {
+        return;
+    };
+    let h = &i.header;
+    let mode = if h.req.kind == OpKind::Move {
+        "ops-job-move"
+    } else {
+        "ops-job-copy"
+    };
+    let mut a = urfin_i18n::FluentArgs::new();
+    a.set("n", h.req.items.len());
+    a.set(
+        "name",
+        h.req
+            .items
+            .first()
+            .map_or_else(String::new, ToString::to_string),
+    );
+    let what = urfin_i18n::current().fmt(mode, &a);
+    let dest = h.dest.display().to_string();
+    let text_ = match i.percent() {
+        Some(p) => text(
+            "ops-recover-banner-pct",
+            &[("what", &what), ("dest", &dest), ("n", &p.to_string())],
+        ),
+        None => text("ops-recover-banner", &[("what", &what), ("dest", &dest)]),
+    };
+    let path = i.path.display().to_string();
+    let cmd = |action: &str| {
+        Command::new("ops.recover")
+            .arg("journal", path.as_str())
+            .arg("action", action)
+    };
+    let i18n = urfin_i18n::current();
+    cx.state.banner = Some(urfin_core::Banner {
+        level: urfin_core::Level::Warn,
+        text: text_,
+        actions: [
+            (i18n.get("ops-recover-continue").into(), cmd("continue")),
+            (i18n.get("ops-recover-clear").into(), cmd("clear")),
+        ]
+        .into_iter()
+        .collect(),
+    });
+    cx.state.touch();
+}
+
 impl OpsHandler {
+    /// «Продолжить» или «Очистить» прерванную job (S5 §6.3): журнал
+    /// захватывается (занят — не трогаем), temp удаляются; «Продолжить» —
+    /// тот же запрос заново, файлы, равные источнику, пропускаются.
+    fn recover(&self, cx: &mut Cx<'_>, path: std::path::PathBuf, go: bool) {
+        cx.state.banner = None;
+        let (sink, small, dir, eng) = (
+            cx.rt.sink(),
+            u64::from(self.cfg.small_file),
+            self.journal_dir.clone(),
+            self.engine.clone(),
+        );
+        cx.rt.spawn(
+            Lane::Bulk,
+            "ops.journal.recover",
+            cx.rt.token(),
+            move |_| {
+                let start = match crate::journal::take(&path) {
+                    Ok(Some((f, i))) => {
+                        let start = i.and_then(|i| {
+                            i.remove_temps();
+                            go.then(|| crate::ops::copy::recovered(&i.header, small, dir))
+                                .flatten()
+                        });
+                        drop(f);
+                        if let Err(e) = std::fs::remove_file(&path) {
+                            tracing::warn!(journal = %path.display(), error = %e, "journal remove");
+                        }
+                        start
+                    }
+                    Ok(None) => {
+                        tracing::info!(journal = %path.display(), "journal is live, left alone");
+                        None
+                    }
+                    Err(e) => {
+                        tracing::warn!(journal = %path.display(), error = %e, "journal recover");
+                        None
+                    }
+                };
+                let m = urfin_core::msg("ops.journal.recovered", move |cx| {
+                    if let Some(s) = start {
+                        crate::ops::copy::start(&eng, cx, s);
+                    }
+                    next_banner(cx);
+                });
+                let _ = sink.send(m, &urfin_core::CancelToken::new());
+            },
+        );
+    }
+
     /// Запрос по выделению активного таба (или элементу под курсором при `current`).
     fn request(&self, cx: &Cx<'_>, kind: OpKind, current: bool) -> Result<OpRequest, CmdError> {
         let t = cx.state.panel(cx.state.active).tab();
