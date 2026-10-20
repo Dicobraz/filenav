@@ -273,11 +273,16 @@ pub(crate) fn vfs_services(config: &Config) -> Services {
     }
 }
 
-/// Handlers сессий поверх core: ui, vfs (keymap регистрируется последним — ему
+/// Handlers сессий поверх core: ui, vfs, ops (keymap регистрируется последним — ему
 /// нужен полный реестр команд).
 pub(crate) fn register_handlers(core: &mut Core, config: &Config) {
     urfin_ui::register(core);
     urfin_vfs::register(core, Arc::new(VfsRegistry::with_local()), vfs_cfg(config));
+    let (ops, warning) = config.section::<urfin_ops::OpsConfig>("ops");
+    if let Some(w) = warning {
+        tracing::warn!(warning = ?w, "[ops] config section ignored");
+    }
+    urfin_ops::register(core, ops);
 }
 
 /// Корень демо-дерева `FakeListing` для `--smoke`: детерминированный прогон без ФС.

@@ -617,6 +617,9 @@ name = "bitflags"
 version = "2.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
+dependencies = [
+ "serde_core",
+]
 
 [[package]]
 name = "bitstream-io"
@@ -7260,6 +7263,7 @@ dependencies = [
  "urfin-core",
  "urfin-i18n",
  "urfin-keymap",
+ "urfin-ops",
  "urfin-ui",
  "urfin-vfs",
  "windows-sys 0.61.2",
@@ -7331,6 +7335,20 @@ dependencies = [
 [[package]]
 name = "urfin-ops"
 version = "0.1.0"
+dependencies = [
+ "bitflags 2.13.2",
+ "compact_str",
+ "insta",
+ "serde",
+ "smallvec",
+ "tempfile",
+ "thiserror 2.0.21",
+ "toml 1.1.8+spec-1.1.0",
+ "tracing",
+ "urfin-core",
+ "urfin-i18n",
+ "windows-sys 0.61.2",
+]
 
 [[package]]
 name = "urfin-search"
@@ -7369,6 +7387,7 @@ dependencies = [
  "urfin-core",
  "urfin-i18n",
  "urfin-keymap",
+ "urfin-ops",
  "urfin-vfs",
  "windows-sys 0.61.2",
 ]

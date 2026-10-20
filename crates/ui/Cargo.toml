@@ -57,6 +57,7 @@ criterion.workspace = true
 insta.workspace = true
 tempfile.workspace = true
 urfin-core = { workspace = true, features = ["fake"] }
+urfin-ops.workspace = true
 
 [lints]
 workspace = true
