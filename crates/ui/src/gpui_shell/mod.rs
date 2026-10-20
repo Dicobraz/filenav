@@ -88,6 +88,8 @@ pub struct Launch {
     pub keys: urfin_keymap::KeyInput,
     /// Тема Fluent (токены, раскраска, формат ячеек).
     pub theme: Theme,
+    /// После первого кадра; `true` — выйти (замер старта).
+    pub first_frame: Option<Box<dyn FnOnce() -> bool>>,
 }
 
 impl std::fmt::Debug for Launch {
@@ -111,6 +113,7 @@ pub struct CoreHost {
     /// Зажатые модификаторы — подписи F-клавиш.
     mods: crate::keybar::Mods,
     toasts: Vec<overlays::Toast>,
+    first_frame: Option<Box<dyn FnOnce() -> bool>>,
     /// Открытое поле ввода (черновик, переименование).
     field: Option<field::Field>,
     /// Черновик удаления — сразу насовсем (Shift+F8 или корзины нет).
@@ -142,6 +145,7 @@ impl CoreHost {
             poll,
             keys,
             theme,
+            first_frame,
         } = launch;
         listen(wake, cx);
         let registered = crate::keybar::registered(core.registry());
@@ -157,6 +161,7 @@ impl CoreHost {
             registered,
             mods: crate::keybar::Mods::None,
             toasts: Vec::new(),
+            first_frame,
             field: None,
             ops_permanent: false,
             menu,
@@ -458,9 +463,9 @@ impl CoreHost {
             ),
         };
         let want = if dark {
-            egui::Theme::Dark
+            crate::color::Theme::Dark
         } else {
-            egui::Theme::Light
+            crate::color::Theme::Light
         };
         if self.theme.tokens.theme() != want {
             self.theme.tokens.set_theme(want);
@@ -684,6 +689,14 @@ impl Render for CoreHost {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.sync_field(window, cx);
         self.sync_theme(window);
+        if let Some(f) = self.first_frame.take() {
+            // Кадр уже на экране к следующему циклу: замер и, для `--bench-startup`, выход.
+            cx.on_next_frame(window, move |h, _, cx| {
+                if f() {
+                    h.shutdown(cx);
+                }
+            });
+        }
         let gap = px(self.theme.m(Metric::GapPanels));
         let i18n = urfin_i18n::current();
         self.keybar.refresh(

@@ -1,8 +1,6 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
-# Патченные копии зависимостей (vendor/*/PATCH.md) — не члены workspace.
-exclude = ["vendor"]
 
 [workspace.package]
 version = "0.1.0"
@@ -27,9 +25,7 @@ urfin-arc = { path = "crates/arc", version = "0.1.0" }
 urfin-testdata = { path = "crates/testdata" }
 
 # Внешние зависимости (S1 §3).
-egui = { version = "0.37.0", default-features = false, features = ["default_fonts"] }
-# Рендер — wgpu (ADR-0012); бэкенды wgpu выбирает app по ОС.
-eframe = { version = "0.37.0", default-features = false, features = ["wgpu_no_default_features", "default_fonts", "clipboard", "x11", "wayland"] }
+ecolor = { version = "0.37.0", default-features = false }
 # UI на GPUI (ADR-0018): gpui-kit = снимок Zed `gpui-pre`, версия фиксирована.
 gpui-kit = "=0.7.3"
 # Сигнал воркеров Core в цикл GPUI (уже в графе через gpui).
@@ -45,18 +41,13 @@ serde_json = "1.0.154"
 toml = { version = "1.1", features = ["preserve_order"] }
 dirs = "7.0"
 thiserror = "2.0"
-# Модификаторы клавиш keymap (S3 §5); 2.x уже в графе через wgpu/winit.
+# Модификаторы клавиш keymap (S3 §5).
 bitflags = "2.13"
 anyhow = "1.0"
 # Уже в графе через dirs и tracing-subscriber; features — в крейтах.
-raw-window-handle = "0.6.2"
-egui-wgpu = { version = "0.37.0", default-features = false }
-wgpu = { version = "30.0.1", default-features = false, features = ["std", "wgsl"] }
 windows-sys = "0.61"
 # statvfs в vfs (unix); S6 — PTY (S0 v3 «Зависимости»).
 rustix = { version = "1.1", default-features = false, features = ["std"] }
-# Хук сообщений Windows для keymap (S0 v3 №10): ровно версия eframe, без своих фич.
-winit = { version = "=0.30.13", default-features = false }
 # VERSIONINFO exe (R-01): без `toml` — поля задаёт build.rs.
 winresource = { version = "0.1.34", default-features = false }
 # Без `attributes` (#[instrument]): тянет syn 2 рядом с syn 3. Спаны — через `*_span!`.
@@ -100,8 +91,6 @@ panic = "unwind"
 
 # Холодный код — по размеру (бинарь <15 МБ): компилятор шейдеров (раз на старте),
 # разбор TOML/Fluent/зон (конфиг, строки), JSON сессии.
-[profile.release.package.naga]
-opt-level = "s"
 [profile.release.package.toml_parser]
 opt-level = "s"
 [profile.release.package.toml_edit]
@@ -115,7 +104,7 @@ opt-level = "s"
 [profile.release.package.serde_json]
 opt-level = "s"
 
-# Быстрый egui в debug.
+# Быстрые зависимости в debug.
 [profile.dev.package."*"]
 opt-level = 2
 
@@ -124,10 +113,7 @@ inherits = "release"
 debug = "line-tables-only"
 strip = false
 
-# egui-wgpu 0.37.0 с правкой шейдера: старт DX12 без лишних ~40 мс на FXC
-# (vendor/egui-wgpu/PATCH.md). Убрать, когда исправление выйдет в egui.
 [patch.crates-io]
-egui-wgpu = { path = "vendor/egui-wgpu" }
 # Windows-платформа gpui с патчами Pets (ADR-0018, G-02; pets/crates/pets-gpui-windows):
 # кадры по запросу — поток vsync спит без запросов кадра (0 % CPU в простое), живой
 # ресайз, шейдеры в exe. Обновлять вместе с gpui-kit.

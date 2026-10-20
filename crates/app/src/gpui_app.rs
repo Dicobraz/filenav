@@ -1,6 +1,5 @@
-//! Запуск интерфейса на GPUI (`urfin --ui=gpui`, ADR-0018, G-02): Core с теми же
-//! handlers, что у egui-окна, вторые запуски (S1-15) — в его `pump`; окно и цикл —
-//! [`urfin_ui::gpui_shell`].
+//! Окно (ADR-0018): Core с handlers приложения, вторые запуски (S1-15) — в его `pump`;
+//! окно и цикл — [`urfin_ui::gpui_shell`].
 
 use std::time::Instant;
 
@@ -8,7 +7,19 @@ use urfin_core::Core;
 use urfin_keymap::{FlagRegistry, KeymapCfg};
 use urfin_ui::gpui_shell::{self, Signal};
 
-use crate::window::Launch;
+use urfin_core::{Boot, Command};
+
+use crate::Startup;
+
+/// Всё, что окну нужно от `main`.
+pub struct Launch {
+    pub boot: Boot,
+    pub startup: Startup,
+    /// Запросы вторых запусков (S1-15); `None` — отдельный экземпляр.
+    pub ipc: Option<crate::ipc::Inbox>,
+    /// Пути из своей командной строки: новые табы после восстановления сессии.
+    pub open: Vec<Command>,
+}
 
 pub fn run(launch: Launch) {
     let Launch {
@@ -16,7 +27,6 @@ pub fn run(launch: Launch) {
         mut startup,
         ipc,
         open,
-        ..
     } = launch;
     let geom = boot.session.as_ref().and_then(|s| s.window);
     let services = crate::vfs_services(&boot.config);
@@ -59,7 +69,17 @@ pub fn run(launch: Launch) {
         }
         activate
     });
-    tracing::info!(core_ms = startup.core.as_millis(), "gpui window");
+    // Первый кадр: длительности старта в лог; `--bench-startup` — JSON и выход (S0 v5 №10).
+    let window_at = std::time::Instant::now();
+    let first_frame = Box::new(move || {
+        startup.window = window_at.elapsed();
+        startup.first_frame = startup.process.elapsed();
+        tracing::info!(target: "startup", json = %startup.json(), "first frame");
+        if startup.bench {
+            println!("{}", startup.json());
+        }
+        startup.bench
+    });
     gpui_shell::run(
         gpui_shell::Launch {
             core,
@@ -68,6 +88,7 @@ pub fn run(launch: Launch) {
             poll,
             keys,
             theme,
+            first_frame: Some(first_frame),
         },
         geom,
     );

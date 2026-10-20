@@ -1,6 +1,6 @@
 # Urfin — инструкции для Claude Code
 
-Быстрый двухпанельный файловый менеджер (функции и раскладка DN/Far, визуал Windows Fluent). Rust stable, edition 2024. UI переезжает на GPUI + gpui-kit (ADR-0018, `docs/TASKS-GPUI.md`); egui/eframe/wgpu — в `crates/ui/legacy` до G-06, задачи M1 по ui/app заморожены (№55). Windows — единственная активная платформа; macOS — в пассиве (код кроссплатформенный, CI собирает, mac-специфичное — в конце очереди); Linux tier 2.
+Быстрый двухпанельный файловый менеджер (функции и раскладка DN/Far, визуал Windows Fluent). Rust stable, edition 2024. UI — GPUI + gpui-kit (ADR-0018, `docs/TASKS-GPUI.md`); egui/eframe/wgpu удалены (G-06). Windows — единственная активная платформа; macOS — в пассиве (код кроссплатформенный, CI собирает, mac-специфичное — в конце очереди); Linux tier 2.
 
 ## Где правда (по убыванию приоритета)
 1. docs/specs/S0-decisions.md — решения владельца

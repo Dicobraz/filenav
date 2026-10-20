@@ -423,18 +423,18 @@ fn printable(k: KeyCode) -> bool {
     k.name().chars().count() == 1
         || matches!(
             k,
-            egui::Key::Minus
-                | egui::Key::Plus
-                | egui::Key::Equals
-                | egui::Key::OpenBracket
-                | egui::Key::CloseBracket
-                | egui::Key::Backslash
-                | egui::Key::Semicolon
-                | egui::Key::Quote
-                | egui::Key::Comma
-                | egui::Key::Period
-                | egui::Key::Slash
-                | egui::Key::Backtick
+            urfin_keymap::ev::Key::Minus
+                | urfin_keymap::ev::Key::Plus
+                | urfin_keymap::ev::Key::Equals
+                | urfin_keymap::ev::Key::OpenBracket
+                | urfin_keymap::ev::Key::CloseBracket
+                | urfin_keymap::ev::Key::Backslash
+                | urfin_keymap::ev::Key::Semicolon
+                | urfin_keymap::ev::Key::Quote
+                | urfin_keymap::ev::Key::Comma
+                | urfin_keymap::ev::Key::Period
+                | urfin_keymap::ev::Key::Slash
+                | urfin_keymap::ev::Key::Backtick
         )
 }
 

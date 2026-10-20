@@ -223,19 +223,19 @@ pub(crate) fn label_key(cmd: &Command) -> CompactString {
 }
 
 /// F1…F12.
-pub(crate) const FKEYS: [egui::Key; 12] = [
-    egui::Key::F1,
-    egui::Key::F2,
-    egui::Key::F3,
-    egui::Key::F4,
-    egui::Key::F5,
-    egui::Key::F6,
-    egui::Key::F7,
-    egui::Key::F8,
-    egui::Key::F9,
-    egui::Key::F10,
-    egui::Key::F11,
-    egui::Key::F12,
+pub(crate) const FKEYS: [crate::ev::Key; 12] = [
+    crate::ev::Key::F1,
+    crate::ev::Key::F2,
+    crate::ev::Key::F3,
+    crate::ev::Key::F4,
+    crate::ev::Key::F5,
+    crate::ev::Key::F6,
+    crate::ev::Key::F7,
+    crate::ev::Key::F8,
+    crate::ev::Key::F9,
+    crate::ev::Key::F10,
+    crate::ev::Key::F11,
+    crate::ev::Key::F12,
 ];
 
 pub(crate) fn fkey_stroke(i: usize, mods: Mods) -> Stroke {

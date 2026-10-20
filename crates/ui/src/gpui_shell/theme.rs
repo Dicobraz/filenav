@@ -1,7 +1,7 @@
 //! Тема Fluent для GPUI (№56): токены S2 ([`Tokens`], роли и метрики), раскраска файлов
 //! ([`Highlighter`]) и формат ячеек ([`FmtCfg`]) — те же, что у egui-окна.
 
-use egui::Color32;
+use crate::color::Color32;
 use gpui_kit::{Hsla, Rgba};
 
 use crate::config::UiCfg;

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use egui::{Event, ImeEvent, Key, Modifiers};
+use crate::ev::{Event, ImeEvent, Key, Modifiers};
 use urfin_core::{AppState, ArgSpec, CommandMeta, CommandRegistry, Focus, OverlayKind, ValueKind};
 
 use super::vk;
@@ -105,10 +105,7 @@ struct Frame {
 }
 
 fn run_at(ki: &mut KeyInput, st: &AppState, now: Instant, events: Vec<Event>) -> Frame {
-    let mut raw = egui::RawInput {
-        events,
-        ..Default::default()
-    };
+    let mut raw = crate::ev::RawInput { events };
     let mut out = Vec::new();
     let o = ki.process(&mut raw, st, now, &mut out);
     assert!(out.iter().all(|c| c.origin == urfin_core::Origin::Key));
@@ -681,8 +678,8 @@ fn quick_search_paste_and_click() {
     let f = run(&mut ki, &st, vec![Event::Paste("abc".into())]);
     assert_eq!(f.cmds, ["keymap.qs.input text=abc"]);
     let click = Event::PointerButton {
-        pos: egui::pos2(1.0, 1.0),
-        button: egui::PointerButton::Primary,
+        pos: (1.0, 1.0),
+        button: crate::ev::PointerButton::Primary,
         pressed: true,
         modifiers: Modifiers::NONE,
     };

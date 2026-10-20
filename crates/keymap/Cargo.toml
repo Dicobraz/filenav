@@ -11,7 +11,6 @@ repository.workspace = true
 [dependencies]
 bitflags.workspace = true
 compact_str.workspace = true
-egui.workspace = true
 rustc-hash.workspace = true
 serde.workspace = true
 smallvec.workspace = true

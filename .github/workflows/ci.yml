@@ -94,12 +94,9 @@ jobs:
       - name: No diagnostic features in release (profile, dhat-heap, count-alloc)
         run: $PY ci/release_features.py
       - run: cargo build --release -p urfin-app --locked
-      # Бюджет 25 МиБ (S0-decisions №54) меряется на Windows; Linux/macOS — только
-      # сводка и предупреждение (нюансы — docs/macos-notes.md). До G-06 в бинаре и
-      # egui, и GPUI (~30 МиБ) — предупреждение и на Windows (решение владельца
-      # 2026-10-20); G-06 возвращает блокировку.
+      # Бюджет 25 МиБ (S0-decisions №54) — на Windows блокирующий (G-06: egui удалён).
       - name: Binary size ≤ 25 MB
-        continue-on-error: true
+        continue-on-error: ${{ runner.os != 'Windows' }}
         run: $PY ci/size.py "$BIN" 25
       - name: Smoke
         run: '"$BIN" --smoke'

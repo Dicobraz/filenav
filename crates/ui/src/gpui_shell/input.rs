@@ -1,14 +1,13 @@
 //! Клавиатура GPUI → конвейер keymap S3 (G-03). Нажатия перехватываются на уровне
 //! приложения (`intercept_keystrokes`, до привязок gpui-kit) и переводятся в события
-//! `egui::RawInput`, которые разбирает [`KeyInput::process`]: пресеты, аккорды,
-//! раскладка-независимость и быстрый поиск работают как в egui-окне. Типы egui здесь —
-//! только формат входа keymap; G-06 заменяет их своими.
+//! `urfin_keymap::ev::RawInput`, которые разбирает [`KeyInput::process`]: пресеты, аккорды,
+//! раскладка-независимость и быстрый поиск работают как в egui-окне.
 
 use std::time::Instant;
 
-use egui::{Event, Key, Modifiers as EMods, RawInput};
 use gpui_kit::{Keystroke, Modifiers};
 use urfin_core::{AppState, Command};
+use urfin_keymap::ev::{Event, Key, Modifiers as EMods, RawInput};
 use urfin_keymap::{ActiveKeymap, KeyInput};
 
 /// Состояние моста: конвейер keymap и последние модификаторы.
@@ -46,10 +45,7 @@ impl Input {
     fn run(&mut self, events: Vec<Event>, st: &AppState, out: &mut Vec<Command>) -> Outcome {
         self.sync(st);
         let n = events.len();
-        let mut raw = RawInput {
-            events,
-            ..RawInput::default()
-        };
+        let mut raw = RawInput { events };
         let now = Instant::now();
         let o = self.keys.process(&mut raw, st, now, out);
         Outcome {
@@ -136,7 +132,7 @@ fn mods(m: Modifiers) -> EMods {
     }
 }
 
-/// Имя клавиши gpui (`"down"`, `"pagedown"`, `"a"`, `"f5"`, `"-"`) → `egui::Key`.
+/// Имя клавиши gpui (`"down"`, `"pagedown"`, `"a"`, `"f5"`, `"-"`) → клавиша keymap.
 pub(super) fn key_of(name: &str) -> Option<Key> {
     let named = match name {
         "up" => "ArrowUp",

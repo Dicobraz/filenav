@@ -23,7 +23,7 @@ fn mod_sets() -> Vec<Mods> {
 }
 
 fn all_keys() -> Vec<KeyCode> {
-    egui::Key::ALL
+    crate::ev::Key::ALL
         .iter()
         .map(|k| KeyCode::Key(*k))
         .chain(OWN.iter().map(|(_, c)| *c))
@@ -71,16 +71,16 @@ proptest! {
 #[test]
 fn synonyms_and_case() {
     let p = |s| Stroke::parse(s, Os::Windows).unwrap();
-    let ctrl_t = Stroke::new(KeyCode::Key(egui::Key::T), Mods::CTRL);
+    let ctrl_t = Stroke::new(KeyCode::Key(crate::ev::Key::T), Mods::CTRL);
     assert_eq!(p("ctrl+t"), ctrl_t);
     assert_eq!(p("CONTROL+T"), ctrl_t);
-    let cmd = Stroke::new(KeyCode::Key(egui::Key::K), Mods::CMD);
+    let cmd = Stroke::new(KeyCode::Key(crate::ev::Key::K), Mods::CMD);
     assert_eq!(p("Cmd+K"), cmd);
     assert_eq!(p("meta+k"), cmd);
     assert_eq!(p("Super+K"), cmd);
     assert_eq!(
         p("esc"),
-        Stroke::new(KeyCode::Key(egui::Key::Escape), Mods::empty())
+        Stroke::new(KeyCode::Key(crate::ev::Key::Escape), Mods::empty())
     );
     assert_eq!(p("Escape").display(Os::Windows), "Esc");
     assert_eq!(p("pagedown"), p("PageDown"));
@@ -93,14 +93,14 @@ fn synonyms_and_case() {
     assert_eq!(p("LCtrl+RAlt+X").display(Os::Windows), "LCtrl+RAlt+X");
     assert_eq!(
         p("["),
-        Stroke::new(KeyCode::Key(egui::Key::OpenBracket), Mods::empty())
+        Stroke::new(KeyCode::Key(crate::ev::Key::OpenBracket), Mods::empty())
     );
 }
 
 /// `Mod` — Ctrl на Windows и Linux, Cmd на macOS.
 #[test]
 fn mod_follows_os() {
-    let o = KeyCode::Key(egui::Key::O);
+    let o = KeyCode::Key(crate::ev::Key::O);
     assert_eq!(
         Stroke::parse("Mod+O", Os::Windows).unwrap().mods,
         Mods::CTRL
@@ -118,7 +118,7 @@ fn gray_plus_is_not_plus() {
     let gray = Stroke::parse("GrayPlus", Os::Windows).unwrap();
     let plus = Stroke::parse("Plus", Os::Windows).unwrap();
     assert_eq!(gray.key, KeyCode::GrayPlus);
-    assert_eq!(plus.key, KeyCode::Key(egui::Key::Plus));
+    assert_eq!(plus.key, KeyCode::Key(crate::ev::Key::Plus));
     assert_ne!(gray, plus);
     assert_eq!(Stroke::parse("+", Os::Windows).unwrap(), plus);
     assert_eq!(

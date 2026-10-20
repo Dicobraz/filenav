@@ -1,8 +1,7 @@
 //! Urfin — бинарь `urfin`.
 //!
 //! Старт (S1 §2.9, S1-13): каталоги → конфиг → логи → обработчик паник → один
-//! экземпляр (S1-15) → сессия → Core → окно eframe. Листинг — `FakeListing` с
-//! генерируемым деревом до S4.
+//! экземпляр (S1-15) → сессия → Core → окно GPUI (ADR-0018).
 //!
 //! Аргументы без `--` — пути: каждый открывается новым табом; если Urfin уже
 //! запущен, пути уходят ему, а этот процесс выходит. `--new-instance` —
@@ -12,22 +11,14 @@
 //! проверки crash-файла и баннера, `--thread-panic-test` — паника не в
 //! UI-потоке (не сбой), `--error-test` — ошибка в лог (и в журнал Windows),
 //! `--ipc-test-server` — первый экземпляр без окна печатает принятый запрос.
-//! `--selftest <dir>` — сценарий самопроверки окна, отчёт и снимки в `dir`
-//! (для платформ без ручной проверки; `scripts/mac/selftest.sh`).
-//! `--ui=gpui` — интерфейс на GPUI (ADR-0018; G-02 — каркас с отладочным видом
-//! панелей); по умолчанию — egui.
 
 // Release — оконное приложение без консоли; debug — с консолью для логов.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod boot;
-mod gpu;
 mod gpui_app;
 mod ipc;
-mod screens;
-mod selftest;
 mod sys;
-mod window;
 
 use std::ops::ControlFlow;
 use std::path::PathBuf;
@@ -65,19 +56,19 @@ fn main() -> ExitCode {
 /// `main`; от создания процесса (`GetProcessTimes`) — S9.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Startup {
-    process: Instant,
+    pub(crate) process: Instant,
     paths: Duration,
     config: Duration,
     tracing: Duration,
     session: Duration,
-    core: Duration,
-    window: Duration,
-    first_frame: Duration,
-    bench: bool,
+    pub(crate) core: Duration,
+    pub(crate) window: Duration,
+    pub(crate) first_frame: Duration,
+    pub(crate) bench: bool,
 }
 
 impl Startup {
-    fn json(&self) -> String {
+    pub(crate) fn json(&self) -> String {
         let ms = |d: Duration| d.as_secs_f64() * 1000.0;
         format!(
             "{{\"startup.paths\":{:.3},\"startup.config\":{:.3},\"startup.tracing\":{:.3},\
@@ -146,14 +137,7 @@ fn run() -> anyhow::Result<()> {
     // Один экземпляр (S1-15, решение владельца №3): второй запуск отдаёт пути
     // первому и выходит. Smoke, замер старта и самопроверка — всегда отдельно.
     let request = ipc::Request::from_args(&args);
-    let selftest = selftest_dir(&args)?;
-    let screens = screens_dir(&args)?;
-    let gpui = flag("--ui=gpui");
-    let separate = flag("--new-instance")
-        || flag("--smoke")
-        || flag("--bench-startup")
-        || selftest.is_some()
-        || screens.is_some();
+    let separate = flag("--new-instance") || flag("--smoke") || flag("--bench-startup");
     let ControlFlow::Continue(inbox) = single_instance(&paths, &request, separate) else {
         return Ok(());
     };
@@ -192,47 +176,15 @@ fn run() -> anyhow::Result<()> {
         first_frame: Duration::ZERO,
         bench: flag("--bench-startup"),
     };
-    let launch = window::Launch {
+    gpui_app::run(gpui_app::Launch {
         boot,
         startup,
         ipc: inbox,
         open: request.commands(),
-        selftest,
-        screens,
-    };
-    if gpui {
-        gpui_app::run(launch);
-        return Ok(());
-    }
-    window::run(launch)
+    });
+    Ok(())
 }
 
-/// `--screens <dir>` (по умолчанию `screens`): снимки экранов S2 §2; каталог создаётся.
-/// Только в сборке с `--features screens`.
-fn screens_dir(args: &[String]) -> anyhow::Result<Option<PathBuf>> {
-    let Some(i) = args.iter().position(|a| a == "--screens") else {
-        return Ok(None);
-    };
-    if !cfg!(feature = "screens") {
-        anyhow::bail!("--screens: build with `cargo build -p urfin-app --features screens`");
-    }
-    let dir = PathBuf::from(args.get(i + 1).map_or("screens", String::as_str));
-    std::fs::create_dir_all(&dir).with_context(|| format!("screens dir {}", dir.display()))?;
-    Ok(Some(dir))
-}
-
-/// `--selftest <dir>` (по умолчанию `selftest`); каталог создаётся.
-fn selftest_dir(args: &[String]) -> anyhow::Result<Option<PathBuf>> {
-    let Some(i) = args.iter().position(|a| a == "--selftest") else {
-        return Ok(None);
-    };
-    let dir = PathBuf::from(args.get(i + 1).map_or("selftest", String::as_str));
-    std::fs::create_dir_all(&dir).with_context(|| format!("selftest dir {}", dir.display()))?;
-    Ok(Some(dir))
-}
-
-/// Приём запросов вторых запусков. `Break` — запрос отдан работающему
-/// экземпляру, этот процесс выходит; `Continue(None)` — работаем отдельно.
 fn single_instance(
     paths: &Paths,
     request: &ipc::Request,
@@ -389,14 +341,6 @@ fn smoke(
         urfin_keymap::KeymapCfg::default(),
         urfin_keymap::FlagRegistry::with_builtin(),
     );
-    // Кадры UrfinUi без окна: каркас UI рисуется на каждом шаге прогона.
-    let mut ui = urfin_ui::UrfinUi::new(
-        core.registry(),
-        &urfin_ui::sys::probe_system(),
-        &urfin_ui::config::UiCfg::default(),
-        urfin_ui::fonts::FontSet::default(),
-    );
-    let ctx = eframe::egui::Context::default();
     let pump = |core: &mut Core| {
         for _ in 0..3 {
             core.pump(Duration::from_millis(5));
@@ -416,19 +360,6 @@ fn smoke(
         }
         pump(&mut core);
         let events = core.take_ui_events();
-        let mut out = Vec::new();
-        let input = eframe::egui::RawInput {
-            screen_rect: Some(eframe::egui::Rect::from_min_size(
-                eframe::egui::Pos2::ZERO,
-                eframe::egui::vec2(1200.0, 760.0),
-            )),
-            ..Default::default()
-        };
-        let mut frame = ctx.run_ui(input, |root| ui.show(root, core.state(), &events, &mut out));
-        frame.textures_delta.clear();
-        for c in out {
-            core.dispatch(c);
-        }
         errors.extend(events.into_iter().filter_map(|e| match e {
             UiEvent::Toast {
                 level: Level::Error | Level::Warn,
