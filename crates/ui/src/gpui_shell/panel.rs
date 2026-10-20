@@ -77,7 +77,7 @@ pub(super) fn panel(
     if t.mode != urfin_core::PanelMode::Files {
         return card.child(super::views::body(s, side, theme, rows));
     }
-    card.child(path_bar(t, theme))
+    card.child(path_bar(t, side, theme, field, cx))
         .when(matches!(t.view_mode, ViewMode::Full), |d| {
             d.child(col_header(side, theme, cx))
         })
@@ -85,18 +85,102 @@ pub(super) fn panel(
         .child(footer(s, t, side, active, theme))
 }
 
-fn path_bar(t: &Tab, theme: &Theme) -> Div {
-    let path: SharedString = t.loc.path.display().to_string().into();
-    div()
+/// Сегменты пути от корня: (подпись, путь до него включительно).
+fn crumbs(t: &Tab) -> Vec<(String, std::path::PathBuf)> {
+    let mut acc = std::path::PathBuf::new();
+    let mut out = Vec::new();
+    for c in t.loc.path.components() {
+        acc.push(c.as_os_str());
+        let label = match c {
+            std::path::Component::Prefix(p) => p.as_os_str().to_string_lossy().into_owned(),
+            std::path::Component::RootDir => continue,
+            other => other.as_os_str().to_string_lossy().into_owned(),
+        };
+        out.push((label, acc.clone()));
+    }
+    out
+}
+
+/// Breadcrumb (S2-12): сегмент — переход к нему, пустое место — правка пути.
+fn path_bar(
+    t: &Tab,
+    side: Side,
+    theme: &Theme,
+    field: Option<&super::field::Field>,
+    cx: &Context<CoreHost>,
+) -> Div {
+    let bar = div()
         .h(px(theme.m(Metric::HBreadcrumb)))
         .flex_none()
         .flex()
         .items_center()
         .px(px(theme.m(Metric::PadRowX)))
         .border_b_1()
-        .border_color(theme.c(Role::StrokeDivider))
-        .text_color(theme.c(Role::TextPrimary))
-        .child(path)
+        .border_color(theme.c(Role::StrokeDivider));
+    if let Some(input) = super::field::path_input(field, side) {
+        return bar.child(div().flex_1().child(input));
+    }
+    let name = super::chrome::side_name(side);
+    let mut segs = div().flex().items_center().min_w_0().overflow_hidden();
+    let list = if t.loc.is_local() {
+        crumbs(t)
+    } else {
+        Vec::new()
+    };
+    let final_seg = list.len().saturating_sub(1);
+    for (k, (label, path)) in list.into_iter().enumerate() {
+        if k > 0 {
+            segs = segs.child(
+                div()
+                    .px_1()
+                    .font_family("Segoe Fluent Icons")
+                    .text_size(px(8.0))
+                    .text_color(theme.c(Role::TextSecondary))
+                    .child(SharedString::from("\u{E76C}")),
+            );
+        }
+        let loc = urfin_core::Location::local(path);
+        segs = segs.child(
+            div()
+                .id(SharedString::from(format!("crumb-{name}-{k}")))
+                .px_1()
+                .rounded(px(theme.m(Metric::RadiusControl)))
+                .whitespace_nowrap()
+                .text_color(theme.c(if k == final_seg {
+                    Role::TextPrimary
+                } else {
+                    Role::TextSecondary
+                }))
+                .when(k == final_seg, |d| d.font_weight(FontWeight::SEMIBOLD))
+                .hover(|d| d.bg(theme.c(Role::FillSubtleHover)))
+                .child(SharedString::from(label))
+                .on_click(cx.listener(move |h, _: &ClickEvent, w, cx| {
+                    h.run(
+                        urfin_core::Command::new("panel.go")
+                            .arg("side", name)
+                            .arg("path", loc.clone()),
+                        w,
+                        cx,
+                    );
+                })),
+        );
+    }
+    if !t.loc.is_local() {
+        segs = segs.child(SharedString::from(t.loc.to_uri()));
+    }
+    bar.child(segs).child(
+        div()
+            .id(SharedString::from(format!("crumb-edit-{name}")))
+            .flex_1()
+            .h_full()
+            .on_click(cx.listener(move |h, _: &ClickEvent, w, cx| {
+                h.run(
+                    urfin_core::Command::new("ui.path_edit").arg("side", name),
+                    w,
+                    cx,
+                );
+            })),
+    )
 }
 
 fn col_header(side: Side, theme: &Theme, cx: &Context<CoreHost>) -> Div {

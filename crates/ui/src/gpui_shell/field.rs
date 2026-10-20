@@ -21,6 +21,8 @@ pub(super) enum Key {
     Draft(String),
     /// Переименование в табе (id таба, старое имя).
     Rename(u32, String),
+    /// Правка пути панели (`ui.path_edit`, ADR-0014).
+    Path(urfin_core::Side),
 }
 
 pub(super) struct Field {
@@ -55,6 +57,9 @@ pub(super) fn wanted(s: &AppState) -> Option<(Key, String)> {
             d.text.to_string()
         };
         return Some((Key::Draft(d.cmd.to_string()), init));
+    }
+    if let Some(side) = st.path_edit {
+        return Some((Key::Path(side), path_text(s.panel(side).tab())));
     }
     let (tab, name) = st.rename.as_ref()?;
     Some((Key::Rename(tab.0, name.to_string()), name.to_string()))
@@ -105,6 +110,13 @@ impl CoreHost {
             } else if let Ok(c) = Command::parse(&d.cmd) {
                 out.push(c.arg(&d.arg, text.as_str()));
             }
+        } else if let Some(Key::Path(side)) = self.field.as_ref().map(|f| &f.key) {
+            // Проверку и переход делает handler; он же закрывает поле.
+            return vec![
+                Command::new("ui.path_edit")
+                    .arg("side", super::chrome::side_name(*side))
+                    .arg("path", text.trim()),
+            ];
         } else if let Some(Key::Rename(_, old)) = self.field.as_ref().map(|f| &f.key) {
             let to = text.trim();
             if !to.is_empty() && to != old {
@@ -256,4 +268,13 @@ pub(super) fn draft_bar(
             .bg(theme.c(Role::LayerPanel))
             .child(row),
     )
+}
+
+/// Поле правки пути панели `side` (если оно открыто).
+pub(super) fn path_input(field: Option<&Field>, side: urfin_core::Side) -> Option<Input> {
+    let f = field?;
+    match &f.key {
+        Key::Path(s) if *s == side => Some(Input::new(&f.input)),
+        _ => None,
+    }
 }

@@ -441,6 +441,32 @@ impl CoreHost {
         );
     }
 
+    /// Тема: `ui.theme` или, при «системной», светлая/тёмная ОС (gpui следит за ней).
+    fn sync_theme(&mut self, window: &Window) {
+        let mode = self
+            .core
+            .as_ref()
+            .and_then(|c| c.state().ext.get::<crate::UiState>())
+            .and_then(|u| u.theme)
+            .unwrap_or_default();
+        let dark = match mode {
+            crate::ThemeMode::Dark => true,
+            crate::ThemeMode::Light => false,
+            crate::ThemeMode::System => matches!(
+                window.appearance(),
+                gpui_kit::WindowAppearance::Dark | gpui_kit::WindowAppearance::VibrantDark
+            ),
+        };
+        let want = if dark {
+            egui::Theme::Dark
+        } else {
+            egui::Theme::Light
+        };
+        if self.theme.tokens.theme() != want {
+            self.theme.tokens.set_theme(want);
+        }
+    }
+
     /// Команда от мыши (табы, F-клавиши).
     fn run(&mut self, cmd: Command, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(core) = self.core.as_mut() {
@@ -657,6 +683,7 @@ impl Render for CoreHost {
     #[allow(clippy::too_many_lines, reason = "сборка зон окна")]
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.sync_field(window, cx);
+        self.sync_theme(window);
         let gap = px(self.theme.m(Metric::GapPanels));
         let i18n = urfin_i18n::current();
         self.keybar.refresh(
@@ -833,6 +860,8 @@ pub fn run(launch: Launch, geom: Option<WindowGeom>) {
                     .unwrap_or(true)
                 });
                 cx.observe_window_activation(window, CoreHost::activation)
+                    .detach();
+                cx.observe_window_appearance(window, |_, _, cx| cx.notify())
                     .detach();
                 cx.observe_window_bounds(window, |h, window, cx| {
                     h.track_bounds(window);
