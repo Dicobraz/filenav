@@ -36,6 +36,8 @@ pub fn run(launch: Launch) {
         tracing::warn!(key = %w.key, msg = %w.msg, "[keymap] section ignored");
     }
     let keys = urfin_keymap::register(&mut core, paths, cfg, FlagRegistry::with_builtin());
+    let (ui_cfg, _) = config.section::<urfin_ui::config::UiCfg>("ui");
+    let theme = gpui_shell::Theme::new(&urfin_ui::sys::probe_system(), &ui_cfg);
     for c in open {
         core.dispatch(c);
     }
@@ -65,6 +67,7 @@ pub fn run(launch: Launch) {
             signal,
             poll,
             keys,
+            theme,
         },
         geom,
     );

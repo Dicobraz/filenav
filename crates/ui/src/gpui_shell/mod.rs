@@ -3,6 +3,10 @@
 //! опроса; в простое кадров нет. Клавиатура — конвейер keymap S3 ([`input`]).
 
 mod input;
+mod panel;
+mod theme;
+
+pub use theme::Theme;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -13,17 +17,14 @@ use gpui_kit::prelude::*;
 use gpui_kit::{
     App, AsyncApp, Bounds, Context, FocusHandle, IntoElement, KeyUpEvent, ModifiersChangedEvent,
     Render, SharedString, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowOptions, div,
-    point, px, rgb, size,
+    point, px, size,
 };
-use urfin_core::{Command, Core, Row, Side, WindowGeom};
+use urfin_core::{Command, Core, Side, WindowGeom};
+
+use crate::tokens::{Metric, Role};
 
 /// Бюджет `pump` за один проход (как у egui-окна, S1 §1).
 const PUMP_BUDGET: Duration = Duration::from_millis(4);
-/// Высота строки списка (S2: 24 px).
-const ROW_H: f32 = 24.0;
-/// Всё по вертикали, кроме строк: поля корня и карточки (по 8 px), рамка, заголовок.
-const LIST_CHROME: f32 = 8.0 * 2.0 + 8.0 * 2.0 + 2.0 + ROW_H;
-
 enum Wake {
     Now,
     After(Duration),
@@ -80,6 +81,8 @@ pub struct Launch {
     pub poll: Poll,
     /// Конвейер клавиш keymap (S3).
     pub keys: urfin_keymap::KeyInput,
+    /// Тема Fluent (токены, раскраска, формат ячеек).
+    pub theme: Theme,
 }
 
 impl std::fmt::Debug for Launch {
@@ -95,8 +98,9 @@ pub struct CoreHost {
     signal: Arc<Signal>,
     poll: Poll,
     rev: u64,
-    /// Строк на страницу, отправленных в Core (`panel.viewport`).
-    page: u32,
+    /// Сетка панелей (строк в колонке, колонок), отправленная в Core (`panel.viewport`).
+    grid: [(u32, u32); 2],
+    theme: Theme,
     focus: FocusHandle,
     input: input::Input,
     out: Vec<Command>,
@@ -118,6 +122,7 @@ impl CoreHost {
             signal,
             poll,
             keys,
+            theme,
         } = launch;
         listen(wake, cx);
         CoreHost {
@@ -125,32 +130,38 @@ impl CoreHost {
             signal,
             poll,
             rev: u64::MAX,
-            page: 0,
+            grid: [(0, 0); 2],
+            theme,
             focus: cx.focus_handle(),
             input: input::Input::new(keys),
             out: Vec::new(),
         }
     }
 
-    /// Сколько строк влезает — в Core (`panel.viewport`): по нему он держит курсор
-    /// в видимой странице и считает PgUp/PgDn.
+    /// Сетка каждой панели — в Core (`panel.viewport`): по ней он держит курсор в
+    /// видимой странице и считает PgUp/PgDn и ←/→ в колонках.
     fn sync_viewport(&mut self, window: &Window) {
-        let h = f32::from(window.viewport_size().height);
-        #[allow(clippy::cast_sign_loss, reason = "не меньше 1.0")]
-        let rows = ((h - LIST_CHROME) / ROW_H).floor().max(1.0) as u32;
-        if rows == self.page {
+        let Some(core) = self.core.as_mut() else {
             return;
-        }
-        self.page = rows;
-        if let Some(core) = self.core.as_mut() {
-            for side in ["left", "right"] {
-                core.dispatch(
-                    Command::new("panel.viewport")
-                        .arg("side", side)
-                        .arg("rows", i64::from(rows))
-                        .arg("cols", 1i64),
-                );
+        };
+        let size = window.viewport_size();
+        let gap = self.theme.m(Metric::GapPanels);
+        let w = (f32::from(size.width) - 3.0 * gap) / 2.0;
+        let h = f32::from(size.height) - 2.0 * gap;
+        for (i, side) in [Side::Left, Side::Right].into_iter().enumerate() {
+            let mode = core.state().panel(side).tab().view_mode;
+            let g = panel::grid(&self.theme, mode, w, h);
+            if g == self.grid[i] {
+                continue;
             }
+            self.grid[i] = g;
+            core.dispatch(
+                Command::new("panel.viewport")
+                    .arg("side", if i == 0 { "left" } else { "right" })
+                    .arg("rows", i64::from(g.0))
+                    .arg("cols", i64::from(g.1)),
+            );
+            urfin_core::Waker::wake(&*self.signal);
         }
     }
 
@@ -170,6 +181,11 @@ impl CoreHost {
             self.shutdown(cx);
             return;
         }
+        // Режим вида мог смениться: сетка панели другая.
+        self.sync_viewport(window);
+        let Some(core) = self.core.as_ref() else {
+            return;
+        };
         let rev = core.state().rev;
         if rev != self.rev {
             self.rev = rev;
@@ -341,6 +357,7 @@ fn pump_in_window(this: &WeakEntity<CoreHost>, cx: &mut AsyncApp) -> bool {
 
 impl Render for CoreHost {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let gap = px(self.theme.m(Metric::GapPanels));
         let mut root = div()
             .track_focus(&self.focus)
             .on_key_up(cx.listener(Self::key_up))
@@ -348,58 +365,19 @@ impl Render for CoreHost {
             .size_full()
             .flex()
             .flex_row()
-            .gap_2()
-            .p_2()
-            .bg(rgb(0x00f3_f3f3))
-            .text_color(rgb(0x001b_1b1b))
-            .text_sm();
+            .gap(gap)
+            .p(gap)
+            .bg(self.theme.c(Role::BgBase))
+            .text_size(px(self.theme.m(Metric::TypeBody)));
         if let Some(core) = &self.core {
             let s = core.state();
-            for side in [Side::Left, Side::Right] {
-                root = root.child(panel_debug(s, side, self.page));
+            for (i, side) in [Side::Left, Side::Right].into_iter().enumerate() {
+                let (rows, cols) = self.grid[i];
+                root = root.child(panel::panel(s, side, &self.theme, rows, cols));
             }
         }
         root
     }
-}
-
-/// Отладочный вывод таба: путь, состояние, строки с курсором и выделением.
-fn panel_debug(s: &urfin_core::AppState, side: Side, page: u32) -> impl IntoElement {
-    let active = s.active == side;
-    let t = s.panel(side).tab();
-    let head: SharedString = format!("{}  [{:?}]", t.loc.path.display(), t.listing.status).into();
-    let mut col = div()
-        .flex_1()
-        .flex()
-        .flex_col()
-        .overflow_hidden()
-        .p_2()
-        .bg(rgb(0x00ff_ffff))
-        .border_1()
-        .border_color(rgb(if active { 0x0000_78d4 } else { 0x00e0_e0e0 }))
-        .child(div().h(px(ROW_H)).flex().items_center().child(head));
-    let top = t.cursor.top;
-    for r in top..(top + page.max(1)).min(t.rows()) {
-        let (name, marked) = match t.row(r) {
-            Some(Row::Parent) => ("..".to_owned(), false),
-            Some(Row::Entry { idx, entry }) => (entry.name.to_string(), t.selection.contains(idx)),
-            None => (String::new(), false),
-        };
-        let mut line = div()
-            .h(px(ROW_H))
-            .flex()
-            .items_center()
-            .px_1()
-            .child(SharedString::from(name));
-        if marked {
-            line = line.text_color(rgb(0x0000_78d4));
-        }
-        if r == t.cursor.row {
-            line = line.bg(rgb(if active { 0x00cc_e4f7 } else { 0x00e8_e8e8 }));
-        }
-        col = col.child(line);
-    }
-    col
 }
 
 /// Окно GPUI с Core; возвращается после выхода из цикла (сессия уже сохранена).
