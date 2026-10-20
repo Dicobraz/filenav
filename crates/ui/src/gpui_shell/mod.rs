@@ -145,10 +145,9 @@ pub struct CoreHost {
     prints: [[u64; 3]; 2],
     /// Протяжка с зажатой ПКМ (Far): панель, ставить или снимать пометку, последняя строка.
     rdrag: Option<(Side, bool, String)>,
-    /// Табы в заголовке и низ окна — кэшируемые view, отпечатки как у панелей.
-    tabs: Entity<chrome::ChromeView>,
+    /// Низ окна (cmdline, F-клавиши) — кэшируемая view, отпечаток как у панелей.
     bottom: Entity<chrome::ChromeView>,
-    chrome_prints: [u64; 2],
+    bottom_print: u64,
 }
 
 impl std::fmt::Debug for CoreHost {
@@ -184,14 +183,7 @@ impl CoreHost {
                 })
             })
         });
-        let tabs = cx.new(|_| chrome::ChromeView {
-            host: host.clone(),
-            part: chrome::Part::Tabs,
-        });
-        let bottom = cx.new(|_| chrome::ChromeView {
-            host: host.clone(),
-            part: chrome::Part::Bottom,
-        });
+        let bottom = cx.new(|_| chrome::ChromeView { host: host.clone() });
         CoreHost {
             core: Some(core),
             signal,
@@ -217,9 +209,8 @@ impl CoreHost {
             panels,
             prints: [[0; 3]; 2],
             rdrag: None,
-            tabs,
             bottom,
-            chrome_prints: [0; 2],
+            bottom_print: 0,
         }
     }
 
@@ -870,6 +861,12 @@ impl Render for CoreHost {
     #[allow(clippy::too_many_lines, reason = "сборка зон окна")]
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t0 = std::time::Instant::now();
+        if tracing::enabled!(target: "urfin::frame", tracing::Level::TRACE)
+            && let Some(core) = &self.core
+        {
+            let t = core.state().active_tab();
+            tracing::trace!(target: "urfin::frame", row = t.cursor.row, top = t.cursor.top, "render");
+        }
         self.sync_field(window, cx);
         self.sync_theme(window);
         self.drive_bench(window, cx);
@@ -921,11 +918,9 @@ impl Render for CoreHost {
         let dark = self.theme.tokens.theme() == crate::color::Theme::Dark;
         let content = match &open {
             Some(id) => self.menu.bar(id, &self.theme, &click),
-            None => div().flex_1().min_w_0().h_full().flex().child(cached(
-                &self.tabs,
-                chrome::tabs_print(s, dark),
-                &mut self.chrome_prints[0],
-            )),
+            // Табы — без кэша: в их пустом месте зона перетаскивания окна, а кэш gpui
+            // `WindowControlArea` не повторяет.
+            None => chrome::panel_tabs(s, &self.theme, &click),
         };
         root = root.child(chrome::titlebar(
             content,
@@ -1011,7 +1006,7 @@ impl Render for CoreHost {
                     .child(cached(
                         &self.bottom,
                         chrome::bottom_print(s, self.keybar.items(self.mods), self.mods, dark),
-                        &mut self.chrome_prints[1],
+                        &mut self.bottom_print,
                     )),
             )
             .children(open.as_ref().map(|_| {
@@ -1077,12 +1072,10 @@ pub fn run(launch: Launch, geom: Option<WindowGeom>) {
             }),
             focus: !bench,
             display_id: bench_display,
-            // gpui по умолчанию держит неактивное окно на 30 кадр/с; бенч меряет и без фокуса.
-            inactive_frame_interval: if bench {
-                None
-            } else {
-                WindowOptions::default().inactive_frame_interval
-            },
+            // gpui по умолчанию держит неактивное окно на 30 кадр/с. Урфин рисует только по
+            // изменениям (в простое 0 кадров), а потолок рвёт ритм кадров при автоповторе
+            // клавиш, если gpui сочтёт окно неактивным.
+            inactive_frame_interval: None,
             ..Default::default()
         };
         let opened = gpui_kit::open_window(options, cx, move |window, cx| {
@@ -1129,6 +1122,8 @@ pub fn run(launch: Launch, geom: Option<WindowGeom>) {
             // Клавиши — до привязок gpui-kit (его `Root` забирает Tab на переход фокуса).
             let weak = host.downgrade();
             cx.intercept_keystrokes(move |ev, window, cx| {
+                // Журнал кадров (`[log] level = "info,urfin::frame=trace"`): нажатие → render.
+                tracing::trace!(target: "urfin::frame", key = %ev.keystroke.key, "key");
                 let consumed = weak
                     .update(cx, |h, cx| h.key_down(&ev.keystroke, window, cx))
                     .unwrap_or(false);

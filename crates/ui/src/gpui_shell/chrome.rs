@@ -97,6 +97,15 @@ fn tabs(
             .child(SharedString::from("\u{E710}"))
             .on_click(click(Command::new("tab.new").arg("side", side_name(side)))),
     )
+    // Пустое место справа от табов — заголовок окна: перетаскивание, двойной клик — развернуть.
+    .child(
+        div()
+            .id(SharedString::from(format!("drag-{}", side_name(side))))
+            .flex_1()
+            .min_w(px(8.0))
+            .h_full()
+            .window_control_area(WindowControlArea::Drag),
+    )
 }
 
 pub(super) fn side_name(side: Side) -> &'static str {
@@ -272,17 +281,10 @@ pub(super) fn keybar(
     bar
 }
 
-/// Кэшируемые части каркаса (G-07): табы в заголовке и низ окна (cmdline + F-клавиши).
-/// Сам заголовок с «─ □ ✕» не кэшируется: gpui не повторяет `WindowControlArea` из кэша.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum Part {
-    Tabs,
-    Bottom,
-}
-
+/// Низ окна (cmdline + F-клавиши) — кэшируемая view (G-07). Заголовок и табы не кэшируются:
+/// gpui не повторяет `WindowControlArea` из кэша (перетаскивание, «─ □ ✕», Snap).
 pub(super) struct ChromeView {
     pub host: WeakEntity<CoreHost>,
-    pub part: Part,
 }
 
 impl Render for ChromeView {
@@ -301,31 +303,13 @@ impl Render for ChromeView {
                 h.run(cmd.clone(), w, cx);
             }))
         };
-        match self.part {
-            Part::Tabs => panel_tabs(s, &h.theme, &click),
-            Part::Bottom => div()
-                .size_full()
-                .flex()
-                .flex_col()
-                .child(cmdline(s, &h.theme))
-                .child(keybar(h.keybar.items(h.mods), h.mods, &h.theme, &click)),
-        }
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .child(cmdline(s, &h.theme))
+            .child(keybar(h.keybar.items(h.mods), h.mods, &h.theme, &click))
     }
-}
-
-/// Отпечаток табов: имена и активные табы обеих панелей, тема, язык.
-pub(super) fn tabs_print(s: &AppState, dark: bool) -> u64 {
-    use std::hash::{Hash, Hasher};
-    let mut h = std::hash::DefaultHasher::new();
-    (dark, urfin_i18n::epoch()).hash(&mut h);
-    for side in [Side::Left, Side::Right] {
-        let p = s.panel(side);
-        p.active.hash(&mut h);
-        for t in &p.tabs {
-            (t.id.0, tab_title(t)).hash(&mut h);
-        }
-    }
-    h.finish()
 }
 
 /// Отпечаток низа: путь активной панели, подписи F-клавиш, модификаторы, тема.
