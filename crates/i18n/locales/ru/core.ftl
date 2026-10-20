@@ -23,3 +23,6 @@ ops-mkdir-failed = Не создать { $name }: { $error }
 ops-rename-failed = Не переименовать { $name }: { $error }
 ops-exists = { $name } уже есть
 ops-rename-bad = В имени не может быть \ и / — перенести в другую папку можно через F6
+ops-job-trash = В корзину
+ops-job-delete = Удаление
+ops-delete-failed = Не удалено: { $error }
