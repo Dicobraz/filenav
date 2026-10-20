@@ -35,6 +35,8 @@ struct Args {
     out: Option<String>,
     /// Сохранить каждый N-й кадр как BMP (до 8 штук) рядом с `--out`.
     dump: u32,
+    /// Пауза до замера прямоугольника окна, мс (окно ещё разворачивается); 0 — сразу, для старта.
+    settle: u64,
 }
 
 fn args() -> Args {
@@ -45,6 +47,7 @@ fn args() -> Args {
         min: 500,
         out: None,
         dump: 0,
+        settle: 1500,
     };
     let v: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -57,6 +60,7 @@ fn args() -> Args {
             "--min" => a.min = x.parse().unwrap_or(500),
             "--out" => a.out = Some(x.clone()),
             "--dump" => a.dump = x.parse().unwrap_or(0),
+            "--settle" => a.settle = x.parse().unwrap_or(1500),
             _ => {}
         }
         i += 2;
@@ -108,7 +112,7 @@ fn main() -> windows::core::Result<()> {
     let (_, rect) = loop {
         if window_of(a.pid).is_some() {
             // Окно может ещё развернуться или сдвинуться: прямоугольник — после паузы.
-            std::thread::sleep(Duration::from_millis(1500));
+            std::thread::sleep(Duration::from_millis(a.settle));
             if let Some(w) = window_of(a.pid) {
                 break w;
             }
