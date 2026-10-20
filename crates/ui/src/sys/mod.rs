@@ -18,6 +18,8 @@ use windows as os;
 #[cfg(windows)]
 mod chrome_win;
 
+pub mod cpu;
+
 #[cfg(windows)]
 #[path = "time_win.rs"]
 mod time;

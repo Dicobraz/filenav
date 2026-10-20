@@ -7,6 +7,7 @@
 //! (`clippy.toml`: `disallowed-methods`).
 
 pub mod accent;
+pub mod bench;
 pub mod breadcrumb;
 pub mod cache;
 pub mod canvas;

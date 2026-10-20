@@ -100,6 +100,8 @@ pub struct Launch {
     pub selftest: Option<std::path::PathBuf>,
     /// `--screens <dir>`: снимки экранов S2 §2 (S2-21).
     pub screens: Option<std::path::PathBuf>,
+    /// `--bench <каталог>`: сценарий замера на этом каталоге (G-07).
+    pub bench: Option<std::path::PathBuf>,
 }
 
 pub fn run(launch: Launch) -> anyhow::Result<()> {
@@ -233,6 +235,7 @@ struct Resume {
     startup: Startup,
     ipc: Option<crate::ipc::Inbox>,
     selftest: Option<crate::selftest::SelfTest>,
+    bench: Option<urfin_ui::bench::Bench>,
 }
 
 #[derive(Clone, Copy)]
@@ -327,7 +330,7 @@ fn create_app(
     ctx.options_mut(|o| o.zoom_with_keyboard = false);
     let resumed = matches!(from, Origin::Resume(_));
     let mut screens_dir = None;
-    let (core, keys, key_warnings, waker, startup, ipc, selftest) = match from {
+    let (core, keys, key_warnings, waker, startup, ipc, selftest, bench) = match from {
         Origin::Launch(launch) => {
             let Launch {
                 boot,
@@ -336,6 +339,7 @@ fn create_app(
                 open,
                 selftest,
                 screens,
+                bench,
             } = *launch;
             screens_dir = screens;
             let services = crate::vfs_services(&boot.config);
@@ -355,8 +359,19 @@ fn create_app(
             for c in open {
                 core.dispatch(c);
             }
+            // Бенч: обе панели — на каталог замера, курсор в начало (как у GPUI).
+            if let Some(dir) = &bench {
+                for side in ["left", "right"] {
+                    core.dispatch(
+                        Command::new("panel.go")
+                            .arg("side", side)
+                            .arg("path", urfin_core::Location::local(dir.clone())),
+                    );
+                }
+            }
             let selftest = selftest.map(crate::selftest::SelfTest::new);
-            (core, keys, kw, waker, startup, ipc, selftest)
+            let bench = bench.map(|_| urfin_ui::bench::Bench::new((1200.0, 760.0)));
+            (core, keys, kw, waker, startup, ipc, selftest, bench)
         }
         Origin::Resume(r) => {
             r.waker.set(ctx.clone());
@@ -368,6 +383,7 @@ fn create_app(
                 r.startup,
                 r.ipc,
                 r.selftest,
+                r.bench,
             )
         }
     };
@@ -444,6 +460,7 @@ fn create_app(
         ipc,
         activate: 0,
         selftest,
+        bench,
         screens: screens_dir.map(crate::screens::ScreensRun::new),
         lost,
         restart,
@@ -477,6 +494,8 @@ struct App {
     /// Сколько кадров ещё выводить окно вперёд после запроса второго запуска.
     activate: u8,
     selftest: Option<crate::selftest::SelfTest>,
+    /// `--bench`: сценарий замера (G-07); шаг — в каждом `logic` после показа окна.
+    bench: Option<urfin_ui::bench::Bench>,
     /// `--screens`: вместо состояния Core — экраны S2 §2 по очереди.
     screens: Option<crate::screens::ScreensRun>,
     /// Устройство потеряно (`gpu::watch_device`): окно — заново, на следующей попытке.
@@ -500,6 +519,7 @@ impl App {
             startup: self.startup,
             ipc: self.ipc.take(),
             selftest: self.selftest.take(),
+            bench: self.bench.take(),
         });
         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
     }
@@ -575,6 +595,36 @@ impl eframe::App for App {
         if self.reveal && !self.shown {
             self.shown = true;
             crate::sys::cloak(frame, false);
+        }
+        // `--bench` (G-07): шаг сценария на каждом кадре, когда окно уже на экране.
+        if self.shown
+            && let Some(b) = &mut self.bench
+        {
+            use urfin_ui::bench::Step;
+            match b.frame(Instant::now()) {
+                Step::Next => ctx.request_repaint(),
+                // Команды — до pump ниже: видны в этом же кадре.
+                Step::Cmds(cmds) => {
+                    for c in cmds {
+                        core.dispatch(c);
+                    }
+                    ctx.request_repaint();
+                }
+                Step::Resize(w, h) => {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(w, h)));
+                    ctx.request_repaint();
+                }
+                // Простой: непрерывной перерисовки нет, только будильник.
+                Step::Idle(d) => ctx.request_repaint_after(d),
+                Step::Done(report) => {
+                    println!("bench ui=egui {report}");
+                    let _ = std::io::Write::flush(&mut std::io::stdout());
+                    tracing::info!(%report, "bench");
+                    self.bench = None;
+                    // Обычный выход: app.quit → закрытие окна, сессия на диск.
+                    core.dispatch(Command::new("app.quit"));
+                }
+            }
         }
         // Крестик окна — через app.quit: handlers могут наложить вето (S0 v2 №13).
         if ctx.input(|i| i.viewport().close_requested()) && !core.state().quit {

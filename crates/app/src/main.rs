@@ -14,6 +14,8 @@
 //! `--ipc-test-server` — первый экземпляр без окна печатает принятый запрос.
 //! `--selftest <dir>` — сценарий самопроверки окна, отчёт и снимки в `dir`
 //! (для платформ без ручной проверки; `scripts/mac/selftest.sh`).
+//! `--bench [dir]` — сценарий замера кадров на каталоге (тот же, что у GPUI, G-07),
+//! строка отчёта в stdout и выход.
 
 // Release — оконное приложение без консоли; debug — с консолью для логов.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -145,11 +147,13 @@ fn run() -> anyhow::Result<()> {
     let request = ipc::Request::from_args(&args);
     let selftest = selftest_dir(&args)?;
     let screens = screens_dir(&args)?;
+    let bench = bench_dir(&args);
     let separate = flag("--new-instance")
         || flag("--smoke")
         || flag("--bench-startup")
         || selftest.is_some()
-        || screens.is_some();
+        || screens.is_some()
+        || bench.is_some();
     let ControlFlow::Continue(inbox) = single_instance(&paths, &request, separate) else {
         return Ok(());
     };
@@ -195,7 +199,21 @@ fn run() -> anyhow::Result<()> {
         open: request.commands(),
         selftest,
         screens,
+        bench,
     })
+}
+
+/// `--bench [каталог]` (G-07): по умолчанию — датасет `gen-100000-s1` в
+/// `%LOCALAPPDATA%\Pets\testdata\urfin` (`cargo run -p urfin-testdata --example gen_tree --release`).
+fn bench_dir(args: &[String]) -> Option<PathBuf> {
+    let i = args.iter().position(|a| a == "--bench")?;
+    args.get(i + 1)
+        .filter(|a| !a.starts_with("--"))
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("LOCALAPPDATA")
+                .map(|d| PathBuf::from(d).join(r"Pets\testdata\urfin\gen-100000-s1"))
+        })
 }
 
 /// `--screens <dir>` (по умолчанию `screens`): снимки экранов S2 §2; каталог создаётся.
