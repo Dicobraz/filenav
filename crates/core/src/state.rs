@@ -159,6 +159,8 @@ pub struct AppState {
     /// Текущий баннер — о проблемах конфига (снимается при чистой перезагрузке).
     config_banner: bool,
     pub(crate) session: SessionMarks,
+    /// Настройки из UI, ждущие записи в `config.toml` (S2-22).
+    pub(crate) settings: crate::settings::Pending,
 }
 
 /// Отметки для записи сессии (Core, конец pump).
@@ -198,6 +200,7 @@ impl AppState {
             quit_prompt: None,
             config_banner: false,
             session: SessionMarks::default(),
+            settings: crate::settings::Pending::default(),
         }
     }
 
