@@ -167,23 +167,32 @@ struct H {
     core: Core,
     w: Arc<TestWaker>,
     log: Rc<RefCell<Vec<String>>>,
+    /// Каталоги Core (`shutdown` пишет сессию): удаляются вместе с `H`.
+    _dir: tempfile::TempDir,
 }
 
 impl H {
     fn new(veto: bool) -> H {
         let w = Arc::new(TestWaker::default());
         let p = if cfg!(windows) { r"C:\" } else { "/" };
-        let mut core = Core::new(
-            Boot::new(Location::local(p), Location::local(p)),
-            Services::null(),
-            w.clone(),
-        );
+        let dir = tempfile::Builder::new()
+            .prefix("urfin-jobs-")
+            .tempdir()
+            .unwrap();
+        let mut boot = Boot::new(Location::local(p), Location::local(p));
+        boot.paths = crate::Paths::in_dir(dir.path().to_path_buf());
+        let mut core = Core::new(boot, Services::null(), w.clone());
         let log = Rc::new(RefCell::new(Vec::new()));
         core.register(Box::new(Owner {
             log: log.clone(),
             veto,
         }));
-        H { core, w, log }
+        H {
+            core,
+            w,
+            log,
+            _dir: dir,
+        }
     }
 
     /// Качать pump, пока не выполнится условие (не дольше `T`).

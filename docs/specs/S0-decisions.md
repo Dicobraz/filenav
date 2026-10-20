@@ -79,6 +79,7 @@
 | 54 | Бюджет бинаря | **≤ 25 МБ** `urfin.exe` (было 15; GPUI-эталон postman — 20 МБ). DLL ConPTY не входят |
 | 55 | Порядок переезда на GPUI | **Сейчас**: UI на egui заморожен (задачи M1 по `ui`/`app` — стоп, кроме багфиксов, блокирующих работу); core/vfs/ops/term/keymap-логика продолжаются; G-01 стартует сразу после текущей задачи Code |
 | 56 | Визуал на GPUI | Своя тема **Fluent** поверх gpui-kit (токены S2: акцент и light/dark из ОС, строки 24 px, №31–№33); Mica — через DWM в `ui::sys`; родной стиль gpui-kit (shadcn) не используем |
+| 57 | Платформы | **Только Windows** (владелец, 2026-10-20): Linux и macOS не собираются и не проверяются — ни на стенде, ни в CI (джобы ubuntu/macos в `test` убраны). Заменяет «macOS в пассиве, Linux tier 2» в «Платформы (обновлено)»; задачи S4-08/S4-09, адаптер `notify`, mac-части — сняты |
 
 ## Изменения задач
 - **S1-15 Single-instance.** app/`ipc`: Windows — mutex + named pipe `\\.\pipe\urfin-<sid>`; mac/Linux — unix socket + `flock`. JSON `{argv,cwd}` → `tab.new`+`panel.go`, активация окна. Приёмка: <100 мс, stale lock чистится. Зависит: S1-07, S1-13.

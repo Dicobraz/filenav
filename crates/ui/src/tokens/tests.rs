@@ -179,4 +179,3 @@ fn token_table_snapshot() {
     );
     insta::assert_snapshot!(table(&t));
 }
-

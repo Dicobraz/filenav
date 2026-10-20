@@ -104,9 +104,14 @@ opt-level = "s"
 [profile.release.package.serde_json]
 opt-level = "s"
 
-# Быстрые зависимости в debug.
+# Гигиена диска (H-01): в стектрейсах — файл и строка, PDB в разы меньше.
+[profile.dev]
+debug = "line-tables-only"
+
+# Быстрые зависимости в debug, без их отладочных символов (H-01).
 [profile.dev.package."*"]
 opt-level = 2
+debug = false
 
 [profile.profiling]
 inherits = "release"
