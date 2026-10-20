@@ -9,6 +9,7 @@ mod menu;
 mod overlays;
 mod panel;
 mod theme;
+mod views;
 
 pub use theme::Theme;
 

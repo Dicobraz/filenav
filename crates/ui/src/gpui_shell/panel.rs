@@ -62,7 +62,7 @@ pub(super) fn panel(
     } else {
         Role::StrokeCard
     };
-    div()
+    let card = div()
         .flex_1()
         .min_w_0()
         .h_full()
@@ -72,8 +72,12 @@ pub(super) fn panel(
         .rounded(px(theme.m(Metric::RadiusOverlay)))
         .border_1()
         .border_color(theme.c(border))
-        .bg(theme.c(Role::LayerPanel))
-        .child(path_bar(t, theme))
+        .bg(theme.c(Role::LayerPanel));
+    // Дерево, «Сведения», просмотр (S2 §2.4–2.5).
+    if t.mode != urfin_core::PanelMode::Files {
+        return card.child(super::views::body(s, side, theme, rows));
+    }
+    card.child(path_bar(t, theme))
         .when(matches!(t.view_mode, ViewMode::Full), |d| {
             d.child(col_header(side, theme, cx))
         })
