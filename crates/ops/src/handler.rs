@@ -291,26 +291,196 @@ impl Handler for OpsHandler {
                     draft(cx, cmd, a.bool("permanent").unwrap_or(false));
                     return Ok(());
                 }
-                tracing::info!(target: "ops", kind = ?req.kind, items = req.items.len(), "request");
-                Err(not_yet(cmd))
+                delete(cx, req)
             }
             "ops.mkdir" => {
-                if a.str("name").is_none() {
+                let Some(name) = a.str("name") else {
                     draft(cx, cmd, false);
                     return Ok(());
-                }
-                Err(not_yet(cmd))
+                };
+                mkdir(cx, name)
             }
             "ops.rename" => {
-                if a.str("to").is_none() {
+                let Some(to) = a.str("to") else {
                     // Без имени — поле на месте (Shift+F6).
                     cx.dispatch(Command::new("ui.rename"));
                     return Ok(());
-                }
-                Err(not_yet(cmd))
+                };
+                rename(cx, to)
             }
             _ => Err(not_yet(cmd)),
         }
+    }
+}
+
+/// Одиночная операция активного таба вне UI-потока (S5-10): по успеху курсор —
+/// на `focus`, листинг перечитывается; ошибка — тостом.
+fn quick(
+    cx: &mut Cx<'_>,
+    name: &'static str,
+    work: impl FnOnce(&std::path::Path) -> Result<Option<CompactString>, String> + Send + 'static,
+) -> Result<(), CmdError> {
+    let t = cx.state.panel(cx.state.active).tab();
+    if !t.loc.is_local() {
+        return Err(CmdError::Rejected(
+            text("ops-not-yet", &[("what", name)]).into(),
+        ));
+    }
+    let (tab, dir) = (t.id, t.loc.path.clone());
+    let sink = cx.rt.sink();
+    cx.rt
+        .spawn(Lane::Interactive, name, cx.rt.token(), move |tcx| {
+            let result = work(&dir);
+            let m = urfin_core::msg(name, move |cx| match result {
+                Ok(focus) => {
+                    if let Some(t) = cx.state.tab_mut(tab)
+                        && focus.is_some()
+                    {
+                        t.pending_focus = focus;
+                    }
+                    cx.dispatch(Command::new("panel.refresh").arg("tab", i64::from(tab.0)));
+                }
+                Err(e) => cx.toast(Level::Error, e),
+            });
+            let _ = sink.send(m, &tcx.cancel);
+        });
+    Ok(())
+}
+
+/// `ops.mkdir {name}`: `a/b/c`, `x;y` (Far); курсор — на первый созданный.
+fn mkdir(cx: &mut Cx<'_>, spec: &str) -> Result<(), CmdError> {
+    let spec = spec.to_owned();
+    quick(cx, "ops.mkdir", move |dir| {
+        crate::ops::mkdir::mkdir(dir, &spec)
+            .map(|made| made.into_iter().next())
+            .map_err(|e| {
+                text(
+                    "ops-mkdir-failed",
+                    &[("name", e.name.as_str()), ("error", &io_text(&e.error))],
+                )
+            })
+    })
+}
+
+/// `ops.rename {to}`: элемент под курсором активного таба, в его каталоге.
+fn rename(cx: &mut Cx<'_>, to: &str) -> Result<(), CmdError> {
+    let t = cx.state.panel(cx.state.active).tab();
+    let Some(Row::Entry { entry, .. }) = t.current() else {
+        return Err(CmdError::Rejected(text("ops-nothing", &[]).into()));
+    };
+    let to = to.trim();
+    if !crate::ops::rename::is_plain_name(to) {
+        return Err(CmdError::Rejected(text("ops-rename-bad", &[]).into()));
+    }
+    let (from, to) = (entry.name.clone(), CompactString::from(to));
+    quick(cx, "ops.rename", move |dir| {
+        crate::ops::rename::rename(dir, &from, &to)
+            .map(|()| Some(to.clone()))
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::AlreadyExists {
+                    text("ops-exists", &[("name", to.as_str())])
+                } else {
+                    text(
+                        "ops-rename-failed",
+                        &[("name", from.as_str()), ("error", &io_text(&e))],
+                    )
+                }
+            })
+    })
+}
+
+/// Удаление задачей (прогресс, отмена в job-баре): корзина одним системным
+/// вызовом, насовсем — по элементам. По окончании листинг перечитывается.
+fn delete(cx: &mut Cx<'_>, req: OpRequest) -> Result<(), CmdError> {
+    if !req.base.is_local() {
+        return Err(CmdError::Rejected(
+            text("ops-not-yet", &[("what", "ops.delete")]).into(),
+        ));
+    }
+    let trash = req.kind == OpKind::Trash;
+    let tab = cx.state.panel(cx.state.active).tab().id;
+    let job = cx.state.jobs.start(
+        urfin_core::JobSpec {
+            kind: if trash { "trash" } else { "delete" },
+            title: text(
+                if trash {
+                    "ops-job-trash"
+                } else {
+                    "ops-job-delete"
+                },
+                &[],
+            ),
+            lane: Lane::Bulk,
+            priority: 0,
+            owner_ns: "ops",
+        },
+        cx.rt.sink(),
+    );
+    let sink = cx.rt.sink();
+    let (dir, items) = (req.base.path, req.items);
+    cx.rt
+        .spawn_dedicated("ops.delete".into(), cx.rt.token(), move |tcx| {
+            use std::sync::atomic::Ordering;
+            let _span =
+                tracing::info_span!("ops.job", kind = if trash { "trash" } else { "delete" })
+                    .entered();
+            let p = job.progress();
+            let n = items.len() as u64;
+            p.items_total.store(n, Ordering::Relaxed);
+            p.total_final.store(true, Ordering::Relaxed);
+            let errors: Vec<String> = if trash {
+                let r = crate::ops::delete::delete_to_trash(&dir, &items);
+                p.items_done.store(n, Ordering::Relaxed);
+                r.err().into_iter().collect()
+            } else {
+                let stop = || tcx.cancel.is_cancelled() || job.checkpoint().is_err();
+                let done = |name: &str| {
+                    p.set_current(name);
+                    p.items_done.fetch_add(1, Ordering::Relaxed);
+                };
+                crate::ops::delete::delete_permanent(&dir, &items, &stop, &done)
+                    .into_iter()
+                    .map(|e| format!("{}: {}", e.name, e.error))
+                    .collect()
+            };
+            let failed = errors.len() as u64;
+            let m = urfin_core::msg("ops.delete", move |cx| {
+                if let Some(first) = errors.first() {
+                    let more = if errors.len() > 1 {
+                        format!(" (+{})", errors.len() - 1)
+                    } else {
+                        String::new()
+                    };
+                    cx.toast(
+                        Level::Error,
+                        text("ops-delete-failed", &[("error", &format!("{first}{more}"))]),
+                    );
+                }
+                cx.dispatch(Command::new("panel.refresh").arg("tab", i64::from(tab.0)));
+            });
+            let _ = sink.send(m, &tcx.cancel);
+            let cancelled = job.cancel_token().is_cancelled();
+            let items = p.items_done.load(Ordering::Relaxed);
+            job.finish(if cancelled {
+                Err("cancelled".into())
+            } else {
+                Ok(urfin_core::JobSummary {
+                    items,
+                    bytes: 0,
+                    skipped: 0,
+                    errors: failed,
+                })
+            });
+        });
+    Ok(())
+}
+
+/// Текст ошибки ОС без «(os error N)».
+fn io_text(e: &std::io::Error) -> String {
+    let s = e.to_string();
+    match s.rfind(" (os error") {
+        Some(i) => s[..i].to_owned(),
+        None => s,
     }
 }
 

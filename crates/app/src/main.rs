@@ -16,6 +16,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod boot;
+mod demo_tree;
 mod gpui_app;
 mod ipc;
 mod sys;
@@ -149,8 +150,11 @@ fn run() -> anyhow::Result<()> {
     // первому и выходит. Smoke, замер старта и самопроверка — всегда отдельно.
     let request = ipc::Request::from_args(&args);
     let bench = bench_dir(&args);
-    let separate =
-        flag("--new-instance") || flag("--smoke") || flag("--bench-startup") || bench.is_some();
+    let separate = ["--new-instance", "--smoke", "--bench-startup"]
+        .into_iter()
+        .any(flag)
+        || bench.is_some()
+        || screens_dir(&args).is_some();
     let ControlFlow::Continue(inbox) = single_instance(&paths, &request, separate) else {
         return Ok(());
     };
@@ -164,12 +168,7 @@ fn run() -> anyhow::Result<()> {
         return smoke(paths, config, warnings, crashed);
     }
 
-    let t = Instant::now();
-    let session = {
-        let _s = tracing::info_span!("startup.session").entered();
-        Session::load(&paths)
-    };
-    let t_session = t.elapsed();
+    let (session, t_session) = load_session(&paths, screens_dir(&args).is_some());
     // Без сессии обе панели — в домашнем каталоге.
     let home = home_dir();
     let mut boot = Boot::new(home.clone(), home);
@@ -195,6 +194,7 @@ fn run() -> anyhow::Result<()> {
         ipc: inbox,
         open: request.commands(),
         bench,
+        screens: screens_dir(&args),
     });
     Ok(())
 }
@@ -210,6 +210,21 @@ fn bench_dir(args: &[String]) -> Option<PathBuf> {
             std::env::var_os("LOCALAPPDATA")
                 .map(|d| PathBuf::from(d).join(r"Pets\testdata\urfin\gen-100000-s1"))
         })
+}
+
+/// Сессия и время её чтения. Снимки — с чистого листа: табы и пути из прошлых
+/// прогонов не нужны.
+fn load_session(paths: &Paths, screens: bool) -> (Option<Session>, Duration) {
+    let t = Instant::now();
+    let _s = tracing::info_span!("startup.session").entered();
+    let session = (!screens).then(|| Session::load(paths)).flatten();
+    (session, t.elapsed())
+}
+
+/// `--screens <каталог>`: снимки сцен для проверки дизайна.
+fn screens_dir(args: &[String]) -> Option<PathBuf> {
+    let i = args.iter().position(|a| a == "--screens")?;
+    args.get(i + 1).map(PathBuf::from)
 }
 
 fn single_instance(

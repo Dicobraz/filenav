@@ -15,6 +15,11 @@ pub mod cpu;
 #[cfg(windows)]
 pub mod prof;
 
+/// Снимок окна для `--screens`.
+#[cfg(windows)]
+#[path = "capture_win.rs"]
+pub mod capture;
+
 /// Записки клавиш keymap с окна GPUI (S3-07).
 #[cfg(windows)]
 #[path = "key_notes_win.rs"]

@@ -16,6 +16,11 @@ serde.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+# Удаление дерева (S5-09, S0-decisions №58), MIT OR Apache-2.0.
+remove_dir_all = "1.0"
+# Корзина (S5-13; на Windows — IFileOperation), MIT.
+trash = "5.2"
+
 urfin-core.workspace = true
 urfin-i18n.workspace = true
 urfin-vfs.workspace = true

@@ -5,6 +5,7 @@
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
 
+use windows_sys::Win32::Storage::FileSystem::MoveFileExW;
 use windows_sys::Win32::System::Com::{
     COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE, CoInitializeEx,
 };
@@ -17,6 +18,17 @@ use super::Open;
 
 fn wide(s: impl AsRef<std::ffi::OsStr>) -> Vec<u16> {
     s.as_ref().encode_wide().chain(Some(0)).collect()
+}
+
+/// `MoveFileExW` без `MOVEFILE_REPLACE_EXISTING`: занятое имя — `ERROR_ALREADY_EXISTS`,
+/// смена регистра той же записи проходит.
+pub fn rename_noreplace(src: &Path, dst: &Path) -> std::io::Result<()> {
+    let (s, d) = (wide(src), wide(dst));
+    // SAFETY: строки с нулём живут до конца вызова.
+    if unsafe { MoveFileExW(s.as_ptr(), d.as_ptr(), 0) } == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
 }
 
 pub fn open(path: &Path, how: Open) -> std::io::Result<()> {

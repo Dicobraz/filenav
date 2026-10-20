@@ -29,6 +29,10 @@ tracing.workspace = true
 [target.'cfg(not(windows))'.dependencies]
 jiff.workspace = true
 
+# PNG снимков `--screens` (уже в графе через gpui), MIT OR Apache-2.0.
+[dependencies.png]
+version = "0.18"
+
 [target.'cfg(windows)'.dependencies]
 raw-window-handle.workspace = true
 windows-sys = { workspace = true, features = [
@@ -39,6 +43,7 @@ windows-sys = { workspace = true, features = [
     "Win32_System_LibraryLoader",
     "Win32_Globalization",
     "Win32_Graphics_Gdi",
+    "Win32_Storage_Xps",
     "Win32_Security",
     "Win32_System_Registry",
     "Win32_System_Threading",
