@@ -83,18 +83,25 @@ jobs:
       - run: cargo nextest run --workspace --locked --profile ci
       - run: cargo test --doc --workspace --locked
 
+      # Release (fat LTO, ~15 мин) — только на main: в PR хватает clippy и тестов
+      # (решение владельца 2026-10-20).
       - name: No diagnostic features in release (profile, dhat-heap, count-alloc)
+        if: github.event_name == 'push'
         run: $PY ci/release_features.py
-      - run: cargo build --release -p urfin-app --locked
+      - if: github.event_name == 'push'
+        run: cargo build --release -p urfin-app --locked
       # Бюджет 25 МиБ (S0-decisions №54). До G-06 в бинаре и egui, и GPUI (~30 МиБ) —
       # предупреждение (решение владельца 2026-10-20); G-06 возвращает блокировку.
       - name: Binary size ≤ 25 MB
+        if: github.event_name == 'push'
         continue-on-error: true
         run: $PY ci/size.py "$BIN" 25
       - name: Smoke
+        if: github.event_name == 'push'
         run: '"$BIN" --smoke'
 
       - uses: actions/upload-artifact@v7.0.2
+        if: github.event_name == 'push'
         with:
           name: urfin-Windows
           path: ${{ env.BIN }}
