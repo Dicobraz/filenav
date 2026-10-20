@@ -449,6 +449,16 @@ fn notes_numpad() {
     assert_eq!(run(&mut ki, &st, vec![]).cmds, ["a.center"]);
 }
 
+/// Сброшенная записка (нажатие разобрал не конвейер) сочетания не даёт.
+#[test]
+fn cleared_notes_are_dropped() {
+    let mut ki = input();
+    let st = state(Focus::Panel);
+    ki.notes().push(note(vk::CLEAR, Mods::empty()));
+    ki.notes().clear();
+    assert_eq!(run(&mut ki, &st, vec![]).cmds, [] as [String; 0]);
+}
+
 /// Сторона модификатора — из записки хука: `RCtrl+1`.
 #[test]
 fn modifier_side_from_notes() {

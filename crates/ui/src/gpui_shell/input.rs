@@ -2,17 +2,23 @@
 //! приложения (`intercept_keystrokes`, до привязок gpui-kit) и переводятся в события
 //! `urfin_keymap::ev::RawInput`, которые разбирает [`KeyInput::process`]: пресеты, аккорды,
 //! раскладка-независимость и быстрый поиск работают как в egui-окне.
+//!
+//! На Windows subclass окна (`sys::key_notes`) пишет записки `KeyNotes` в очередь этого
+//! же `KeyInput` — их разбирает каждый `process`; записки без нажатия gpui (`Num5` без
+//! `NumLock`) — [`Input::flush`] по будильнику subclass.
 
 use std::time::Instant;
 
 use gpui_kit::{Keystroke, Modifiers};
 use urfin_core::{AppState, Command};
 use urfin_keymap::ev::{Event, Key, Modifiers as EMods, RawInput};
-use urfin_keymap::{ActiveKeymap, KeyInput};
+use urfin_keymap::{ActiveKeymap, KeyInput, KeyNotes};
 
 /// Состояние моста: конвейер keymap и последние модификаторы.
 pub(super) struct Input {
     keys: KeyInput,
+    /// Очередь записок `keys` (её же пишет subclass окна).
+    notes: KeyNotes,
     mods: EMods,
 }
 
@@ -27,9 +33,20 @@ pub(super) struct Outcome {
 impl Input {
     pub(super) fn new(keys: KeyInput) -> Self {
         Input {
+            notes: keys.notes(),
             keys,
             mods: EMods::NONE,
         }
+    }
+
+    /// Очередь записок для subclass окна (`sys::key_notes`).
+    pub(super) fn notes(&self) -> KeyNotes {
+        self.notes.clone()
+    }
+
+    /// Нажатие разобрал не конвейер (поле ввода, меню, вопрос): его записки — сбросить.
+    pub(super) fn skip(&self) {
+        self.notes.clear();
     }
 
     /// Перечитанная раскладка (`keymap.reload`, `app.reload_config`) — в конвейер.
@@ -45,13 +62,21 @@ impl Input {
     fn run(&mut self, events: Vec<Event>, st: &AppState, out: &mut Vec<Command>) -> Outcome {
         self.sync(st);
         let n = events.len();
+        let before = out.len();
         let mut raw = RawInput { events };
         let now = Instant::now();
         let o = self.keys.process(&mut raw, st, now, out);
         Outcome {
-            consumed: raw.events.len() < n,
+            // Без событий (Ctrl+Gray*) сочетание дала записка: поглощено, если есть команды.
+            consumed: raw.events.len() < n || (n == 0 && out.len() > before),
             wake_at: o.wake_at,
         }
+    }
+
+    /// Записки subclass, не встретившие нажатия gpui, — в конвейер (синтетические
+    /// сочетания `Num5`, стороны модификаторов).
+    pub(super) fn flush(&mut self, st: &AppState, out: &mut Vec<Command>) -> Outcome {
+        self.run(Vec::new(), st, out)
     }
 
     /// Нажатие: клавиша (логическая и физическая — из кода клавиши gpui, он не зависит от
@@ -67,7 +92,7 @@ impl Input {
         if let Some(key) = key_of(&ks.key) {
             events.push(Event::Key {
                 key,
-                physical_key: Some(key),
+                physical_key: physical_of(key, down_vk()),
                 pressed: true,
                 repeat: false,
                 modifiers: self.mods,
@@ -81,12 +106,8 @@ impl Input {
         {
             events.push(Event::Text(text.to_owned()));
         }
-        if events.is_empty() {
-            return Outcome {
-                consumed: false,
-                wake_at: None,
-            };
-        }
+        // Пусто (Ctrl+Gray*: у gpui нет клавиши `*`, символа при Ctrl нет) — всё равно
+        // `process`: сочетание даст записка subclass.
         self.run(events, st, out)
     }
 
@@ -129,6 +150,24 @@ fn mods(m: Modifiers) -> EMods {
         shift: m.shift,
         mac_cmd: false,
         command: m.control,
+    }
+}
+
+/// Код клавиши (`VK_*`) нажатия, которое сейчас разбирает gpui (Windows).
+fn down_vk() -> Option<u16> {
+    #[cfg(windows)]
+    return crate::sys::key_notes::key_down_vk();
+    #[cfg(not(windows))]
+    None
+}
+
+/// Физическая клавиша для keymap. `Plus` в keymap — серый `+` (S3-07, `GrayPlus`);
+/// gpui отдаёт `"+"` и для Shift+= основного ряда — его выдаёт код клавиши не `VK_ADD`.
+/// Кода нет (subclass не стоит) — как раньше, по имени.
+fn physical_of(key: Key, vk: Option<u16>) -> Option<Key> {
+    match vk {
+        Some(v) if key == Key::Plus && v != urfin_keymap::input::vk::ADD => None,
+        _ => Some(key),
     }
 }
 
@@ -199,5 +238,25 @@ mod tests {
             assert_eq!(key_of(g), Some(k), "{g}");
         }
         assert_eq!(key_of("shift"), None);
+    }
+
+    /// Серые клавиши gpui называет как основной ряд; различает их записка subclass.
+    /// Серый `+` — по коду клавиши: `"+"` основного ряда (Shift+=) не `GrayPlus`.
+    #[test]
+    fn numpad_names_and_gray_plus() {
+        for (g, k) in [
+            ("-", Key::Minus),
+            ("/", Key::Slash),
+            ("+", Key::Plus),
+            ("enter", Key::Enter),
+            ("delete", Key::Delete),
+        ] {
+            assert_eq!(key_of(g), Some(k), "{g}");
+        }
+        let add = urfin_keymap::input::vk::ADD;
+        assert_eq!(physical_of(Key::Plus, Some(add)), Some(Key::Plus));
+        assert_eq!(physical_of(Key::Plus, Some(0xBB)), None, "VK_OEM_PLUS");
+        assert_eq!(physical_of(Key::Plus, None), Some(Key::Plus));
+        assert_eq!(physical_of(Key::Minus, Some(0xBD)), Some(Key::Minus));
     }
 }

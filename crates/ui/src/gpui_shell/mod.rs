@@ -33,6 +33,8 @@ const PUMP_BUDGET: Duration = Duration::from_millis(4);
 enum Wake {
     Now,
     After(Duration),
+    /// Записки клавиш subclass окна (S3-07): разобрать без нажатия gpui.
+    Keys,
 }
 
 /// `urfin_core::Waker` окна GPUI: сигнал в канал, его ждёт задача основного потока.
@@ -50,6 +52,7 @@ impl std::fmt::Debug for Wake {
         match self {
             Wake::Now => f.write_str("Now"),
             Wake::After(d) => write!(f, "After({d:?})"),
+            Wake::Keys => f.write_str("Keys"),
         }
     }
 }
@@ -59,6 +62,11 @@ impl Signal {
     pub fn new() -> (Arc<Signal>, WakeRx) {
         let (tx, rx) = unbounded();
         (Arc::new(Signal { tx }), WakeRx(rx))
+    }
+
+    /// Разобрать записки клавиш, не встретившие нажатия gpui (`Num5` без `NumLock`).
+    pub fn keys(&self) {
+        let _ = self.tx.unbounded_send(Wake::Keys);
     }
 }
 
@@ -606,6 +614,8 @@ impl CoreHost {
                 .get::<crate::UiState>()
                 .is_some_and(|u| u.draft.is_some());
         if editing {
+            // Ниже клавиши разбирает не keymap: записки subclass этого нажатия не нужны.
+            self.input.skip();
             let cmds = match ks.key.as_str() {
                 "escape" => vec![Command::new("ui.cancel")],
                 "enter" => self.field_commit(ks.modifiers.shift, cx),
@@ -624,6 +634,7 @@ impl CoreHost {
             .and_then(crate::menu::open_id)
             .map(str::to_owned)
         {
+            self.input.skip();
             let cmds = self.menu.key(&open, ks);
             self.out
                 .extend(cmds.into_iter().map(|c| c.from(urfin_core::Origin::Key)));
@@ -633,6 +644,7 @@ impl CoreHost {
         }
         // Видимый вопрос разбирает клавиши сам (S2-15).
         if core.state().prompts.active().is_some() {
+            self.input.skip();
             if let Some(cmd) = self.prompt_key(ks) {
                 self.out.push(cmd.from(urfin_core::Origin::Key));
             }
@@ -680,6 +692,18 @@ impl CoreHost {
         self.after_input(Some(o), window, cx);
     }
 
+    /// Записки subclass без нажатия gpui (`Num5` без `NumLock`, отпускание одного из
+    /// двух Ctrl): синтетические сочетания — в Core. Пусто — без прохода `pump`.
+    fn flush_keys(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(core) = self.core.as_ref() else {
+            return;
+        };
+        let o = self.input.flush(core.state(), &mut self.out);
+        if !self.out.is_empty() || o.wake_at.is_some() {
+            self.after_input(Some(o), window, cx);
+        }
+    }
+
     fn activation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if window.is_window_active() {
             return;
@@ -698,12 +722,14 @@ fn listen(wake: WakeRx, cx: &mut Context<CoreHost>) {
     cx.spawn(async move |this: WeakEntity<CoreHost>, cx: &mut AsyncApp| {
         while let Some(first) = rx.next().await {
             let mut now = false;
+            let mut keys = false;
             let mut later = Vec::new();
             let mut item = Some(first);
             while let Some(w) = item {
                 match w {
                     Wake::Now => now = true,
                     Wake::After(d) => later.push(d),
+                    Wake::Keys => keys = true,
                 }
                 item = rx.try_recv().ok();
             }
@@ -715,6 +741,9 @@ fn listen(wake: WakeRx, cx: &mut Context<CoreHost>) {
                 })
                 .detach();
             }
+            if keys && !in_window(&this, cx, CoreHost::flush_keys) {
+                break;
+            }
             if now && !pump_in_window(&this, cx) {
                 break;
             }
@@ -725,6 +754,15 @@ fn listen(wake: WakeRx, cx: &mut Context<CoreHost>) {
 
 /// Проход `pump` в окне хоста; `false` — окна или хоста больше нет.
 fn pump_in_window(this: &WeakEntity<CoreHost>, cx: &mut AsyncApp) -> bool {
+    in_window(this, cx, CoreHost::pump)
+}
+
+/// `f` над хостом в его окне; `false` — окна или хоста больше нет.
+fn in_window(
+    this: &WeakEntity<CoreHost>,
+    cx: &mut AsyncApp,
+    f: impl FnOnce(&mut CoreHost, &mut Window, &mut Context<CoreHost>),
+) -> bool {
     let Some(entity) = this.upgrade() else {
         return false;
     };
@@ -733,7 +771,7 @@ fn pump_in_window(this: &WeakEntity<CoreHost>, cx: &mut AsyncApp) -> bool {
     };
     handle
         .update(cx, |_, window, cx| {
-            entity.update(cx, |host, cx| host.pump(window, cx));
+            entity.update(cx, |host, cx| f(host, window, cx));
         })
         .is_ok()
 }
@@ -913,6 +951,16 @@ pub fn run(launch: Launch, geom: Option<WindowGeom>) {
             let host = cx.new(|cx| CoreHost::new(launch, cx));
             host.update(cx, |h, cx| {
                 window.focus(&h.focus, cx);
+                // Записки клавиш, которые gpui теряет (S3-07): subclass окна пишет их в
+                // очередь конвейера keymap.
+                #[cfg(windows)]
+                {
+                    let signal = Arc::clone(&h.signal);
+                    let wake = Box::new(move || signal.keys());
+                    if !crate::sys::key_notes::install(window, h.input.notes(), wake) {
+                        tracing::warn!("key notes: window subclass not installed");
+                    }
+                }
                 // Крестик окна — через `app.quit`: handlers могут наложить вето (S0 v2 №13).
                 let weak = cx.weak_entity();
                 window.on_window_should_close(cx, move |window, cx| {
