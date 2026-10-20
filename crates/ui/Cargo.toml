@@ -16,6 +16,7 @@ screens = []
 compact_str.workspace = true
 egui.workspace = true
 gpui-kit.workspace = true
+futures.workspace = true
 urfin-core.workspace = true
 urfin-i18n.workspace = true
 urfin-keymap.workspace = true

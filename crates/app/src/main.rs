@@ -14,14 +14,15 @@
 //! `--ipc-test-server` — первый экземпляр без окна печатает принятый запрос.
 //! `--selftest <dir>` — сценарий самопроверки окна, отчёт и снимки в `dir`
 //! (для платформ без ручной проверки; `scripts/mac/selftest.sh`).
-//! `--ui=gpui` — интерфейс на GPUI (ADR-0018; в G-01 — пустое окно, отдельный
-//! экземпляр); по умолчанию — egui.
+//! `--ui=gpui` — интерфейс на GPUI (ADR-0018; G-02 — каркас с отладочным видом
+//! панелей); по умолчанию — egui.
 
 // Release — оконное приложение без консоли; debug — с консолью для логов.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod boot;
 mod gpu;
+mod gpui_app;
 mod ipc;
 mod screens;
 mod selftest;
@@ -149,7 +150,6 @@ fn run() -> anyhow::Result<()> {
     let screens = screens_dir(&args)?;
     let gpui = flag("--ui=gpui");
     let separate = flag("--new-instance")
-        || gpui
         || flag("--smoke")
         || flag("--bench-startup")
         || selftest.is_some()
@@ -165,10 +165,6 @@ fn run() -> anyhow::Result<()> {
     if flag("--smoke") {
         println!("urfin {}", version());
         return smoke(paths, config, warnings, crashed);
-    }
-    if gpui {
-        urfin_ui::gpui_shell::run();
-        return Ok(());
     }
 
     let t = Instant::now();
@@ -196,14 +192,19 @@ fn run() -> anyhow::Result<()> {
         first_frame: Duration::ZERO,
         bench: flag("--bench-startup"),
     };
-    window::run(window::Launch {
+    let launch = window::Launch {
         boot,
         startup,
         ipc: inbox,
         open: request.commands(),
         selftest,
         screens,
-    })
+    };
+    if gpui {
+        gpui_app::run(launch);
+        return Ok(());
+    }
+    window::run(launch)
 }
 
 /// `--screens <dir>` (по умолчанию `screens`): снимки экранов S2 §2; каталог создаётся.

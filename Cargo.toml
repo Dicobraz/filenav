@@ -32,6 +32,8 @@ egui = { version = "0.37.0", default-features = false, features = ["default_font
 eframe = { version = "0.37.0", default-features = false, features = ["wgpu_no_default_features", "default_fonts", "clipboard", "x11", "wayland"] }
 # UI на GPUI (ADR-0018): gpui-kit = снимок Zed `gpui-pre`, версия фиксирована.
 gpui-kit = "=0.7.3"
+# Сигнал воркеров Core в цикл GPUI (уже в графе через gpui).
+futures = { version = "0.3", default-features = false, features = ["std", "async-await"] }
 crossbeam-channel = "0.5.17"
 rayon = "1.12"
 compact_str = { version = "0.10", features = ["serde"] }
@@ -126,3 +128,7 @@ strip = false
 # (vendor/egui-wgpu/PATCH.md). Убрать, когда исправление выйдет в egui.
 [patch.crates-io]
 egui-wgpu = { path = "vendor/egui-wgpu" }
+# Windows-платформа gpui с патчами Pets (ADR-0018, G-02; pets/crates/pets-gpui-windows):
+# кадры по запросу — поток vsync спит без запросов кадра (0 % CPU в простое), живой
+# ресайз, шейдеры в exe. Обновлять вместе с gpui-kit.
+gpui-pre-windows = { git = "https://github.com/Dicobraz/pets", rev = "73056730825369611a0c5032f6fc355d5307491a" }
