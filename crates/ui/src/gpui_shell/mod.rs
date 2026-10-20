@@ -20,7 +20,7 @@ use futures::StreamExt as _;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
 use gpui_kit::prelude::*;
 use gpui_kit::{
-    App, AsyncApp, Bounds, ClickEvent, Context, FocusHandle, IntoElement, KeyUpEvent,
+    App, AsyncApp, Bounds, ClickEvent, Context, Entity, FocusHandle, IntoElement, KeyUpEvent,
     ModifiersChangedEvent, Render, SharedString, TitlebarOptions, WeakEntity, Window, WindowBounds,
     WindowOptions, div, point, px, size,
 };
@@ -140,6 +140,9 @@ pub struct CoreHost {
     focus: FocusHandle,
     input: input::Input,
     out: Vec<Command>,
+    /// Панели — кэшируемые view (G-07) и отпечатки их последней отрисовки.
+    panels: [Entity<panel::PanelView>; 2],
+    prints: [u64; 2],
 }
 
 impl std::fmt::Debug for CoreHost {
@@ -165,6 +168,13 @@ impl CoreHost {
         listen(wake, cx);
         let registered = crate::keybar::registered(core.registry());
         let menu = menu::Menu::new(core.registry(), None);
+        let host = cx.entity().downgrade();
+        let panels = [Side::Left, Side::Right].map(|side| {
+            cx.new(|_| panel::PanelView {
+                host: host.clone(),
+                side,
+            })
+        });
         CoreHost {
             core: Some(core),
             signal,
@@ -187,6 +197,8 @@ impl CoreHost {
             focus: cx.focus_handle(),
             input: input::Input::new(keys),
             out: Vec::new(),
+            panels,
+            prints: [0; 2],
         }
     }
 
@@ -859,23 +871,22 @@ impl Render for CoreHost {
                         })),
                 );
             }
-            let (rows, cols) = self.grid[i];
-            panels = panels.child(
-                div()
-                    .w(px(w))
-                    .flex_none()
-                    .h_full()
-                    .flex()
-                    .child(panel::panel(
-                        s,
-                        side,
-                        &self.theme,
-                        rows,
-                        cols,
-                        self.field.as_ref(),
-                        cx,
-                    )),
+            // Изменилась — рисуется заново (без кэша в этом кадре), иначе кадр из кэша.
+            let print = panel::fingerprint(
+                s,
+                side,
+                self.grid[i],
+                self.theme.tokens.theme() == crate::color::Theme::Dark,
+                self.field.as_ref(),
             );
+            let view = self.panels[i].clone();
+            let card = if std::mem::replace(&mut self.prints[i], print) == print {
+                view.cached(gpui_kit::StyleRefinement::default().size_full())
+                    .into_any_element()
+            } else {
+                view.into_any_element()
+            };
+            panels = panels.child(div().w(px(w)).flex_none().h_full().flex().child(card));
         }
         let prompt = s.prompts.active().map(|p| {
             let sel = if self.choice.0 == p.id.0 {
@@ -931,12 +942,25 @@ impl Render for CoreHost {
 pub fn run(launch: Launch, geom: Option<WindowGeom>) {
     gpui_kit::application().run(move |cx: &mut App| {
         gpui_kit::init(cx);
+        // `--bench` не мешает владельцу: окно на неосновном экране (ноутбук при втором
+        // мониторе), без фокуса и без ограничения кадров неактивного окна.
+        let bench = launch.bench.is_some();
+        let bench_display = bench
+            .then(|| {
+                let primary = cx.primary_display().map(|d| d.id());
+                cx.displays()
+                    .into_iter()
+                    .map(|d| d.id())
+                    .find(|&id| Some(id) != primary)
+            })
+            .flatten();
+        let geom = if bench { None } else { geom };
         let bounds = match geom {
             Some(g) => Bounds {
                 origin: point(px(g.x), px(g.y)),
                 size: size(px(g.w), px(g.h)),
             },
-            None => Bounds::centered(None, size(px(1200.), px(760.)), cx),
+            None => Bounds::centered(bench_display, size(px(1200.), px(760.)), cx),
         };
         let window_bounds = if geom.is_some_and(|g| g.maximized) {
             WindowBounds::Maximized(bounds)
@@ -951,6 +975,14 @@ pub fn run(launch: Launch, geom: Option<WindowGeom>) {
                 appears_transparent: true,
                 ..Default::default()
             }),
+            focus: !bench,
+            display_id: bench_display,
+            // gpui по умолчанию держит неактивное окно на 30 кадр/с; бенч меряет и без фокуса.
+            inactive_frame_interval: if bench {
+                None
+            } else {
+                WindowOptions::default().inactive_frame_interval
+            },
             ..Default::default()
         };
         let opened = gpui_kit::open_window(options, cx, move |window, cx| {

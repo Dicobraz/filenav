@@ -6,9 +6,10 @@ use gpui_kit::prelude::*;
 use std::rc::Rc;
 
 use gpui_kit::{
-    App, Bounds, ClickEvent, ContentMask, Context, Div, Font, FontWeight, Hsla, MouseButton,
-    MouseDownEvent, MouseUpEvent, Pixels, Point, ScrollWheelEvent, SharedString, Stateful,
-    TextAlign, TextRun, TruncateFrom, Window, canvas, div, point, px, size as size2,
+    App, Bounds, ClickEvent, ContentMask, Context, Div, Font, FontWeight, Hsla, IntoElement,
+    MouseButton, MouseDownEvent, MouseUpEvent, Pixels, Point, Render, ScrollWheelEvent,
+    SharedString, Stateful, TextAlign, TextRun, TruncateFrom, WeakEntity, Window, canvas, div,
+    point, px, size as size2,
 };
 use urfin_core::{AppState, Row, Side, Tab, ViewMode};
 use urfin_i18n::FluentArgs;
@@ -48,6 +49,87 @@ pub(super) fn grid(theme: &Theme, mode: ViewMode, w: f32, h: f32) -> (u32, u32) 
     (rows, cols as u32)
 }
 
+/// Обработчики событий панели: замыкания над хостом (как `cx.listener`, но панель —
+/// своя view и рисуется вне `Context<CoreHost>`).
+#[derive(Clone)]
+pub(super) struct Listen(pub WeakEntity<CoreHost>);
+
+impl Listen {
+    pub fn listener<E: ?Sized>(
+        &self,
+        f: impl Fn(&mut CoreHost, &E, &mut Window, &mut Context<CoreHost>) + 'static,
+    ) -> impl Fn(&E, &mut Window, &mut App) + 'static {
+        let host = self.0.clone();
+        move |e, window, cx| {
+            let _ = host.update(cx, |h, cx| f(h, e, window, cx));
+        }
+    }
+}
+
+/// Панель — своя view: окно кладёт её кэшированной (`cached`), и кадр, где она не
+/// менялась, gpui повторяет без раскладки и отрисовки (G-07). Рисует из состояния хоста.
+pub(super) struct PanelView {
+    pub host: WeakEntity<CoreHost>,
+    pub side: Side,
+}
+
+impl Render for PanelView {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let Some(host) = self.host.upgrade() else {
+            return div();
+        };
+        let h = host.read(cx);
+        let Some(core) = h.core.as_ref() else {
+            return div();
+        };
+        let (rows, cols) = h.grid[usize::from(self.side == Side::Right)];
+        panel(
+            core.state(),
+            self.side,
+            &h.theme,
+            rows,
+            cols,
+            h.field.as_ref(),
+            &Listen(self.host.clone()),
+        )
+    }
+}
+
+/// Отпечаток всего, что рисует панель: изменился — панель рисуется заново, иначе
+/// кадр берётся из кэша gpui. Ввод в поле внутри панели помечает её сам (предок поля).
+pub(super) fn fingerprint(
+    s: &AppState,
+    side: Side,
+    grid: (u32, u32),
+    dark: bool,
+    field: Option<&super::field::Field>,
+) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::hash::DefaultHasher::new();
+    let t = s.panel(side).tab();
+    let active = s.active == side;
+    (side == Side::Right, active, grid, dark, urfin_i18n::epoch()).hash(&mut h);
+    (t.id.0, t.rev, t.cursor.row, t.cursor.top, t.rows()).hash(&mut h);
+    (t.selection.len(), t.selection.bytes()).hash(&mut h);
+    format!("{:?}{:?}", t.view_mode, t.mode).hash(&mut h);
+    if t.mode != urfin_core::PanelMode::Files {
+        // Дерево, «Сведения», просмотр смотрят и на другую панель.
+        s.rev.hash(&mut h);
+    }
+    if let Some(f) = field {
+        format!("{:?}{}", f.key, f.input.entity_id()).hash(&mut h);
+    }
+    if let Some(k) = s.ext.get::<urfin_keymap::KeymapView>() {
+        if let Some(q) = k.qs.as_ref().filter(|q| q.side == side) {
+            format!("{q:?}").hash(&mut h);
+        }
+        if active {
+            k.pending.hash(&mut h);
+        }
+    }
+    h.finish()
+}
+
 /// Карточка панели.
 pub(super) fn panel(
     s: &AppState,
@@ -56,7 +138,7 @@ pub(super) fn panel(
     rows: u32,
     cols: u32,
     field: Option<&super::field::Field>,
-    cx: &Context<CoreHost>,
+    cx: &Listen,
 ) -> Div {
     let active = s.active == side;
     let t = s.panel(side).tab();
@@ -110,7 +192,7 @@ fn path_bar(
     side: Side,
     theme: &Theme,
     field: Option<&super::field::Field>,
-    cx: &Context<CoreHost>,
+    cx: &Listen,
 ) -> Div {
     let bar = div()
         .h(px(theme.m(Metric::HBreadcrumb)))
@@ -186,7 +268,7 @@ fn path_bar(
     )
 }
 
-fn col_header(side: Side, theme: &Theme, cx: &Context<CoreHost>) -> Div {
+fn col_header(side: Side, theme: &Theme, cx: &Listen) -> Div {
     let i18n = urfin_i18n::current();
     // Клик по колонке — сортировка по ней (повтор — обратная, S2 §2.1).
     let cell = |key: &str, sort: &'static str, w: Option<f32>| {
@@ -282,7 +364,7 @@ fn list(
     rows: u32,
     cols: u32,
     field: Option<&super::field::Field>,
-    cx: &Context<CoreHost>,
+    cx: &Listen,
 ) -> Stateful<Div> {
     let total = t.rows();
     let top = t.cursor.top;
