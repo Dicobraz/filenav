@@ -74,6 +74,8 @@ SHOTS = [
     ("screen-info", {"screen": "info"}),
     ("screen-quickview", {"screen": "quickview"}),
     ("screen-drives", {"screen": "drives"}),
+    ("screen-archive", {"screen": "archive"}),
+    ("screen-errors", {"screen": "errors"}),
     ("screen-copy", {"screen": "copy"}),
     ("screen-delete", {"screen": "delete"}),
     ("screen-conflict", {"screen": "conflict"}),

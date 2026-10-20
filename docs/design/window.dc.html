@@ -58,6 +58,7 @@ body{margin:0}
 </span>
 </sc-if>
 <span style="align-self: center; {{pn.pathStyle}}">{{pn.path}}</span>
+<sc-if value="{{pn.tag}}" hint-placeholder-val="{{ false }}"><span style="align-self: center; {{tagStyle}}">{{pn.tag}}</span></sc-if>
 </span>
 <span style="color: {{t.s}}">{{pn.info}}</span>
 </div>
@@ -65,6 +66,7 @@ body{margin:0}
 <div style="height: 24px; display: flex; align-items: center; padding: 0 12px; border-bottom: 1px solid {{t.b}}; color: {{t.s}}; font-size: 11.5px">
 <span style="flex: 1">Имя</span>
 <span style="width: 92px; text-align: right">Размер</span>
+<sc-if value="{{pn.packedCol}}" hint-placeholder-val="{{ false }}"><span style="width: 80px; text-align: right">Сжато</span></sc-if>
 <span style="width: 120px; text-align: right">Изменён</span>
 </div>
 <sc-for list="{{pn.rows}}" as="r" hint-placeholder-count="12">
@@ -80,6 +82,7 @@ body{margin:0}
 <span style="overflow: hidden; text-overflow: ellipsis">{{r.n1}}<span style="{{r.hlStyle}}">{{r.n2}}</span>{{r.n3}}</span>
 </span>
 <span style="width: 92px; text-align: right">{{r.size}}</span>
+<sc-if value="{{pn.packedCol}}" hint-placeholder-val="{{ false }}"><span style="width: 80px; text-align: right; color: {{r.dateColor}}">{{r.packed}}</span></sc-if>
 <span style="width: 120px; text-align: right; color: {{r.dateColor}}">{{r.date}}</span>
 </div>
 </sc-for>
@@ -113,6 +116,14 @@ body{margin:0}
 <div style="height: 6px; border-radius: 3px; background: {{t.b}}; overflow: hidden"><div style="height: 100%; width: 77%; background: {{t.a}}"></div></div>
 <div style="color: {{t.s}}">Папка C:\Dev\urfin: 12 файлов, 4 папки · 98,2 МБ</div>
 </div>
+</div>
+</sc-if>
+<sc-if value="{{pn.isState}}" hint-placeholder-val="{{ false }}">
+<div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 0 40px 40px; text-align: center">
+<span style="width: 56px; height: 56px; border-radius: 28px; display: flex; align-items: center; justify-content: center; background: {{t.h}}; border: 1px solid {{t.b}}; color: {{pn.st.iconColor}}"><sc-if value="{{pn.st.lock}}" hint-placeholder-val="{{ false }}"><svg width="26" height="26" viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="7" width="9" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1"></rect><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2 M8 9.5v2" fill="none" stroke="currentColor" stroke-width="1"></path></svg></sc-if><sc-if value="{{pn.st.net}}" hint-placeholder-val="{{ false }}"><svg width="26" height="26" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="7" rx="1" fill="none" stroke="currentColor" stroke-width="1"></rect><path d="M8 9.5v3 M4 13.5h8 M2 1.5l12 12" fill="none" stroke="currentColor" stroke-width="1"></path></svg></sc-if><sc-if value="{{pn.st.empty}}" hint-placeholder-val="{{ true }}"><svg width="26" height="26" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 3.5h4.5l1.5 1.5h7v8h-13z" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="2 1.5"></path></svg></sc-if></span>
+<span style="font-size: 15px; font-weight: 500">{{pn.st.title}}</span>
+<sc-if value="{{pn.st.text}}" hint-placeholder-val="{{ false }}"><span style="color: {{t.s}}; max-width: 380px">{{pn.st.text}}</span></sc-if>
+<div style="display: flex; gap: 8px; margin-top: 6px"><sc-for list="{{pn.st.btns}}" as="b" hint-placeholder-count="2"><button type="button" style="{{b.style}}">{{b.label}} <span style="{{b.keyStyle}}">{{b.key}}</span></button></sc-for></div>
 </div>
 </sc-if>
 <sc-if value="{{pn.isQv}}" hint-placeholder-val="{{ false }}">
@@ -395,7 +406,7 @@ body{margin:0}
 </sc-if>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark","blue","turquoise","grass","sepia"],"default":"light"},"screen":{"editor":"enum","options":["panels","menu","quick","brief","tree","info","quickview","drives","copy","delete","conflict","progress","search","viewer","editor","settings"],"default":"panels"},"density":{"editor":"enum","options":["20","24","28"],"default":"24"},"icons":{"editor":"enum","options":["none","mono","color"],"default":"mono"},"context":{"editor":"enum","options":["none","admin","remote"],"default":"none"},"$preview":{"width":1280,"height":760}}'>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark","blue","turquoise","grass","sepia"],"default":"light"},"screen":{"editor":"enum","options":["panels","menu","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress","search","viewer","editor","settings"],"default":"panels"},"density":{"editor":"enum","options":["20","24","28"],"default":"24"},"icons":{"editor":"enum","options":["none","mono","color"],"default":"mono"},"context":{"editor":"enum","options":["none","admin","remote"],"default":"none"},"$preview":{"width":1280,"height":760}}'>
 class Component extends DCLogic {
 renderVals() {
 const TH = {
@@ -443,7 +454,7 @@ const kind = q[1], isC = i === c, isM = marked.indexOf(i) >= 0 && c >= 0;
 const col = isC ? t.ct : (isM ? t.a : kindColor[kind]);
 const iconCol = isC ? t.ct : (iconMode === "color" ? (kind === "d" || kind === "up" ? t.a : kindColor[kind]) : t.s);
 return {
-name: q[0], size: kind === "d" ? "<DIR>" : q[2], date: q[3],
+name: q[0], size: kind === "d" ? "<DIR>" : q[2], date: q[3], packed: q[4] || "",
 n1: qs && c >= 0 && q[0].toLowerCase().indexOf(qs) === 0 ? "" : q[0], n2: qs && c >= 0 && q[0].toLowerCase().indexOf(qs) === 0 ? q[0].slice(0, qs.length) : "", n3: qs && c >= 0 && q[0].toLowerCase().indexOf(qs) === 0 ? q[0].slice(qs.length) : "",
 hlStyle: "background: " + t.hl + "; color: " + t.t + "; border-radius: 2px",
 isUp: kind === "up", isDir: kind === "d", isFile: kind !== "up" && kind !== "d",
@@ -456,9 +467,18 @@ briefStyle: "height: " + rowH + "px; display: flex; align-items: center; gap: 8p
 const actPath = "color: " + t.t + "; border-bottom: 2px solid " + t.a + "; padding-bottom: 3px", pasPath = "color: " + t.s;
 const SRC = ["..","app.rs","breadcrumb.rs","cache.rs","cmdline.rs","columns.rs","commands.rs","conflict.rs","drives.rs","editor.rs","file_list.rs","fonts.rs","icons.rs","info.rs","job_bar.rs","keybar.rs","layout.rs","lib.rs","menu.rs","panel.rs","prompt_bar.rs","quick_search.rs","quick_view.rs","settings.rs","status.rs","tabs.rs","theme.rs","toast.rs","tree.rs","viewer.rs","widgets.rs","window.rs","sys"].map((n) => n === ".." ? ["..","up","",""] : (n === "sys" ? ["sys","d","",""] : [n,"f","",""]));
 const DES = [["..","up","",""],["screens","d","","20.10.26 20:31"],["DESIGN.md","f","9,8 КБ","20.10.26 20:35"],["window.dc.html","f","48,1 КБ","20.10.26 20:31"]];
-const P = (o) => Object.assign({ isFull: false, isBrief: false, isTree: false, isInfo: false, isQv: false, drives: false }, o);
+const P = (o) => Object.assign({ isFull: false, isBrief: false, isTree: false, isInfo: false, isQv: false, isState: false, drives: false, tag: "", packedCol: false }, o);
 const full = (path, info, list, c, act, extra) => P(Object.assign({ isFull: true, path, info, rows: rows(list, c), pathStyle: act ? actPath : pasPath }, extra || {}));
-const panels = screen === "brief" ? [P({ isBrief: true, path: "C:\\Dev\\urfin\\crates\\ui\\src", info: "32 объекта", pathStyle: actPath, rows: rows(SRC, 8), briefGrid: "flex: 1; display: grid; grid-auto-flow: column; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(22, " + rowH + "px); padding-top: 4px; align-content: start; background-image: linear-gradient(to right, transparent calc(33.33% - 1px), " + t.b + " calc(33.33% - 1px), " + t.b + " 33.33%, transparent 33.33%, transparent calc(66.66% - 1px), " + t.b + " calc(66.66% - 1px), " + t.b + " 66.66%, transparent 66.66%)" }), full("\\\\fs01\\share\\presale", "12 объектов", R, -1, false)]
+const B = (label, key, primary) => ({ label, key, style: primary ? btnPrimary : btn, keyStyle: "font-size: 11px; " + (primary ? "opacity: 0.8" : "color: " + t.s) });
+const ARC = [["..","up","","",""],["crates","d","","19.10.26 22:41",""],["docs","d","","20.10.26 11:02",""],["Cargo.lock","f","58,3 КБ","20.10.26 13:50","12,1 КБ"],["Cargo.toml","f","1,2 КБ","19.10.26 22:40","0,5 КБ"],["LICENSE-APACHE","f","11,1 КБ","01.09.26 12:00","3,9 КБ"],["LICENSE-MIT","f","1,0 КБ","01.09.26 12:00","0,6 КБ"],["README.md","f","4,8 КБ","17.10.26 21:33","2,0 КБ"],["urfin.exe","x","11,7 МБ","20.10.26 13:55","8,2 МБ"]];
+const ST = {
+empty: { empty: true, iconColor: t.s, title: "Папка пуста", text: "", btns: [] },
+lock: { lock: true, iconColor: t.k, title: "Нет доступа к папке", text: "Читать эту папку могут только администраторы.", btns: [B("Открыть от администратора", "Ctrl+Shift+Enter", true), B("Назад", "Backspace", false)] },
+net: { net: true, iconColor: t.rem, title: "Нет связи с \\\\nas\\backup", text: "Последний ответ — 2 мин назад, повтор через 12 с. Остальная работа не ждёт.", btns: [B("Повторить сейчас", "Ctrl+R", true), B("Отключить ресурс", "", false)] }
+};
+const panels = screen === "archive" ? [P({ isFull: true, path: "C:\\Dev\\urfin\\urfin-0.4.2.zip\\urfin-0.4.2", tag: "zip", info: "8 объектов", pathStyle: actPath, rows: rows(ARC, 4), packedCol: true }), P({ isState: true, path: "\\\\fs01\\share\\presale\\new", info: "", pathStyle: pasPath, st: ST.empty })]
+: screen === "errors" ? [P({ isState: true, path: "C:\\System Volume Information", info: "", pathStyle: actPath, st: ST.lock }), P({ isState: true, path: "\\\\nas\\backup", info: "", pathStyle: pasPath, st: ST.net })]
+: screen === "brief" ? [P({ isBrief: true, path: "C:\\Dev\\urfin\\crates\\ui\\src", info: "32 объекта", pathStyle: actPath, rows: rows(SRC, 8), briefGrid: "flex: 1; display: grid; grid-auto-flow: column; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(22, " + rowH + "px); padding-top: 4px; align-content: start; background-image: linear-gradient(to right, transparent calc(33.33% - 1px), " + t.b + " calc(33.33% - 1px), " + t.b + " 33.33%, transparent 33.33%, transparent calc(66.66% - 1px), " + t.b + " calc(66.66% - 1px), " + t.b + " 66.66%, transparent 66.66%)" }), full("\\\\fs01\\share\\presale", "12 объектов", R, -1, false)]
 : screen === "tree" ? [P({ isTree: true, path: "C:\\Dev\\urfin", info: "дерево", pathStyle: actPath }), full("C:\\Dev\\urfin\\docs\\design", "3 объекта", DES, -1, false)]
 : screen === "info" ? [full("C:\\Dev\\urfin", "16 объектов", L, 6, true), P({ isInfo: true, path: "Сведения", info: "", pathStyle: pasPath })]
 : screen === "quickview" ? [full("C:\\Dev\\urfin", "16 объектов", L, 6, true), P({ isQv: true, path: "Быстрый просмотр", info: "TOML", pathStyle: pasPath })]
@@ -583,6 +603,8 @@ tree: ["docs\\design · 3 объекта","","C: 214 ГБ свободно"],
 info: ["","Выделено 0 из 16",""],
 quickview: ["Cargo.toml · 1,2 КБ · 19.10.26 22:40","стр 1–26 из 41",""],
 drives: ["","",""],
+archive: ["Cargo.toml · 1,2 КБ, сжато до 0,5 КБ · 19.10.26 22:40","Выделено 0 из 8","архив 8,9 МБ · сжатие 38 %"],
+errors: ["папка системная, скрытая","",""],
 search: ["Поиск «spawn_blocking» в C:\\Dev\\urfin\\crates","9 совпадений","готово за 0,4 с"],
 viewer: ["Стр 1–27 из 212 · 13 %","5 отметок «Исправлено»","9,4 КБ · UTF-8 · CRLF"],
 editor: ["Стр 6, Кол 18","41 строка","TOML · Пробелы: 4 · UTF-8 · LF · Вставка"],
@@ -608,7 +630,7 @@ return {
 t, icons, ctx, tabs, panels, results, preview, viewLines, editLines, mini, viewportStyle, foldCol, gutterStyle, marks, tagStyle, segOn: segBtn(true), segOff: segBtn(false), nav, cards, densOpts, iconOpts, followOs, keys, keybarStyle,
 toggleOs: () => this.setState({ followOs: !followOs }),
 status: STATUS[screen] || STATUS.panels,
-isPanels: ["panels","menu","quick","brief","tree","info","quickview","drives","copy","delete","conflict","progress"].indexOf(screen) >= 0,
+isPanels: ["panels","menu","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress"].indexOf(screen) >= 0,
 isDelete: screen === "delete", isConflict: screen === "conflict", isMenu: screen === "menu", isQuick: screen === "quick", tree, infoRows, drives,
 qvLines: EL.slice(0, 26).map((line, i) => ({ n: i + 1, segs: tomlSegs(line).map((sg) => ({ x: sg.x, style: "color: " + sg.c })) })),
 menuBar: ["Левая","Файлы","Команды","Параметры","Правая"].map((label, i) => ({ label, open: i === 1, filletL: true, filletR: true, listStyle: "position: absolute; left: -40px; top: 100%; width: 330px; padding: 6px 4px 4px; box-sizing: border-box; background: " + t.p + "; border: 1px solid " + t.b + "; border-radius: 8px; display: flex; flex-direction: column; z-index: 1", style: i === 1 ? "position: relative; z-index: 2; height: 27px; margin-bottom: -1px; padding: 0 12px 1px; border: 1px solid " + t.b + "; border-bottom: 0; border-radius: 8px 8px 0 0; font: inherit; font-weight: 500; background: " + t.p + "; color: " + t.t : "height: 24px; margin-bottom: 3px; padding: 0 12px; border: 1px solid transparent; border-radius: 4px; font: inherit; background: transparent; color: " + t.t })),
@@ -616,7 +638,7 @@ menuItems: [["Просмотр","F3"],["Редактировать","F4"],["Ко
 showJobs: screen === "progress" || screen === "conflict",
 jobs: (screen === "conflict" ? [["Копирование","3 объекта → \\\\fs01\\share\\presale",35,"ждёт ответа: конфликт 4 из 12",t.rem,"Пауза"]] : [["Копирование","48 файлов → \\\\fs01\\share\\presale",35,"1,2 из 3,4 ГБ · 48 МБ/с · ещё 47 с",t.a,"Пауза"],["Удаление","target\\debug → Корзина",70,"9 012 из 12 870 · ещё 4 с",t.a,"Пауза"]]).map(([name, what, pct, info, col, act]) => ({ name, what, info, act, infoColor: col === t.a ? t.s : col, bar: "height: 100%; width: " + pct + "%; background: " + col })),
 isCopy, isSearch: screen === "search", isViewer: screen === "viewer", isEditor: screen === "editor", isSettings: screen === "settings",
-showCli: ["panels","menu","quick","brief","tree","info","quickview","drives","copy","delete","conflict","progress","search"].indexOf(screen) >= 0,
+showCli: ["panels","menu","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress","search"].indexOf(screen) >= 0,
 showToast: screen === "panels",
 inputStyle, chipOn: chip(true), chipOff: chip(false), btn, btnPrimary,
 btnDanger: "height: 30px; padding: 0 14px; border: 1px solid " + t.k + "; border-radius: 4px; background: " + t.k + "; color: " + t.p + "; font: inherit; display: flex; gap: 8px; align-items: center"
