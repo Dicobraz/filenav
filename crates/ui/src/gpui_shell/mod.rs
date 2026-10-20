@@ -141,8 +141,8 @@ pub struct CoreHost {
     input: input::Input,
     out: Vec<Command>,
     /// Панели — кэшируемые view (G-07) и отпечатки их последней отрисовки.
-    panels: [Entity<panel::PanelView>; 2],
-    prints: [u64; 2],
+    panels: [[Entity<panel::PanelView>; 3]; 2],
+    prints: [[u64; 3]; 2],
     /// Табы в заголовке и низ окна — кэшируемые view, отпечатки как у панелей.
     tabs: Entity<chrome::ChromeView>,
     bottom: Entity<chrome::ChromeView>,
@@ -174,9 +174,12 @@ impl CoreHost {
         let menu = menu::Menu::new(core.registry(), None);
         let host = cx.entity().downgrade();
         let panels = [Side::Left, Side::Right].map(|side| {
-            cx.new(|_| panel::PanelView {
-                host: host.clone(),
-                side,
+            [panel::Piece::Head, panel::Piece::List, panel::Piece::Foot].map(|piece| {
+                cx.new(|_| panel::PanelView {
+                    host: host.clone(),
+                    side,
+                    piece,
+                })
             })
         });
         let tabs = cx.new(|_| chrome::ChromeView {
@@ -210,7 +213,7 @@ impl CoreHost {
             input: input::Input::new(keys),
             out: Vec::new(),
             panels,
-            prints: [0; 2],
+            prints: [[0; 3]; 2],
             tabs,
             bottom,
             chrome_prints: [0; 2],
@@ -905,8 +908,31 @@ impl Render for CoreHost {
                 );
             }
             // Изменилась — рисуется заново (без кэша в этом кадре), иначе кадр из кэша.
-            let print = panel::fingerprint(s, side, self.grid[i], dark, self.field.as_ref());
-            let card = cached(&self.panels[i], print, &mut self.prints[i]);
+            let t = s.panel(side).tab();
+            let files = t.mode == urfin_core::PanelMode::Files;
+            let mut card = panel::card(s.active == side, &self.theme);
+            for (k, piece) in [panel::Piece::Head, panel::Piece::List, panel::Piece::Foot]
+                .into_iter()
+                .enumerate()
+            {
+                let slot = match piece {
+                    panel::Piece::Head if files => div()
+                        .flex_none()
+                        .h(px(panel::head_h(&self.theme, t.view_mode))),
+                    panel::Piece::Foot if files => {
+                        div().flex_none().h(px(self.theme.m(Metric::HPanelFooter)))
+                    }
+                    panel::Piece::List => div().flex_1().min_h_0(),
+                    _ => continue,
+                };
+                let print =
+                    panel::fingerprint(s, side, piece, self.grid[i], dark, self.field.as_ref());
+                card = card.child(slot.flex().child(cached(
+                    &self.panels[i][k],
+                    print,
+                    &mut self.prints[i][k],
+                )));
+            }
             panels = panels.child(div().w(px(w)).flex_none().h_full().flex().child(card));
         }
         let prompt = s.prompts.active().map(|p| {

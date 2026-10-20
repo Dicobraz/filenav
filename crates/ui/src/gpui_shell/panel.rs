@@ -66,11 +66,23 @@ impl Listen {
     }
 }
 
-/// Панель — своя view: окно кладёт её кэшированной (`cached`), и кадр, где она не
-/// менялась, gpui повторяет без раскладки и отрисовки (G-07). Рисует из состояния хоста.
+/// Часть панели — своя view: окно кладёт её кэшированной (`cached`), и кадр, где она не
+/// менялась, gpui повторяет без раскладки и отрисовки (G-07). При листании меняется
+/// только список; путь, шапка колонок и подвал берутся из кэша.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Piece {
+    /// Путь и шапка колонок.
+    Head,
+    /// Строки (или дерево, «Сведения», просмотр).
+    List,
+    /// Итоги, быстрый поиск, аккорд.
+    Foot,
+}
+
 pub(super) struct PanelView {
     pub host: WeakEntity<CoreHost>,
     pub side: Side,
+    pub piece: Piece,
 }
 
 impl Render for PanelView {
@@ -82,24 +94,44 @@ impl Render for PanelView {
         let Some(core) = h.core.as_ref() else {
             return div();
         };
-        let (rows, cols) = h.grid[usize::from(self.side == Side::Right)];
-        panel(
-            core.state(),
-            self.side,
-            &h.theme,
-            rows,
-            cols,
-            h.field.as_ref(),
-            &Listen(self.host.clone()),
-        )
+        let s = core.state();
+        let side = self.side;
+        let t = s.panel(side).tab();
+        let theme = &h.theme;
+        let l = Listen(self.host.clone());
+        let (rows, cols) = h.grid[usize::from(side == Side::Right)];
+        let body = div().size_full().flex().flex_col();
+        match self.piece {
+            Piece::Head => body
+                .child(path_bar(t, side, theme, h.field.as_ref(), &l))
+                .when(matches!(t.view_mode, ViewMode::Full), |d| {
+                    d.child(col_header(side, theme, &l))
+                }),
+            // Дерево, «Сведения», просмотр (S2 §2.4–2.5).
+            Piece::List if t.mode != urfin_core::PanelMode::Files => {
+                body.child(super::views::body(s, side, theme, rows))
+            }
+            Piece::List => body.child(list(
+                t,
+                side,
+                s.active == side,
+                theme,
+                rows,
+                cols,
+                h.field.as_ref(),
+                &l,
+            )),
+            Piece::Foot => body.child(footer(s, t, side, s.active == side, theme)),
+        }
     }
 }
 
-/// Отпечаток всего, что рисует панель: изменился — панель рисуется заново, иначе
-/// кадр берётся из кэша gpui. Ввод в поле внутри панели помечает её сам (предок поля).
+/// Отпечаток всего, что рисует часть панели: изменился — часть рисуется заново, иначе
+/// кадр берётся из кэша gpui. Ввод в поле внутри части помечает её сам (предок поля).
 pub(super) fn fingerprint(
     s: &AppState,
     side: Side,
+    piece: Piece,
     grid: (u32, u32),
     dark: bool,
     field: Option<&super::field::Field>,
@@ -108,46 +140,39 @@ pub(super) fn fingerprint(
     let mut h = std::hash::DefaultHasher::new();
     let t = s.panel(side).tab();
     let active = s.active == side;
-    (side == Side::Right, active, grid, dark, urfin_i18n::epoch()).hash(&mut h);
-    (t.id.0, t.rev, t.cursor.row, t.cursor.top, t.rows()).hash(&mut h);
-    (t.selection.len(), t.selection.bytes()).hash(&mut h);
+    (side == Side::Right, dark, urfin_i18n::epoch(), t.id.0).hash(&mut h);
     format!("{:?}{:?}", t.view_mode, t.mode).hash(&mut h);
-    if t.mode != urfin_core::PanelMode::Files {
-        // Дерево, «Сведения», просмотр смотрят и на другую панель.
-        s.rev.hash(&mut h);
-    }
     if let Some(f) = field {
         format!("{:?}{}", f.key, f.input.entity_id()).hash(&mut h);
     }
-    if let Some(k) = s.ext.get::<urfin_keymap::KeymapView>() {
-        if let Some(q) = k.qs.as_ref().filter(|q| q.side == side) {
-            format!("{q:?}").hash(&mut h);
+    match piece {
+        Piece::Head => format!("{:?}", t.loc).hash(&mut h),
+        Piece::List => {
+            (active, grid, t.rev, t.cursor.row, t.cursor.top, t.rows()).hash(&mut h);
+            (t.selection.len(), t.selection.bytes()).hash(&mut h);
+            if t.mode != urfin_core::PanelMode::Files {
+                // Дерево, «Сведения», просмотр смотрят и на другую панель.
+                s.rev.hash(&mut h);
+            }
         }
-        if active {
-            k.pending.hash(&mut h);
+        Piece::Foot => {
+            (active, t.rev, t.selection.len(), t.selection.bytes()).hash(&mut h);
+            if let Some(k) = s.ext.get::<urfin_keymap::KeymapView>() {
+                if let Some(q) = k.qs.as_ref().filter(|q| q.side == side) {
+                    format!("{q:?}").hash(&mut h);
+                }
+                if active {
+                    k.pending.hash(&mut h);
+                }
+            }
         }
     }
     h.finish()
 }
 
-/// Карточка панели.
-pub(super) fn panel(
-    s: &AppState,
-    side: Side,
-    theme: &Theme,
-    rows: u32,
-    cols: u32,
-    field: Option<&super::field::Field>,
-    cx: &Listen,
-) -> Div {
-    let active = s.active == side;
-    let t = s.panel(side).tab();
-    let border = if active {
-        Role::AccentFill
-    } else {
-        Role::StrokeCard
-    };
-    let card = div()
+/// Карточка панели (рамка активной — акцентом); части кладёт окно.
+pub(super) fn card(active: bool, theme: &Theme) -> Div {
+    div()
         .flex_1()
         .min_w_0()
         .h_full()
@@ -156,18 +181,22 @@ pub(super) fn panel(
         .overflow_hidden()
         .rounded(px(theme.m(Metric::RadiusOverlay)))
         .border_1()
-        .border_color(theme.c(border))
-        .bg(theme.c(Role::LayerPanel));
-    // Дерево, «Сведения», просмотр (S2 §2.4–2.5).
-    if t.mode != urfin_core::PanelMode::Files {
-        return card.child(super::views::body(s, side, theme, rows));
-    }
-    card.child(path_bar(t, side, theme, field, cx))
-        .when(matches!(t.view_mode, ViewMode::Full), |d| {
-            d.child(col_header(side, theme, cx))
-        })
-        .child(list(t, side, active, theme, rows, cols, field, cx))
-        .child(footer(s, t, side, active, theme))
+        .border_color(theme.c(if active {
+            Role::AccentFill
+        } else {
+            Role::StrokeCard
+        }))
+        .bg(theme.c(Role::LayerPanel))
+}
+
+/// Высота шапки панели: путь и, в Full, строка колонок.
+pub(super) fn head_h(theme: &Theme, mode: ViewMode) -> f32 {
+    theme.m(Metric::HBreadcrumb)
+        + if matches!(mode, ViewMode::Full) {
+            theme.m(Metric::HColHeader)
+        } else {
+            0.0
+        }
 }
 
 /// Сегменты пути от корня: (подпись, путь до него включительно).
