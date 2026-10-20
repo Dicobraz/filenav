@@ -67,6 +67,8 @@ SHOTS = [
     ("theme-turquoise", {"theme": "turquoise"}),
     ("theme-grass", {"theme": "grass"}),
     ("theme-sepia", {"theme": "sepia"}),
+    ("screen-menu", {"screen": "menu"}),
+    ("screen-quick", {"screen": "quick"}),
     ("screen-copy", {"screen": "copy"}),
     ("screen-delete", {"screen": "delete"}),
     ("screen-conflict", {"screen": "conflict"}),

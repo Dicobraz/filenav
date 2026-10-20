@@ -53,7 +53,7 @@ body{margin:0}
 <sc-if value="{{r.isFile}}" hint-placeholder-val="{{ true }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z M9.5 1.5v3h3" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></sc-if>
 </span>
 </sc-if>
-{{r.name}}
+<span style="overflow: hidden; text-overflow: ellipsis">{{r.n1}}<span style="{{r.hlStyle}}">{{r.n2}}</span>{{r.n3}}</span>
 </span>
 <span style="width: 92px; text-align: right">{{r.size}}</span>
 <span style="width: 120px; text-align: right; color: {{r.dateColor}}">{{r.date}}</span>
@@ -234,6 +234,24 @@ body{margin:0}
 </div>
 </div>
 </sc-if>
+<sc-if value="{{isMenu}}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; left: 0; right: 0; top: 0; height: 30px; display: flex; align-items: center; gap: 2px; padding: 0 8px; background: {{t.h}}; border-bottom: 1px solid {{t.b}}">
+<sc-for list="{{menuBar}}" as="m" hint-placeholder-count="5"><button type="button" style="{{m.style}}">{{m.label}}</button></sc-for>
+</div>
+<div style="position: absolute; left: 78px; top: 34px; width: 330px; padding: 4px; box-sizing: border-box; background: {{t.p}}; border: 1px solid {{t.b}}; border-radius: 6px; display: flex; flex-direction: column">
+<sc-for list="{{menuItems}}" as="mi" hint-placeholder-count="14">
+<sc-if value="{{mi.sep}}" hint-placeholder-val="{{ false }}"><div style="height: 1px; margin: 4px 6px; background: {{t.b}}"></div></sc-if>
+<sc-if value="{{mi.item}}" hint-placeholder-val="{{ true }}"><button type="button" style="{{mi.style}}"><span style="flex: 1; text-align: left">{{mi.label}}</span><span style="{{mi.keyStyle}}">{{mi.key}}</span></button></sc-if>
+</sc-for>
+</div>
+</sc-if>
+<sc-if value="{{isQuick}}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; left: 0; right: calc(50% + 0.5px); bottom: 0; height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: {{t.h}}; border-top: 2px solid {{t.a}}">
+<span style="display: inline-flex; color: {{t.s}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.5" fill="none" stroke="currentColor" stroke-width="1.2"></circle><path d="M10 10l4 4" stroke="currentColor" stroke-width="1.2"></path></svg></span>
+<span style="font-family: 'Cascadia Mono', Consolas, monospace; font-size: 12.5px">car<span style="display: inline-block; width: 2px; height: 15px; margin-left: 1px; vertical-align: -3px; background: {{t.a}}"></span></span>
+<span style="margin-left: auto; color: {{t.s}}; font-size: 12px">2 совпадения · 1-е</span>
+</div>
+</sc-if>
 <sc-if value="{{isDelete}}" hint-placeholder-val="{{ false }}">
 <div style="position: absolute; left: 0; right: calc(50% + 0.5px); bottom: 0; padding: 10px 14px; display: flex; align-items: center; gap: 10px; background: {{t.h}}; border-top: 2px solid {{t.k}}">
 <span style="display: inline-flex; color: {{t.k}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11 M6 4V2.5h4V4 M4 4l.7 9.5h6.6L12 4 M6.5 6.5v5 M9.5 6.5v5" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></span>
@@ -306,7 +324,7 @@ body{margin:0}
 </sc-if>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark","blue","turquoise","grass","sepia"],"default":"light"},"screen":{"editor":"enum","options":["panels","copy","delete","conflict","progress","search","viewer","editor","settings"],"default":"panels"},"density":{"editor":"enum","options":["20","24","28"],"default":"24"},"icons":{"editor":"enum","options":["none","mono","color"],"default":"mono"},"context":{"editor":"enum","options":["none","admin","remote"],"default":"none"},"$preview":{"width":1280,"height":760}}'>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark","blue","turquoise","grass","sepia"],"default":"light"},"screen":{"editor":"enum","options":["panels","menu","quick","copy","delete","conflict","progress","search","viewer","editor","settings"],"default":"panels"},"density":{"editor":"enum","options":["20","24","28"],"default":"24"},"icons":{"editor":"enum","options":["none","mono","color"],"default":"mono"},"context":{"editor":"enum","options":["none","admin","remote"],"default":"none"},"$preview":{"width":1280,"height":760}}'>
 class Component extends DCLogic {
 renderVals() {
 const TH = {
@@ -346,7 +364,8 @@ const L = [["..","up","",""],[".github","d","","12.10.26 09:14"],["crates","d","
 const R = [["..","up","",""],["archive","d","","03.10.26 16:22"],["clients","d","","18.10.26 12:40"],["templates","d","","11.09.26 09:05"],["budget_2027.xlsx","f","412 КБ","17.10.26 18:31"],["contract_draft.docx","f","96 КБ","16.10.26 11:47"],["logo.svg","f","6,4 КБ","22.07.26 10:00"],["meeting_notes.txt","f","2,1 КБ","20.10.26 10:15"],["presale_kit.pdf","f","3,2 МБ","14.10.26 15:58"],["report_q3.xlsx","f","88 КБ","09.10.26 19:12"],["setup.msi","x","9,7 МБ","19.10.26 23:12"],["backup_1019.7z","a","1,4 ГБ","19.10.26 02:00"]];
 const isCopy = screen === "copy";
 const marked = isCopy ? [5, 7, 11] : (screen === "delete" ? [5, 7] : []);
-const cur = isCopy ? 11 : (screen === "delete" ? 7 : 6);
+const cur = isCopy ? 11 : (screen === "delete" ? 7 : (screen === "quick" ? 5 : 6));
+const qs = screen === "quick" ? "car" : "";
 const kindColor = {up:t.t,d:t.t,f:t.t,m:t.k,x:t.ex,a:t.ar};
 const rows = (list, c) => list.map((q, i) => {
 const kind = q[1], isC = i === c, isM = marked.indexOf(i) >= 0 && c >= 0;
@@ -354,6 +373,8 @@ const col = isC ? t.ct : (isM ? t.a : kindColor[kind]);
 const iconCol = isC ? t.ct : (iconMode === "color" ? (kind === "d" || kind === "up" ? t.a : kindColor[kind]) : t.s);
 return {
 name: q[0], size: kind === "d" ? "<DIR>" : q[2], date: q[3],
+n1: qs && c >= 0 && q[0].toLowerCase().indexOf(qs) === 0 ? "" : q[0], n2: qs && c >= 0 && q[0].toLowerCase().indexOf(qs) === 0 ? q[0].slice(0, qs.length) : "", n3: qs && c >= 0 && q[0].toLowerCase().indexOf(qs) === 0 ? q[0].slice(qs.length) : "",
+hlStyle: "background: " + t.hl + "; color: " + t.t + "; border-radius: 2px",
 isUp: kind === "up", isDir: kind === "d", isFile: kind !== "up" && kind !== "d",
 weight: (kind === "d" || kind === "up" || isM) ? 500 : 400,
 iconColor: iconCol, dateColor: isC ? t.ct : t.s,
@@ -460,6 +481,7 @@ const iconOpts = [["none","Без иконок"],["mono","Монохромные
 const STATUS = {
 panels: ["Cargo.toml · 1,2 КБ · 19.10.26 22:40","Выделено 1 из 16 · 1,2 КБ","C: 214 ГБ свободно"],
 copy: ["README.md · 4,8 КБ · 17.10.26 21:33","Выделено 3 из 16 · 72,5 КБ","C: 214 ГБ свободно"],
+quick: ["Cargo.lock · 58,3 КБ · 20.10.26 13:50","Выделено 0 из 16","C: 214 ГБ свободно"],
 search: ["Поиск «spawn_blocking» в C:\\Dev\\urfin\\crates","9 совпадений","готово за 0,4 с"],
 viewer: ["Стр 1–27 из 212 · 13 %","5 отметок «Исправлено»","9,4 КБ · UTF-8 · CRLF"],
 editor: ["Стр 6, Кол 18","41 строка","TOML · Пробелы: 4 · UTF-8 · LF · Вставка"],
@@ -467,6 +489,8 @@ settings: ["%APPDATA%\\Urfin\\settings.toml","","Применяется сраз
 delete: ["CHANGELOG.md · 9,4 КБ · 18.10.26 17:05","Выделено 2 из 16 · 67,7 КБ","C: 214 ГБ свободно"]
 };
 const KEYS = {
+menu: [["← →","Меню"],["↑ ↓","Пункт"],["Enter","Выбрать"],["Esc","Закрыть"]],
+quick: [["Ctrl+Enter","Следующее"],["Ctrl+Shift+Enter","Предыдущее"],["Enter","Открыть"],["Esc","Закрыть"]],
 panels: [["F1","Помощь"],["F2","Меню"],["F3","Смотр"],["F4","Ред"],["F5","Коп"],["F6","Перен"],["F7","Папка"],["F8","Удал"],["F9","Конф"],["F10","Выход"]],
 copy: [["Tab","Следующее поле"],["Alt+↓","История путей"]],
 delete: [["Ins","Изменить отметку"],["Tab","Следующая кнопка"]],
@@ -482,12 +506,14 @@ return {
 t, icons, ctx, tabs, panels, results, preview, viewLines, editLines, mini, viewportStyle, foldCol, gutterStyle, marks, tagStyle, segOn: segBtn(true), segOff: segBtn(false), nav, cards, densOpts, iconOpts, followOs, keys, keybarStyle,
 toggleOs: () => this.setState({ followOs: !followOs }),
 status: STATUS[screen] || STATUS.panels,
-isPanels: ["panels","copy","delete","conflict","progress"].indexOf(screen) >= 0,
-isDelete: screen === "delete", isConflict: screen === "conflict",
+isPanels: ["panels","menu","quick","copy","delete","conflict","progress"].indexOf(screen) >= 0,
+isDelete: screen === "delete", isConflict: screen === "conflict", isMenu: screen === "menu", isQuick: screen === "quick",
+menuBar: ["Левая","Файлы","Команды","Параметры","Правая"].map((label, i) => ({ label, style: "height: 24px; padding: 0 12px; border: 0; border-radius: 4px; font: inherit; background: " + (i === 1 ? t.c : "transparent") + "; color: " + (i === 1 ? t.ct : t.t) + "; font-weight: " + (i === 1 ? 500 : 400) })),
+menuItems: [["Просмотр","F3"],["Редактировать","F4"],["Копировать","F5"],["Переместить или переименовать","F6"],["Создать папку","F7"],["Удалить","F8"],null,["Отметить группу","Num +"],["Снять отметку с группы","Num −"],["Инвертировать отметку","Num *"],null,["Атрибуты и права","Ctrl+A"],["Сравнить каталоги","›"],["Свойства","Alt+Enter"]].map((m, i) => m ? ({ item: true, sep: false, label: m[0], key: m[1], keyStyle: "font-size: 12px; color: " + (i === 2 ? t.ct : t.s), style: "height: 28px; display: flex; align-items: center; gap: 16px; padding: 0 10px; border: 0; border-radius: 4px; font: inherit; background: " + (i === 2 ? t.c : "transparent") + "; color: " + (i === 2 ? t.ct : t.t) }) : ({ item: false, sep: true })),
 showJobs: screen === "progress" || screen === "conflict",
 jobs: (screen === "conflict" ? [["Копирование","3 объекта → \\\\fs01\\share\\presale",35,"ждёт ответа: конфликт 4 из 12",t.rem,"Пауза"]] : [["Копирование","48 файлов → \\\\fs01\\share\\presale",35,"1,2 из 3,4 ГБ · 48 МБ/с · ещё 47 с",t.a,"Пауза"],["Удаление","target\\debug → Корзина",70,"9 012 из 12 870 · ещё 4 с",t.a,"Пауза"]]).map(([name, what, pct, info, col, act]) => ({ name, what, info, act, infoColor: col === t.a ? t.s : col, bar: "height: 100%; width: " + pct + "%; background: " + col })),
 isCopy, isSearch: screen === "search", isViewer: screen === "viewer", isEditor: screen === "editor", isSettings: screen === "settings",
-showCli: ["panels","copy","delete","conflict","progress","search"].indexOf(screen) >= 0,
+showCli: ["panels","menu","quick","copy","delete","conflict","progress","search"].indexOf(screen) >= 0,
 showToast: screen === "panels",
 inputStyle, chipOn: chip(true), chipOff: chip(false), btn, btnPrimary,
 btnDanger: "height: 30px; padding: 0 14px; border: 1px solid " + t.k + "; border-radius: 4px; background: " + t.k + "; color: " + t.p + "; font: inherit; display: flex; gap: 8px; align-items: center"
