@@ -1,0 +1,155 @@
+//! Движок job (S5 §3, S5-04): координатор и воркеры на выделенных потоках
+//! (`Runtime::spawn_dedicated`, S0 v2 №7), ограниченная очередь работ с
+//! бэкпрешером, пауза и отмена через `JobHandle::checkpoint`, прогресс с фазой
+//! (S0 v2 №9), Finalizer каталогов в post-order, отчёт и `panel.refresh`
+//! затронутых табов не чаще 1 раза в секунду (S0 v2 №14).
+//!
+//! Операцию описывает [`OpExec`]: `plan` в потоке координатора ставит работы в
+//! очередь, воркеры выполняют `exec`, `finalize_dir` закрывает каталог после
+//! всех его детей. Обход (S5-05) и сами операции (S5-06…) — поверх движка;
+//! число воркеров по носителю и AIMD — S5-19, здесь N фиксировано на job.
+//!
+//! Потоки: координатор `ops-job-N` и воркеры `ops-wN-i`; все завершаются вместе
+//! с job, воркеров всех job не больше `ops.max_threads` ([`ThreadBudget`]).
+
+mod finalize;
+mod job;
+mod sched;
+mod worker;
+
+#[cfg(test)]
+mod tests;
+
+use std::collections::VecDeque;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use urfin_core::{Cancelled, Cx, JobId, JobRegistry, JobSpec, Location};
+
+use crate::api::{FailedItem, Report};
+
+pub(crate) use finalize::DirNode;
+pub(crate) use job::{ExecCx, Plan};
+pub(crate) use sched::ThreadBudget;
+
+/// Ёмкость очереди работ (S5 §0: бэкпрешер, память ограничена при любом дереве).
+pub(crate) const QUEUE_CAP: usize = 64 * 1024;
+
+/// Операция для движка. Реализация — `Sync`: `exec` зовут воркеры параллельно.
+pub(crate) trait OpExec: Send + Sync + Sized + 'static {
+    /// Работа воркера: файл или пачка мелких файлов.
+    type Item: Send + 'static;
+    /// Данные каталога для Finalizer (имя, исходные times/attrs и т.п.).
+    type Dir: Send + Sync + 'static;
+
+    /// План в потоке координатора: обход и постановка работ ([`Plan::push`]
+    /// блокируется на полной очереди). `Err` — job `Failed` (или `Cancelled`).
+    fn plan(&self, p: &mut Plan<'_, Self>) -> Result<(), PlanError>;
+
+    /// Одна работа в воркере. Байты — [`ExecCx::add_bytes`] по ходу;
+    /// [`ExecCx::checkpoint`] — между чанками.
+    fn exec(&self, work: &Work<Self>, cx: &ExecCx<'_>) -> ItemResult;
+
+    /// Каталог после всех детей (post-order, поток координатора).
+    /// [`DirNode::clean`] — среди детей нет пропущенных и неудачных.
+    fn finalize_dir(&self, dir: &DirNode<Self::Dir>, cx: &ExecCx<'_>) -> ItemResult;
+}
+
+/// Работа в очереди: элемент и каталог, которому он принадлежит.
+pub(crate) struct Work<E: OpExec> {
+    pub item: E::Item,
+    pub parent: Option<Arc<DirNode<E::Dir>>>,
+}
+
+/// Итог работы воркера или Finalizer.
+#[derive(Debug)]
+pub(crate) enum ItemResult {
+    Done,
+    Skipped,
+    Failed(FailedItem),
+    /// Прервано отменой посреди работы: не считается, воркер выходит.
+    Cancelled,
+}
+
+/// Ошибка плана.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum PlanError {
+    #[error("cancelled")]
+    Cancelled,
+    #[error("{0}")]
+    Failed(Arc<str>),
+}
+
+impl From<Cancelled> for PlanError {
+    fn from(_: Cancelled) -> Self {
+        PlanError::Cancelled
+    }
+}
+
+/// Запуск job: общий потолок потоков и счётчик живых потоков движка.
+/// Живёт в handler `ops` (UI-поток).
+#[derive(Debug)]
+pub(crate) struct JobEngine {
+    budget: Arc<ThreadBudget>,
+    live: Arc<AtomicUsize>,
+}
+
+impl JobEngine {
+    pub(crate) fn new(max_threads: u16) -> JobEngine {
+        JobEngine {
+            budget: ThreadBudget::new(max_threads),
+            live: Arc::default(),
+        }
+    }
+
+    /// Из handler (UI-поток, без I/O): регистрирует job и запускает координатор
+    /// и `workers` воркеров (сколько даст потолок; 0 свободных — job `Queued`
+    /// до освобождения).
+    pub(crate) fn start<E: OpExec>(
+        &self,
+        cx: &mut Cx<'_>,
+        spec: JobSpec,
+        workers: u16,
+        exec: E,
+    ) -> JobId {
+        job::start(self, cx, spec, workers.max(1), exec)
+    }
+
+    /// Живых потоков движка (координаторы и воркеры всех job).
+    pub(crate) fn live_threads(&self) -> usize {
+        self.live.load(Ordering::SeqCst)
+    }
+}
+
+/// Отчёты последних завершённых job (`AppState.ext`, S0 v2 №10): столько же,
+/// сколько завершённых хранит `JobRegistry` (S1 §7.1), — для `ops.retry` и истории.
+#[derive(Debug, Default)]
+pub(crate) struct Reports(VecDeque<(JobId, Arc<Report>)>);
+
+impl Reports {
+    pub(crate) fn get(&self, id: JobId) -> Option<&Arc<Report>> {
+        self.0.iter().find(|(j, _)| *j == id).map(|(_, r)| r)
+    }
+
+    fn put(&mut self, id: JobId, r: Arc<Report>) {
+        if self.0.len() == JobRegistry::KEEP_FINISHED {
+            self.0.pop_front();
+        }
+        self.0.push_back((id, r));
+    }
+}
+
+/// UI-поток: `panel.refresh` табов, показывающих затронутые каталоги.
+fn refresh_tabs(cx: &mut Cx<'_>, dirs: &[Location]) {
+    let tabs: Vec<i64> = cx
+        .state
+        .panels
+        .iter()
+        .flat_map(|p| p.tabs.iter())
+        .filter(|t| dirs.contains(&t.loc))
+        .map(|t| i64::from(t.id.0))
+        .collect();
+    for id in tabs {
+        cx.dispatch(urfin_core::Command::new("panel.refresh").arg("tab", id));
+    }
+}
