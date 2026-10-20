@@ -6,13 +6,31 @@ use compact_str::CompactString;
 use smallvec::SmallVec;
 use urfin_core::{Location, OverlayKind, PromptId, Side, TabId};
 
-/// Тема окна (`ui.theme`).
+/// Тема окна (`ui.theme`, `[ui] theme`).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
 pub enum ThemeMode {
     #[default]
     System,
     Light,
     Dark,
+}
+
+impl ThemeMode {
+    /// `system | light | dark` без учёта регистра.
+    pub fn parse(s: &str) -> Option<ThemeMode> {
+        [ThemeMode::System, ThemeMode::Light, ThemeMode::Dark]
+            .into_iter()
+            .find(|m| s.trim().eq_ignore_ascii_case(m.as_str()))
+    }
+
+    /// Имя в конфиге и в аргументе `mode`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ThemeMode::System => "system",
+            ThemeMode::Light => "light",
+            ThemeMode::Dark => "dark",
+        }
+    }
 }
 
 /// Строка ввода аргумента команды (`ui.draft`): F7 → `ops.mkdir name`.
@@ -57,7 +75,7 @@ pub struct UiState {
     /// Свёрнутые вопросы (`ui.prompt.hide`).
     pub prompt_hidden: SmallVec<[PromptId; 4]>,
     pub jobs_expanded: bool,
-    /// Тема командой `ui.theme`; `None` — из `[ui] theme`.
+    /// Тема: `[ui] theme` при загрузке конфига, затем `ui.theme`; `None` — как в ОС.
     pub theme: Option<ThemeMode>,
     /// Масштаб в процентах (`ui.zoom`), 100 — без масштаба.
     pub zoom: u16,

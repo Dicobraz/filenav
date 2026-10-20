@@ -2,8 +2,9 @@
 source: crates/core/src/config.rs
 expression: DEFAULT_TEMPLATE
 ---
-# Urfin settings. The app only reads this file; edit it and run
-# "Reload configuration" (app.reload_config) or restart.
+# Urfin settings. Edit this file and run "Reload configuration"
+# (app.reload_config) or restart. Settings changed in the app (theme, language, zoom,
+# panel split, key bindings preset) are written here; comments are kept.
 # Unknown sections are kept for other components ([ui], [keymap], [vfs], [ops], [term], [viewer]).
 
 version = 1

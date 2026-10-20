@@ -7,7 +7,12 @@
 pub mod api;
 pub mod config;
 pub mod dest;
+// Подключается к командам в S5-06…S5-10; до тех пор — только тесты.
+#[cfg_attr(not(test), allow(dead_code))]
+mod engine;
 mod handler;
+pub mod names;
+pub mod ops;
 pub mod sys;
 
 pub use api::{

@@ -16,6 +16,27 @@ pub enum Open {
     Reveal,
 }
 
+/// Переименовать без замены существующего (`AlreadyExists`). `case_only` — та же
+/// запись другим регистром.
+pub fn rename(
+    src: &std::path::Path,
+    dst: &std::path::Path,
+    case_only: bool,
+) -> std::io::Result<()> {
+    #[cfg(windows)]
+    {
+        let _ = case_only;
+        windows::rename_noreplace(src, dst)
+    }
+    #[cfg(not(windows))]
+    {
+        if !case_only && std::fs::symlink_metadata(dst).is_ok() {
+            return Err(std::io::Error::from(std::io::ErrorKind::AlreadyExists));
+        }
+        std::fs::rename(src, dst)
+    }
+}
+
 /// Открыть файл средствами ОС. Вызывать вне UI-потока: `ShellExecute` может ждать.
 pub fn open(path: &std::path::Path, how: Open) -> std::io::Result<()> {
     #[cfg(windows)]

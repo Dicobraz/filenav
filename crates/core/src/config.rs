@@ -1,5 +1,7 @@
-//! `config.toml` (S1 §2.8, ADR-0005 «Изменения задач»): пользователь хозяин файла,
-//! приложение только читает. Ошибки не мешают старту: дефолты + предупреждения.
+//! `config.toml` (S1 §2.8, ADR-0005 «Изменения задач»): пользователь хозяин файла.
+//! Приложение читает его целиком, а меняет только отдельные ключи — настройки из UI
+//! с сохранением комментариев ([`crate::settings`], S2-22). Ошибки не мешают старту:
+//! дефолты + предупреждения.
 
 use std::fmt;
 use std::fs;
@@ -137,8 +139,9 @@ impl fmt::Display for ConfigWarning {
 }
 
 /// Шаблон `config.toml` по умолчанию; разбирается ровно в `Config::default()`.
-pub const DEFAULT_TEMPLATE: &str = r#"# Urfin settings. The app only reads this file; edit it and run
-# "Reload configuration" (app.reload_config) or restart.
+pub const DEFAULT_TEMPLATE: &str = r#"# Urfin settings. Edit this file and run "Reload configuration"
+# (app.reload_config) or restart. Settings changed in the app (theme, language, zoom,
+# panel split, key bindings preset) are written here; comments are kept.
 # Unknown sections are kept for other components ([ui], [keymap], [vfs], [ops], [term], [viewer]).
 
 version = 1
@@ -186,7 +189,7 @@ impl Config {
     /// - нет файла — дефолты без предупреждений;
     /// - битый TOML — дефолты, предупреждение, файл не трогается;
     /// - старая `version` — миграции, бэкап `config.toml.v{N}.bak`, перезапись
-    ///   (комментарии при перезаписи теряются; запись с сохранением — S2);
+    ///   (комментарии при перезаписи теряются; ключи из UI пишет `settings` с ними);
     /// - будущая `version` — чтение как есть, предупреждение, файл не трогается;
     /// - ошибка в секции core — дефолт этой секции и предупреждение.
     ///

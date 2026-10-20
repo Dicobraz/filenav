@@ -1,4 +1,5 @@
 //! Секция `[ui]` конфига (S2 §4). Читается через `Config::section::<UiCfg>("ui")`;
+//! `theme`, `zoom`, `split`, `columns` пишут команды `ui.*` (S2-22, `urfin_core::settings`);
 //! неверная секция целиком — дефолт и предупреждение core, неверные значения токенов
 //! и раскраски — предупреждения [`crate::tokens::Tokens::build`] и
 //! [`crate::highlight::Highlighter::build`].
@@ -66,6 +67,12 @@ pub struct UiCfg {
     pub date_format: String,
     pub keybar: bool,
     pub animations: bool,
+    /// Масштаб, % (`ui.zoom`; 50–300).
+    pub zoom: u16,
+    /// Доля левой панели (`ui.split`; 0,1–0,9).
+    pub split: f32,
+    /// Набор Custom columns (`ui.columns`, M2+); нет — набор по режиму вида.
+    pub columns: Option<String>,
     pub tokens: TokenOverrides,
     #[serde(alias = "highlight")]
     pub colors: Vec<ColorRule>,
@@ -88,6 +95,9 @@ impl Default for UiCfg {
             date_format: "auto".into(),
             keybar: true,
             animations: false,
+            zoom: 100,
+            split: 0.5,
+            columns: None,
             tokens: TokenOverrides::default(),
             colors: Vec::new(),
         }
