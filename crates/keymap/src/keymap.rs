@@ -824,7 +824,7 @@ fn value(v: &toml::Value) -> Result<Value, String> {
 
 /// Запрещённые сочетания: `Reserved` (S3 §4), `AltGrRisk` (Windows, Ctrl+Alt+печатная).
 fn forbidden(s: Stroke, os: Os) -> Option<WarnKind> {
-    use egui::Key as K;
+    use crate::ev::Key as K;
     let m = s.mods;
     let ctrl = m.intersects(Mods::CTRL | Mods::LCTRL | Mods::RCTRL);
     let alt = m.intersects(Mods::ALT | Mods::LALT | Mods::RALT);
@@ -882,8 +882,8 @@ fn forbidden(s: Stroke, os: Os) -> Option<WarnKind> {
     None
 }
 
-fn fkey(k: egui::Key) -> Option<u8> {
-    use egui::Key as K;
+fn fkey(k: crate::ev::Key) -> Option<u8> {
+    use crate::ev::Key as K;
     const F: [K; 12] = [
         K::F1,
         K::F2,
@@ -904,24 +904,24 @@ fn fkey(k: egui::Key) -> Option<u8> {
 }
 
 /// Печатная клавиша: буквы, цифры, знаки основного блока.
-fn printable(k: egui::Key) -> bool {
+fn printable(k: crate::ev::Key) -> bool {
     let name = k.name();
     let single = name.chars().count() == 1;
     single
         || matches!(
             k,
-            egui::Key::Minus
-                | egui::Key::Plus
-                | egui::Key::Equals
-                | egui::Key::OpenBracket
-                | egui::Key::CloseBracket
-                | egui::Key::Backslash
-                | egui::Key::Semicolon
-                | egui::Key::Quote
-                | egui::Key::Comma
-                | egui::Key::Period
-                | egui::Key::Slash
-                | egui::Key::Backtick
+            crate::ev::Key::Minus
+                | crate::ev::Key::Plus
+                | crate::ev::Key::Equals
+                | crate::ev::Key::OpenBracket
+                | crate::ev::Key::CloseBracket
+                | crate::ev::Key::Backslash
+                | crate::ev::Key::Semicolon
+                | crate::ev::Key::Quote
+                | crate::ev::Key::Comma
+                | crate::ev::Key::Period
+                | crate::ev::Key::Slash
+                | crate::ev::Key::Backtick
         )
 }
 

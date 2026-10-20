@@ -118,7 +118,7 @@ URFIN_UPDATE_DOCS=1 cargo nextest run -p urfin-keymap keys_doc -->
 | `Ctrl+Shift+F3` | `viewer.open internal=true` | W M L |
 | `Ctrl+Shift+F4` | `editor.open internal=true` | W M L |
 | `Shift+F5` | `ops.copy current=true` | W M L |
-| `Shift+F6` | `ops.rename` | W M L |
+| `Shift+F6` | `ui.rename` | W M L |
 | `Alt+F6` | `ops.link` | W M L |
 | `Ctrl+Alt+Enter` | `file.open elevated=true` | W M L |
 | `Ctrl+G` | `cmdline.apply` | W M L |
@@ -494,7 +494,7 @@ URFIN_UPDATE_DOCS=1 cargo nextest run -p urfin-keymap keys_doc -->
 | `Alt+S` | `ui.panel.setup` | W M L |
 | `Ctrl+Shift+GrayPlus` | `sel.same by=ext on=true` | W M L |
 | `Ctrl+Shift+GrayMinus` | `sel.same by=ext on=false` | W M L |
-| `Alt+F6` | `ops.rename` | W M L |
+| `Alt+F6` | `ui.rename` | W M L |
 | `Alt+E` | `ops.attrs` | W M L |
 | `Ctrl+Alt+F6` | `ops.multi_rename` | W M |
 | `Ctrl+C` | `ops.compare` | W M L |

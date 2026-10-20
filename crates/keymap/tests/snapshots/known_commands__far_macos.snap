@@ -212,7 +212,7 @@ expression: "effective(&km).join(\"\\n\")"
 [panel] Ctrl+Shift+F3 = viewer.open internal=true (Preset)
 [panel] Ctrl+Shift+F4 = editor.open internal=true (Preset)
 [panel] Shift+F5 = ops.copy current=true (Preset)
-[panel] Shift+F6 = ops.rename (Preset)
+[panel] Shift+F6 = ui.rename (Preset)
 [panel] Alt+F6 = ops.link (Preset)
 [panel] Ctrl+Alt+Enter = file.open elevated=true (Preset)
 [panel] Ctrl+G = cmdline.apply (Preset)

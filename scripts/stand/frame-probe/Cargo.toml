@@ -1,0 +1,22 @@
+[package]
+name = "frame-probe"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Стенд: каждый кадр DWM (Desktop Duplication) в прямоугольнике окна — ловит кадры без полосы курсора"
+
+# Отдельный инструмент стенда, не член рабочей области Urfin.
+[workspace]
+
+[dependencies]
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_HiDpi",
+    "Win32_UI_WindowsAndMessaging",
+] }

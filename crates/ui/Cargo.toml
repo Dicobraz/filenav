@@ -1,6 +1,6 @@
 [package]
 name = "urfin-ui"
-description = "Urfin egui frontend"
+description = "Urfin GPUI frontend"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,21 +8,18 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 
-[features]
-# Демо-экраны S2 §2 (`ui::screens`) для `urfin --screens`; в тестах — всегда.
-screens = []
-
 [dependencies]
 compact_str.workspace = true
-egui.workspace = true
+# Цвета токенов (премультиплицированный sRGB), без egui.
+ecolor.workspace = true
 gpui-kit.workspace = true
+futures.workspace = true
 urfin-core.workspace = true
 urfin-i18n.workspace = true
 urfin-keymap.workspace = true
 urfin-vfs.workspace = true
 rustc-hash.workspace = true
 serde.workspace = true
-raw-window-handle.workspace = true
 smallvec.workspace = true
 # Меню F9: `menu.toml` (S2-14).
 toml.workspace = true
@@ -33,9 +30,13 @@ tracing.workspace = true
 jiff.workspace = true
 
 [target.'cfg(windows)'.dependencies]
+raw-window-handle.workspace = true
 windows-sys = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Graphics_Dwm",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Kernel",
+    "Win32_System_LibraryLoader",
     "Win32_Globalization",
     "Win32_Graphics_Gdi",
     "Win32_Security",
