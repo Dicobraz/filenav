@@ -101,6 +101,17 @@ fn run() -> anyhow::Result<()> {
     }
     let (config, warnings) = Config::load(&paths);
     let t_config = t.elapsed();
+    // `[ui] renderer = "warp"` — программный Direct3D (WARP): переменная для патча gpui,
+    // до логов и Runtime — пока других потоков нет (S0-decisions №50, ADR-0018).
+    let renderer = config
+        .section::<urfin_ui::config::UiCfg>("ui")
+        .0
+        .renderer
+        .trim()
+        .to_ascii_lowercase();
+    if renderer == "warp" {
+        sys::force_warp();
+    }
     let t = Instant::now();
     let _log = boot::init_tracing(&paths, &config.log)?;
     boot::install_panic_hook(&paths);

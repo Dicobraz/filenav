@@ -2898,7 +2898,7 @@ dependencies = [
 [[package]]
 name = "gpui-pre-windows"
 version = "0.3.9"
-source = "git+https://github.com/Dicobraz/pets?rev=73056730825369611a0c5032f6fc355d5307491a#73056730825369611a0c5032f6fc355d5307491a"
+source = "git+https://github.com/Dicobraz/pets?rev=2859b90d3f3140abeeb631b68313d4d8187b76c4#2859b90d3f3140abeeb631b68313d4d8187b76c4"
 dependencies = [
  "accesskit",
  "accesskit_windows",

@@ -8,6 +8,16 @@ mod windows;
 #[allow(unsafe_code, reason = "WinAPI: mutex, named pipe, SID (S1-15)")]
 pub(crate) mod ipc_win;
 
+/// Программный Direct3D (WARP) для окна gpui: `GPUI_FORCE_WARP=1` читает патч
+/// `pets-gpui-windows` при создании устройства. Звать до запуска других потоков.
+pub fn force_warp() {
+    // SAFETY: ранний старт, других потоков ещё нет — гонки с чтением окружения нет.
+    #[allow(unsafe_code, reason = "set_var в edition 2024 — unsafe")]
+    unsafe {
+        std::env::set_var("GPUI_FORCE_WARP", "1");
+    }
+}
+
 /// Коды событий Urfin в журнале Windows.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum EventId {
