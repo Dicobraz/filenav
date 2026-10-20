@@ -18,9 +18,11 @@
 //! существующий — по детям, пустой источник удаляется в Finalizer); другой
 //! том — копия и удаление источника файла сразу после его commit.
 //!
-//! `ConflictPolicy::Ask` (по умолчанию) — пока пропуск с подсчётом в итоговом
-//! тосте: вопросы без модальных окон — S5-07 (TODO S5-07). `DirPolicy::Ask` —
-//! слияние (TODO S5-07).
+//! `ConflictPolicy::Ask` (по умолчанию): файл с занятым именем паркуется, вопрос
+//! задаётся без модального окна, остальное копируется дальше (S5-07, движок —
+//! `engine::park`). Имя заняли после плана — данные уже во временном файле,
+//! «Заменить» — rename без повторной копии. `DirPolicy::Ask` — слияние, как в
+//! Far: вопрос задаётся по файлам внутри.
 
 use std::collections::HashMap;
 use std::ffi::OsString;
@@ -38,12 +40,14 @@ use urfin_core::{
 use urfin_vfs::{ListOpts, LocalFs, Vfs};
 
 use crate::api::{
-    ConflictPolicy, DestMode, DirPolicy, FailedItem, IoClass, ItemOp, LinkMode, OpKind, OpOptions,
-    OpRequest, Preserve, RenameScheme, Report,
+    ConflictPolicy, DestMode, DirPolicy, FailedItem, IoClass, Issue, IssueId, IssueKind, ItemMeta,
+    ItemOp, LinkMode, OpKind, OpOptions, OpRequest, Preserve, RenameScheme, Report, Resolution,
 };
 use crate::dest::{DestError, resolve_dest};
 use crate::engine::walker::{Enter, Visit, Walker, loc};
-use crate::engine::{DirNode, ExecCx, ItemResult, JobEngine, Note, OpExec, Plan, PlanError, Work};
+use crate::engine::{
+    DirNode, ExecCx, ItemResult, JobEngine, Note, OpExec, Plan, PlanError, Resolved, Work,
+};
 use crate::sys::fs as sys;
 
 /// Воркеров на job по умолчанию (носитель и AIMD — S5-19).
@@ -83,7 +87,7 @@ enum How {
 enum Decision {
     Put(How),
     Skip,
-    /// Нужен вопрос (S5-07); пока — пропуск.
+    /// Нужен вопрос: работа паркуется (S5-07).
     Ask,
     /// Файл ↔ каталог.
     Mismatch,
@@ -101,6 +105,8 @@ pub(crate) struct Item {
     how: How,
     /// Перенос в пределах тома: rename вместо копии.
     rename: bool,
+    /// Данные уже во временном файле (имя заняли после плана): только commit.
+    temp: Option<PathBuf>,
 }
 
 /// Каталог для Finalizer.
@@ -185,8 +191,9 @@ pub(crate) struct Transfer {
     tag: String,
     info: OnceLock<Info>,
     gate: Gate,
-    /// Пропущено из-за `Ask` (TODO S5-07).
-    asked: AtomicU64,
+    /// Тест: перед commit временного файла (гонка за имя).
+    #[cfg(test)]
+    before_commit: Option<fn(&Path)>,
 }
 
 /// Параметры запуска.
@@ -286,7 +293,8 @@ impl Transfer {
             tag: new_tag(),
             info: OnceLock::new(),
             gate: Gate::default(),
-            asked: AtomicU64::new(0),
+            #[cfg(test)]
+            before_commit: None,
         }
     }
 
@@ -358,11 +366,12 @@ impl Transfer {
         let mut how = it.how;
         let mut dst = it.dst.clone();
         let mut rename = it.rename;
+        let mut temp = it.temp.clone();
         for _ in 0..4 {
             let r = if rename {
                 rename_one(&it.src, &dst, how, self.scheme())
             } else {
-                self.copy_one(it, &dst, how, cx)
+                self.copy_one(it, &dst, how, &mut temp, cx)
             };
             match r {
                 Ok(()) => {
@@ -394,56 +403,132 @@ impl Transfer {
                     let d = stat_dst(&dst);
                     match self.decide(it.size, mtime_of(&it.src), false, d) {
                         Decision::Put(h) => how = h,
-                        Decision::Skip => return ItemResult::Skipped,
-                        Decision::Ask => {
-                            self.asked.fetch_add(1, Ordering::Relaxed);
+                        Decision::Skip => {
+                            drop_temp(&mut temp, it.kind);
                             return ItemResult::Skipped;
                         }
+                        Decision::Ask => {
+                            // Данные во временном файле остаются: «Заменить» — rename.
+                            let bytes = if temp.is_some() || rename { 0 } else { it.size };
+                            let name = it.src.file_name().unwrap_or_default().to_string_lossy();
+                            let issue =
+                                self.issue(&name, it.size, mtime_of(&it.src), &dst, d, temp.take());
+                            return ItemResult::Park(Box::new(issue), bytes);
+                        }
                         Decision::Mismatch => {
+                            drop_temp(&mut temp, it.kind);
                             let msg = tr("ops-copy-type", &[]);
                             return ItemResult::Failed(self.failed(&dst, &msg, IoClass::Other));
                         }
                         Decision::NewName => {
                             let Some(free) = free_name(&dst, self.scheme(), false, false, None)
                             else {
+                                drop_temp(&mut temp, it.kind);
                                 return self.fail(&dst, &e);
                             };
                             dst = free;
                         }
                     }
                 }
-                Err(e) => return self.fail(&it.src, &e),
+                Err(e) => {
+                    drop_temp(&mut temp, it.kind);
+                    return self.fail(&it.src, &e);
+                }
             }
         }
+        drop_temp(&mut temp, it.kind);
         let e = io::Error::from(io::ErrorKind::AlreadyExists);
         self.fail(&dst, &e)
     }
 
-    /// Копия файла или ссылки по правилу commit §6.1.
-    fn copy_one(&self, it: &Item, dst: &Path, how: How, cx: &ExecCx<'_>) -> io::Result<()> {
+    /// Копия файла или ссылки по правилу commit §6.1. `temp` — данные уже во
+    /// временном файле (тогда только commit); занятое имя при commit оставляет
+    /// временный файл в `temp` для вопроса.
+    fn copy_one(
+        &self,
+        it: &Item,
+        dst: &Path,
+        how: How,
+        temp: &mut Option<PathBuf>,
+        cx: &ExecCx<'_>,
+    ) -> io::Result<()> {
         if how == How::Backup {
             let Some(bak) = free_name(dst, self.scheme(), true, false, None) else {
                 return Err(io::ErrorKind::AlreadyExists.into());
             };
             sys::move_file(dst, &bak, false)?;
         }
-        let link = is_link(it.kind);
-        let direct = how != How::Replace && (link || it.size < self.small);
-        if direct {
-            return self.data(it, dst, true, cx);
-        }
-        let tmp = temp_path(dst, &self.tag);
-        match std::fs::remove_file(&tmp) {
-            Err(e) if e.kind() != io::ErrorKind::NotFound => {
-                // Осталась от прерванной job с той же меткой и не удаляется.
-                return Err(e);
+        let staged = if let Some(t) = temp {
+            t.clone()
+        } else {
+            let link = is_link(it.kind);
+            let direct = how != How::Replace && (link || it.size < self.small);
+            if direct {
+                return self.data(it, dst, true, cx);
             }
-            _ => {}
+            let fresh = temp_path(dst, &self.tag);
+            match std::fs::remove_file(&fresh) {
+                Err(e) if e.kind() != io::ErrorKind::NotFound => {
+                    // Осталась от прерванной job с той же меткой и не удаляется.
+                    return Err(e);
+                }
+                _ => {}
+            }
+            self.data(it, &fresh, false, cx)?;
+            *temp = Some(fresh.clone());
+            fresh
+        };
+        #[cfg(test)]
+        if let Some(f) = self.before_commit {
+            f(dst);
         }
-        self.data(it, &tmp, false, cx)?;
-        sys::move_file(&tmp, dst, how == How::Replace).inspect_err(|_| {
-            let _ = remove_src(&tmp, it.kind);
-        })
+        match sys::move_file(&staged, dst, how == How::Replace) {
+            Ok(()) => {
+                *temp = None;
+                Ok(())
+            }
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => Err(e),
+            Err(e) => {
+                drop_temp(temp, it.kind);
+                Err(e)
+            }
+        }
+    }
+
+    /// Проблема «имя занято» для вопроса.
+    fn issue(
+        &self,
+        name: &str,
+        size: u64,
+        mtime: i64,
+        dst: &Path,
+        d: Option<Dst>,
+        temp: Option<PathBuf>,
+    ) -> Issue {
+        let d = d.unwrap_or(Dst {
+            kind: EntryKind::File,
+            size: 0,
+            mtime: i64::MIN,
+        });
+        let dst_name = dst.file_name().unwrap_or_default().to_string_lossy();
+        Issue {
+            id: IssueId(0),
+            kind: IssueKind::Exists,
+            src: Some(ItemMeta {
+                name: name.into(),
+                size,
+                mtime,
+                attrs: 0,
+            }),
+            dst: Some(ItemMeta {
+                name: dst_name.as_ref().into(),
+                size: d.size,
+                mtime: d.mtime,
+                attrs: 0,
+            }),
+            op: self.op(),
+            temp,
+        }
     }
 
     /// Данные файла (или сама ссылка) в `to`.
@@ -472,6 +557,13 @@ impl Transfer {
             cx.add_bytes(it.size - last);
         }
         Ok(())
+    }
+}
+
+/// Удалить временный файл, если он есть.
+fn drop_temp(temp: &mut Option<PathBuf>, kind: EntryKind) {
+    if let Some(t) = temp.take() {
+        let _ = remove_src(&t, kind);
     }
 }
 
@@ -814,36 +906,42 @@ impl Planner<'_> {
         let how = match ctx.existing(&dst, &e.name) {
             None => How::Create,
             // Ссылка-каталог поверх каталога — тоже «файл ↔ каталог».
-            Some(d) => {
-                match self.t.decide(e.size, e.mtime, false, Some(d)) {
-                    Decision::Put(h) => h,
-                    Decision::Skip => {
-                        p.record(Some(parent), ItemResult::Skipped);
-                        return Ok(());
-                    }
-                    Decision::Ask => {
-                        // TODO S5-07: немодальный вопрос; пока — пропуск, счётчик — в тосте.
-                        self.t.asked.fetch_add(1, Ordering::Relaxed);
-                        p.record(Some(parent), ItemResult::Skipped);
-                        return Ok(());
-                    }
-                    Decision::Mismatch => {
-                        self.fail_text(p, parent, &dst, "ops-copy-type");
-                        return Ok(());
-                    }
-                    Decision::NewName => {
-                        let taken = |n: &str| ctx.taken(n);
-                        let Some(free) =
-                            free_name(&dst, self.t.scheme(), false, false, Some(&taken))
-                        else {
-                            self.fail_text(p, parent, &dst, "ops-copy-no-name");
-                            return Ok(());
-                        };
-                        dst = free;
-                        How::Create
-                    }
+            Some(d) => match self.t.decide(e.size, e.mtime, false, Some(d)) {
+                Decision::Put(h) => h,
+                Decision::Skip => {
+                    p.record(Some(parent), ItemResult::Skipped);
+                    return Ok(());
                 }
-            }
+                Decision::Ask => {
+                    let issue = self.t.issue(&e.name, e.size, e.mtime, &dst, Some(d), None);
+                    let bytes = if rename { 0 } else { e.size };
+                    let item = Item {
+                        src,
+                        dst,
+                        kind: e.kind,
+                        size: e.size,
+                        how: How::Create,
+                        rename,
+                        temp: None,
+                    };
+                    p.park(Some(parent), item, bytes, issue)?;
+                    return Ok(());
+                }
+                Decision::Mismatch => {
+                    self.fail_text(p, parent, &dst, "ops-copy-type");
+                    return Ok(());
+                }
+                Decision::NewName => {
+                    let taken = |n: &str| ctx.taken(n);
+                    let Some(free) = free_name(&dst, self.t.scheme(), false, false, Some(&taken))
+                    else {
+                        self.fail_text(p, parent, &dst, "ops-copy-no-name");
+                        return Ok(());
+                    };
+                    dst = free;
+                    How::Create
+                }
+            },
         };
         let bytes = if rename { 0 } else { e.size };
         let item = Item {
@@ -853,6 +951,7 @@ impl Planner<'_> {
             size: e.size,
             how,
             rename,
+            temp: None,
         };
         p.push(Some(parent), item, bytes)?;
         Ok(())
@@ -881,6 +980,7 @@ impl Planner<'_> {
                     size: 0,
                     how: How::Create,
                     rename: true,
+                    temp: None,
                 };
                 p.push(Some(parent), item, 0)?;
                 return Ok(None);
@@ -1072,6 +1172,7 @@ impl OpExec for Transfer {
                         size: 0,
                         how: How::Create,
                         rename: true,
+                        temp: None,
                     };
                     p.push(Some(&root_node), item, 0)?;
                 } else {
@@ -1133,13 +1234,47 @@ impl OpExec for Transfer {
         ItemResult::Done
     }
 
+    fn resolve(&self, mut it: Item, issue: &Issue, r: &Resolution) -> Resolved<Item> {
+        it.temp.clone_from(&issue.temp);
+        let newer = match (&issue.src, &issue.dst) {
+            (Some(s), Some(d)) => {
+                i128::from(s.mtime) > i128::from(d.mtime) + i128::from(self.info().tol_ns)
+            }
+            _ => false,
+        };
+        match r {
+            Resolution::Overwrite => it.how = How::Replace,
+            Resolution::OverwriteIfNewer if newer => it.how = How::Replace,
+            Resolution::RenameExisting => it.how = How::Backup,
+            Resolution::RenameNew => {
+                let Some(free) = free_name(&it.dst, self.scheme(), false, false, None) else {
+                    let f = self.failed(&it.dst, &tr("ops-copy-no-name", &[]), IoClass::Other);
+                    self.discard(it, issue);
+                    return Resolved::Done(ItemResult::Failed(f));
+                };
+                it.dst = free;
+                it.how = How::Create;
+            }
+            _ => {
+                self.discard(it, issue);
+                return Resolved::Done(ItemResult::Skipped);
+            }
+        }
+        Resolved::Run(it)
+    }
+
+    fn discard(&self, it: Item, issue: &Issue) {
+        if let Some(t) = &issue.temp {
+            let _ = remove_src(t, it.kind);
+        }
+    }
+
     fn finished(&self, r: &Report, outcome: &Result<JobSummary, String>) -> Option<Note> {
         let s = match outcome {
             Err(e) if e == "cancelled" => return None,
             Err(e) => return Some((Level::Error, tr("ops-copy-job-failed", &[("error", e)]))),
             Ok(s) => s,
         };
-        let asked = self.asked.load(Ordering::Relaxed);
         if s.errors > 0 {
             let first = r
                 .failed
@@ -1150,10 +1285,6 @@ impl OpExec for Transfer {
                 Level::Error,
                 tr_n("ops-copy-errors", s.errors, &[("first", &first)]),
             ));
-        }
-        if asked > 0 {
-            // TODO S5-07: вместо пропуска — вопрос «заменить?».
-            return Some((Level::Warn, tr_n("ops-copy-asked", asked, &[])));
         }
         if s.skipped > 0 {
             return Some((Level::Info, tr_n("ops-copy-skipped", s.skipped, &[])));

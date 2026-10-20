@@ -96,6 +96,7 @@ ui-prompt-more = ещё { $count } { $count ->
    *[many] вопросов
 }
 ui-prompt-all = Для всех
+ui-prompt-all-hint = Пробел; Shift+клавиша — ответ для всех
 ui-prompt-new-name = Новое имя
 ui-button-apply = Применить
 ui-button-back = Назад

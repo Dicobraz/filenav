@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::prelude::*;
 use gpui_kit::{App, ClickEvent, Div, SharedString, Window, div, px, relative};
-use urfin_core::{AppState, Command, JobState, Level, Prompt, Value};
+use urfin_core::{AppState, Command, Entry, JobState, Level, Prompt, PromptDetail, Value};
 
 use super::theme::Theme;
 use crate::tokens::{Metric, Role};
@@ -191,14 +191,46 @@ pub(super) fn prompt_id(p: &Prompt) -> Value {
     Value::Int(i64::try_from(p.id.0).unwrap_or(i64::MAX))
 }
 
-/// Ответ вариантом `i`.
-pub(super) fn reply(p: &Prompt, i: usize) -> Option<Command> {
+/// Выбор в видимом вопросе: вариант и флажок «для всех».
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct PromptSel {
+    pub id: u64,
+    pub sel: usize,
+    pub all: bool,
+}
+
+impl PromptSel {
+    pub(super) const NONE: PromptSel = PromptSel {
+        id: u64::MAX,
+        sel: 0,
+        all: false,
+    };
+
+    /// Выбор для вопроса `p`: прежний или вариант по умолчанию.
+    pub(super) fn of(self, p: &Prompt) -> PromptSel {
+        if self.id == p.id.0 {
+            return self;
+        }
+        let n = p.spec.choices.len();
+        PromptSel {
+            id: p.id.0,
+            sel: usize::from(p.spec.default).min(n.saturating_sub(1)),
+            all: false,
+        }
+    }
+}
+
+/// Ответ вариантом `i`; `all` — «для всех» (если вопрос это допускает).
+pub(super) fn reply(p: &Prompt, i: usize, all: bool) -> Option<Command> {
     let ch = p.spec.choices.get(i)?;
-    Some(
-        Command::new("prompt.reply")
-            .arg("id", prompt_id(p))
-            .arg("choice", ch.id.as_str()),
-    )
+    let c = Command::new("prompt.reply")
+        .arg("id", prompt_id(p))
+        .arg("choice", ch.id.as_str());
+    Some(if all && p.spec.allow_all {
+        c.arg("all", true)
+    } else {
+        c
+    })
 }
 
 /// Отмена вопроса (Esc).
@@ -206,11 +238,21 @@ pub(super) fn cancel(p: &Prompt) -> Command {
     Command::new("prompt.cancel").arg("id", prompt_id(p))
 }
 
-/// Inline-вопрос над cmdline: заголовок, текст и варианты (выбранный — акцентом).
-pub(super) fn prompt_bar(p: &Prompt, selected: usize, theme: &Theme, click: Click<'_>) -> Div {
-    let mut choices = div().flex().flex_row().gap_2();
+/// Inline-вопрос над cmdline: заголовок, текст, для конфликта — новый и
+/// существующий файл (размер, дата), варианты с клавишей (выбранный — акцентом)
+/// и флажок «для всех» (Пробел; Shift+клавиша — ответ для всех).
+pub(super) fn prompt_bar(
+    p: &Prompt,
+    s: PromptSel,
+    theme: &Theme,
+    click: Click<'_>,
+    toggle_all: Handler,
+) -> Div {
+    let i18n = urfin_i18n::current();
+    let mut choices = div().flex().flex_row().flex_wrap().gap_2();
     for (i, ch) in p.spec.choices.iter().enumerate() {
-        let on = i == selected;
+        let on = i == s.sel;
+        let key = ch.key.to_uppercase().to_string();
         choices = choices.child(
             div()
                 .id(SharedString::from(format!("choice-{i}")))
@@ -218,6 +260,7 @@ pub(super) fn prompt_bar(p: &Prompt, selected: usize, theme: &Theme, click: Clic
                 .px_3()
                 .flex()
                 .items_center()
+                .gap_2()
                 .rounded(px(theme.m(Metric::RadiusControl)))
                 .border_1()
                 .border_color(theme.c(Role::StrokeControl))
@@ -232,10 +275,22 @@ pub(super) fn prompt_bar(p: &Prompt, selected: usize, theme: &Theme, click: Clic
                     Role::TextPrimary
                 }))
                 .child(SharedString::from(ch.label.to_string()))
-                .when_some(reply(p, i), |d, c| d.on_click(click(c))),
+                .when(ch.key.is_alphanumeric(), |d| {
+                    d.child(
+                        div()
+                            .text_size(px(theme.m(Metric::TypeCaption)))
+                            .text_color(theme.c(if on {
+                                Role::AccentOn
+                            } else {
+                                Role::TextTertiary
+                            }))
+                            .child(SharedString::from(key)),
+                    )
+                })
+                .when_some(reply(p, i, s.all), |d, c| d.on_click(click(c))),
         );
     }
-    div()
+    let mut bar = div()
         .flex_none()
         .flex()
         .flex_col()
@@ -258,6 +313,94 @@ pub(super) fn prompt_bar(p: &Prompt, selected: usize, theme: &Theme, click: Clic
                     .text_color(theme.c(Role::TextSecondary))
                     .child(SharedString::from(p.spec.body.clone())),
             )
-        })
-        .child(choices)
+        });
+    if let Some(PromptDetail::Conflict { src, dst, .. }) = &p.spec.detail {
+        bar = bar.child(conflict(src, dst, theme));
+    }
+    bar = bar.child(choices);
+    if p.spec.allow_all {
+        let glyph = if s.all { "\u{E73A}" } else { "\u{E739}" };
+        bar = bar.child(
+            div()
+                .id("prompt-all")
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap_2()
+                .child(
+                    div()
+                        .font_family("Segoe Fluent Icons")
+                        .text_color(theme.c(if s.all {
+                            Role::AccentText
+                        } else {
+                            Role::TextSecondary
+                        }))
+                        .child(SharedString::from(glyph)),
+                )
+                .child(SharedString::from(i18n.get("ui-prompt-all")))
+                .child(
+                    div()
+                        .text_size(px(theme.m(Metric::TypeCaption)))
+                        .text_color(theme.c(Role::TextTertiary))
+                        .child(SharedString::from(i18n.get("ui-prompt-all-hint"))),
+                )
+                .on_click(toggle_all),
+        );
+    }
+    bar
+}
+
+/// Новый и существующий файл: размер и дата; что новее и больше — акцентом.
+fn conflict(src: &Entry, dst: &Entry, theme: &Theme) -> Div {
+    let i18n = urfin_i18n::current();
+    let row = |label: String, e: &Entry, newer: bool, larger: bool| {
+        let mut size = String::new();
+        theme.fmt.write_size(&mut size, e.size);
+        let mut date = crate::fmt_cell::Cell::default();
+        theme.fmt.write_datetime(&mut date, e.mtime);
+        let hi = |on: bool| {
+            theme.c(if on {
+                Role::AccentText
+            } else {
+                Role::TextPrimary
+            })
+        };
+        div()
+            .flex()
+            .flex_row()
+            .gap_3()
+            .child(
+                div()
+                    .w(px(120.0))
+                    .text_color(theme.c(Role::TextSecondary))
+                    .child(SharedString::from(label)),
+            )
+            .child(
+                div()
+                    .w(px(100.0))
+                    .text_color(hi(larger))
+                    .child(SharedString::from(size)),
+            )
+            .child(
+                div()
+                    .text_color(hi(newer))
+                    .child(SharedString::from(date.as_str().to_owned())),
+            )
+    };
+    div()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .child(row(
+            i18n.get("ui-conflict-new"),
+            src,
+            src.mtime > dst.mtime,
+            src.size > dst.size,
+        ))
+        .child(row(
+            i18n.get("ui-conflict-old"),
+            dst,
+            dst.mtime > src.mtime,
+            dst.size > src.size,
+        ))
 }

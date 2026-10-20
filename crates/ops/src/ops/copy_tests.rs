@@ -1,18 +1,19 @@
 //! Копирование и перенос на настоящих `Core`/`Runtime` и ФС (приёмка S5-05,
 //! S5-06): дерево побайтно и со временем изменения, политики конфликтов,
 //! перенос в пределах тома и между «томами», отмена посреди файла, обход с
-//! маской и ссылками, убитый посреди копии процесс (fault injection).
+//! маской и ссылками, убитый посреди копии процесс (fault injection);
+//! немодальные конфликты с автоответчиком (приёмка S5-07).
 
 #![allow(clippy::many_single_char_names, reason = "короткие имена в тестах")]
 
 use std::collections::BTreeMap;
 use std::hash::{DefaultHasher, Hasher};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
 use compact_str::CompactString;
-use urfin_core::{JobId, JobState, Level, Location, UiEvent};
+use urfin_core::{Command, JobId, JobState, Level, Location, PromptDetail, PromptSpec, UiEvent};
 
 use super::*;
 use crate::engine::tests::H;
@@ -149,6 +150,8 @@ fn transfer(
 
 struct Run {
     state: JobState,
+    /// Вопросов задано (автоответ — «Пропустить»).
+    asked: u32,
     toasts: Vec<(Level, String)>,
     report: Arc<Report>,
     id: JobId,
@@ -156,7 +159,17 @@ struct Run {
 
 fn run(h: &mut H, t: Transfer) -> Run {
     let id = h.start(4, t);
-    let state = h.wait_done(id);
+    let mut asked = 0;
+    let t0 = Instant::now();
+    while h.state(id).is_active() || h.eng.live_threads() > 0 {
+        assert!(t0.elapsed() < Duration::from_secs(30), "timeout: job end");
+        if has_prompt(h) {
+            asked += 1;
+            reply(h, "skip", false);
+        }
+        h.pump();
+    }
+    let state = h.state(id);
     // Тост итога приходит сообщением `ops.finished` до `job.state`.
     for _ in 0..5 {
         h.pump();
@@ -173,6 +186,7 @@ fn run(h: &mut H, t: Transfer) -> Run {
     let report = h.report(id);
     Run {
         state,
+        asked,
         toasts,
         report,
         id,
@@ -353,9 +367,14 @@ fn conflict_policies() {
             );
             assert_eq!(std::fs::read(dst.join("big.bak~1")).unwrap(), b"dst-big");
         }
-        let asked = r.toasts.iter().any(|(l, _)| *l == Level::Warn);
-        let asks = matches!(policy, ConflictPolicy::Ask | ConflictPolicy::SkipIdentical);
-        assert_eq!(asked, asks, "{policy:?}: Ask → skip toast {:?}", r.toasts);
+        // Ask: вопрос на каждый занятый файл (автоответ «Пропустить»);
+        // SkipIdentical — на отличающиеся.
+        let asks = match policy {
+            ConflictPolicy::Ask => 4,
+            ConflictPolicy::SkipIdentical => 3,
+            _ => 0,
+        };
+        assert_eq!(r.asked, asks, "{policy:?}: questions");
         no_temps(&dst);
     }
 }
@@ -502,7 +521,7 @@ fn move_same_volume() {
 
 /// Перенос между томами: копия и удаление источника (принудительно — без
 /// второго тома на стенде), read-only источник тоже удаляется, каталоги — в
-/// Finalizer; конфликт при `Ask` оставляет источник.
+/// Finalizer; конфликт при `Ask` — вопрос, «Пропустить» оставляет источник.
 #[test]
 fn move_cross_volume_copies_and_deletes() {
     let d = tmp();
@@ -536,10 +555,7 @@ fn move_cross_volume_copies_and_deletes() {
     // Источник: остался только конфликтный файл (и его каталог).
     let left: Vec<String> = snapshot(&src).into_keys().collect();
     assert_eq!(left, ["t", "t\\clash"], "{left:?}");
-    assert!(
-        r.toasts.iter().any(|(l, _)| *l == Level::Warn),
-        "asked → skipped"
-    );
+    assert_eq!(r.asked, 1, "clash asked, answered skip");
 }
 
 /// Отмена посреди крупного файла: job `Cancelled`, ни назначения, ни
@@ -834,4 +850,215 @@ fn bench_copy_dataset() {
         src.display()
     );
     assert_eq!(count_files(&src), count_files(&d.path().join(&name)));
+}
+
+// --- S5-07: немодальные конфликты ---
+
+fn has_prompt(h: &H) -> bool {
+    h.core.state().prompts.active().is_some()
+}
+
+/// Ответ на открытый вопрос (как кнопка в строке вопроса).
+fn reply(h: &mut H, choice: &str, all: bool) -> PromptSpec {
+    let p = h.core.state().prompts.active().expect("open prompt");
+    let (id, spec) = (i64::try_from(p.id.0).unwrap(), p.spec.clone());
+    h.core.dispatch(
+        Command::new("prompt.reply")
+            .arg("id", id)
+            .arg("choice", choice)
+            .arg("all", all),
+    );
+    spec
+}
+
+fn snap(h: &H, id: JobId) -> urfin_core::ProgressSnap {
+    h.core.state().jobs.get(id).unwrap().progress.snapshot()
+}
+
+/// 1000 файлов, из них 100 уже есть в назначении.
+fn thousand(d: &Path) -> (PathBuf, PathBuf, Vec<String>) {
+    let (src, dst) = (d.join("s"), d.join("d"));
+    let names: Vec<String> = (0..1000).map(|i| format!("f{i:04}.txt")).collect();
+    for (i, n) in names.iter().enumerate() {
+        write(&src.join(n), &bytes(1000 + i, i as u64), old(1_500_000_000));
+        if i % 10 == 0 {
+            write(&dst.join(n), b"dst", old(1_400_000_000));
+        }
+    }
+    (src, dst, names)
+}
+
+/// Ждёт конца job, отвечая на всё, что спросят; число вопросов.
+fn finish(h: &mut H, id: JobId, choice: &str) -> u32 {
+    let mut asked = 0;
+    let t0 = Instant::now();
+    while h.state(id).is_active() || h.eng.live_threads() > 0 {
+        assert!(t0.elapsed() < Duration::from_secs(30), "timeout: job end");
+        if has_prompt(h) {
+            asked += 1;
+            reply(h, choice, false);
+        }
+        h.pump();
+    }
+    asked
+}
+
+/// Приёмка S5-07: при Ask 900 свободных копируются, пока вопрос ждёт ответа;
+/// один ответ «Заменить для всех» закрывает все 100 конфликтов.
+#[test]
+fn ask_parks_conflicts_and_replace_all_closes_them() {
+    let d = tmp();
+    let (src, dst, names) = thousand(d.path());
+    let items: Vec<&str> = names.iter().map(String::as_str).collect();
+    let mut h = H::new(64);
+    let t = transfer(
+        Mode::Copy,
+        &src,
+        &items,
+        &dst,
+        None,
+        opts(ConflictPolicy::Ask),
+    );
+    let id = h.start(4, t);
+    h.pump_until("900 copied while the question waits", |h| {
+        has_prompt(h) && snap(h, id).items_done == 900
+    });
+    assert_eq!(snap(&h, id).parked, 100, "all conflicts parked");
+    assert!(matches!(h.state(id), JobState::Waiting(_)));
+    assert_eq!(
+        std::fs::read(dst.join("f0001.txt")).unwrap(),
+        bytes(1001, 1)
+    );
+    assert_eq!(std::fs::read(dst.join("f0000.txt")).unwrap(), b"dst");
+    let spec = reply(&mut h, "overwrite", true);
+    assert!(spec.allow_all);
+    assert_eq!(spec.choices[usize::from(spec.default)].id, "skip");
+    match spec.detail {
+        Some(PromptDetail::Conflict {
+            src, dst, index, ..
+        }) => {
+            assert_eq!(index, 1);
+            assert_eq!((src.name.as_str(), src.size), ("f0000.txt", 1000));
+            assert_eq!(dst.size, 3);
+        }
+        other => panic!("no conflict detail: {other:?}"),
+    }
+    let more = finish(&mut h, id, "skip");
+    assert_eq!(more, 0, "one answer for all");
+    match h.state(id) {
+        JobState::Done(s) => assert_eq!((s.items, s.skipped, s.errors), (1000, 0, 0)),
+        st => panic!("{st:?}"),
+    }
+    for i in (0..1000).step_by(10) {
+        let n = format!("f{i:04}.txt");
+        assert_eq!(
+            std::fs::read(dst.join(&n)).unwrap(),
+            bytes(1000 + i, i as u64)
+        );
+    }
+    assert_eq!(snap(&h, id).parked, 0);
+    no_temps(&dst);
+}
+
+/// Приёмка S5-07: «Пропустить для всех» — ни одного лишнего прочитанного байта.
+#[test]
+fn skip_all_reads_no_extra_bytes() {
+    let d = tmp();
+    let (src, dst, names) = thousand(d.path());
+    let items: Vec<&str> = names.iter().map(String::as_str).collect();
+    let mut h = H::new(64);
+    let t = transfer(
+        Mode::Copy,
+        &src,
+        &items,
+        &dst,
+        None,
+        opts(ConflictPolicy::Ask),
+    );
+    let id = h.start(4, t);
+    h.pump_until("question", has_prompt);
+    reply(&mut h, "skip", true);
+    assert_eq!(finish(&mut h, id, "overwrite"), 0, "one answer for all");
+    let free: u64 = (0..1000u64).filter(|i| i % 10 != 0).map(|i| 1000 + i).sum();
+    match h.state(id) {
+        JobState::Done(s) => {
+            assert_eq!((s.items, s.skipped), (900, 100));
+            assert_eq!(s.bytes, free, "bytes read: only free files");
+        }
+        st => panic!("{st:?}"),
+    }
+    let p = snap(&h, id);
+    assert_eq!(p.bytes_total, free, "skipped bytes leave the total");
+    assert_eq!(std::fs::read(dst.join("f0000.txt")).unwrap(), b"dst");
+}
+
+static RACED: AtomicBool = AtomicBool::new(false);
+
+/// Имя занимают между индексом назначения и commit (один раз на процесс).
+fn race(dst: &Path) {
+    if !RACED.swap(true, Ordering::SeqCst) {
+        std::fs::write(dst, b"raced").unwrap();
+    }
+}
+
+fn big_with_race(d: &Path) -> (PathBuf, PathBuf, Transfer) {
+    let (src, dst) = (d.join("s"), d.join("d"));
+    write(&src.join("big.bin"), &bytes(3 << 20, 5), old(1_500_000_000));
+    std::fs::create_dir_all(&dst).unwrap();
+    let mut t = transfer(
+        Mode::Copy,
+        &src,
+        &["big.bin"],
+        &dst,
+        None,
+        opts(ConflictPolicy::Ask),
+    );
+    t.before_commit = Some(race);
+    (src, dst, t)
+}
+
+fn temps(dir: &Path) -> usize {
+    std::fs::read_dir(dir)
+        .unwrap()
+        .filter(|e| {
+            e.as_ref()
+                .is_ok_and(|e| e.file_name().to_string_lossy().contains(".fnv~"))
+        })
+        .count()
+}
+
+/// Приёмка S5-07: гонка (файл создан после индекса) → вопрос с данными во
+/// временном файле, «Заменить» — rename без повторной копии. Отмена на вопросе
+/// убирает временный файл — отдельный процесс (`RACED` — на процесс), поэтому в
+/// этом же тесте: вторая job.
+#[test]
+fn race_parks_with_temp_and_replace_renames_it() {
+    let d = tmp();
+    let (src, dst, t) = big_with_race(d.path());
+    let mut h = H::new(64);
+    let id = h.start(4, t);
+    h.pump_until("race question", has_prompt);
+    assert_eq!(temps(&dst), 1, "data waits in a temp file");
+    assert_eq!(std::fs::read(dst.join("big.bin")).unwrap(), b"raced");
+    reply(&mut h, "overwrite", false);
+    assert_eq!(finish(&mut h, id, "skip"), 0);
+    match h.state(id) {
+        JobState::Done(s) => assert_eq!((s.items, s.bytes), (1, 3 << 20), "copied once"),
+        st => panic!("{st:?}"),
+    }
+    assert_eq!(hash(&dst.join("big.bin")), hash(&src.join("big.bin")));
+    no_temps(&dst);
+
+    // Отмена (Esc) на вопросе гонки: temp удалён, занятый файл цел, потоков 0.
+    RACED.store(false, Ordering::SeqCst);
+    let d2 = tmp();
+    let (_, dst2, t2) = big_with_race(d2.path());
+    let id2 = h.start(4, t2);
+    h.pump_until("race question", has_prompt);
+    let pid = i64::try_from(h.core.state().prompts.active().unwrap().id.0).unwrap();
+    h.core
+        .dispatch(Command::new("prompt.cancel").arg("id", pid));
+    assert_eq!(h.wait_done(id2), JobState::Cancelled);
+    assert_eq!(std::fs::read(dst2.join("big.bin")).unwrap(), b"raced");
+    assert_eq!(temps(&dst2), 0, "temp removed on cancel");
 }

@@ -41,11 +41,21 @@ ops-copy-errors = { $n ->
     [few] Не удалось: { $n } объекта
    *[many] Не удалось: { $n } объектов
 } — { $first }
-ops-copy-asked = { $n ->
-    [one] { $n } файл уже есть — пропущен
-    [few] { $n } файла уже есть — пропущены
-   *[many] { $n } файлов уже есть — пропущены
-} (вопрос «заменить?» пока не сделан)
+ops-conflict-exists = Файл уже есть
+ops-conflict-other = Не удалось выполнить для файла
+ops-conflict-body = Конфликт { $index } из { $total }: { $name } — { $cmp }
+ops-conflict-body-short = Конфликт { $index } из { $total }: { $name }
+ops-conflict-newer = новее
+ops-conflict-older = старше
+ops-conflict-same-time = то же время
+ops-conflict-larger = больше на { $size }
+ops-conflict-smaller = меньше на { $size }
+ops-conflict-same-size = тот же размер
+ops-choice-overwrite = Заменить
+ops-choice-skip = Пропустить
+ops-choice-rename = Переименовать
+ops-choice-newer = Заменить, если новее
+ops-choice-cancel = Отмена
 ops-copy-skipped = { $n ->
     [one] Пропущен { $n } объект
     [few] Пропущено { $n } объекта

@@ -38,10 +38,21 @@ ops-copy-errors = { $n ->
     [one] 1 item failed
    *[other] { $n } items failed
 }: { $first }
-ops-copy-asked = { $n ->
-    [one] 1 file already exists and was skipped
-   *[other] { $n } files already exist and were skipped
-} (replace prompt is not available yet)
+ops-conflict-exists = File already exists
+ops-conflict-other = Could not process the file
+ops-conflict-body = Conflict { $index } of { $total }: { $name } — { $cmp }
+ops-conflict-body-short = Conflict { $index } of { $total }: { $name }
+ops-conflict-newer = newer
+ops-conflict-older = older
+ops-conflict-same-time = same time
+ops-conflict-larger = larger by { $size }
+ops-conflict-smaller = smaller by { $size }
+ops-conflict-same-size = same size
+ops-choice-overwrite = Replace
+ops-choice-skip = Skip
+ops-choice-rename = Rename
+ops-choice-newer = Replace if newer
+ops-choice-cancel = Cancel
 ops-copy-skipped = { $n ->
     [one] 1 item skipped
    *[other] { $n } items skipped

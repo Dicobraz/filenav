@@ -16,7 +16,8 @@ use urfin_core::{Command, ListingStatus, Side};
 const SETTLE_FRAMES: u32 = 3;
 const SCENE_TIMEOUT: Duration = Duration::from_secs(20);
 
-/// Сцена: имя файла и команды. `resize WxH` — размер окна, не команда Core.
+/// Сцена: имя файла и команды. `resize WxH` — размер окна, `wait prompt` —
+/// снимок, когда открыт вопрос (job спрашивает асинхронно); это не команды Core.
 struct Scene {
     name: &'static str,
     steps: &'static [&'static str],
@@ -87,7 +88,20 @@ const SCENES: &[Scene] = &[
         name: "narrow",
         steps: &["ui.theme mode=light", "resize 720x600"],
     },
+    // Последней: вопрос о конфликте остаётся открытым (S5-07).
+    Scene {
+        name: "conflict",
+        steps: &[
+            "panel.focus side=left",
+            "panel.cursor.to name=Cargo.toml",
+            // Назначение относительно левой панели (корень демо-дерева).
+            "ops.copy current=true dest=Projects",
+            WAIT_PROMPT,
+        ],
+    },
 ];
+
+const WAIT_PROMPT: &str = "wait prompt";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Phase {
@@ -143,6 +157,9 @@ impl Screens {
                 let mut cmds = Vec::new();
                 let mut size = None;
                 for s in SCENES[self.scene].steps {
+                    if *s == WAIT_PROMPT {
+                        continue;
+                    }
                     if let Some(wh) = s.strip_prefix("resize ") {
                         size = parse_size(wh);
                         continue;
@@ -181,11 +198,19 @@ impl Screens {
     }
 }
 
-/// Обе панели показывают загруженный листинг.
-pub(super) fn ready(s: &urfin_core::AppState) -> bool {
-    [Side::Left, Side::Right]
-        .into_iter()
-        .all(|side| matches!(s.panel(side).tab().listing.status, ListingStatus::Complete))
+impl Screens {
+    /// Сцена готова к снимку: обе панели показывают загруженный листинг (и, если
+    /// сцена ждёт, открыт вопрос).
+    pub(super) fn ready(&self, s: &urfin_core::AppState) -> bool {
+        let prompt = !SCENES[self.scene.min(SCENES.len() - 1)]
+            .steps
+            .contains(&WAIT_PROMPT)
+            || s.prompts.active().is_some();
+        prompt
+            && [Side::Left, Side::Right]
+                .into_iter()
+                .all(|side| matches!(s.panel(side).tab().listing.status, ListingStatus::Complete))
+    }
 }
 
 fn parse_size(wh: &str) -> Option<(f32, f32)> {
@@ -245,6 +270,9 @@ mod tests {
     fn scene_steps_parse() {
         for sc in SCENES {
             for s in sc.steps {
+                if *s == WAIT_PROMPT {
+                    continue;
+                }
                 if let Some(wh) = s.strip_prefix("resize ") {
                     assert!(parse_size(wh).is_some(), "{}: {s}", sc.name);
                 } else {

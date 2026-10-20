@@ -15,7 +15,7 @@ const DIRS: [&str; 6] = [
 ];
 
 /// (имя, размер в байтах).
-const FILES: [(&str, usize); 14] = [
+const FILES: [(&str, usize); 15] = [
     ("Отчёт за квартал.pdf", 284_311),
     ("photo-2026-10-21.jpg", 3_145_728),
     ("archive.zip", 1_048_576),
@@ -33,6 +33,8 @@ const FILES: [(&str, usize); 14] = [
     ("Projects/urfin/Cargo.lock", 120_000),
     ("Projects/urfin/CLAUDE.md", 4_100),
     ("Projects/postman/todo.txt", 300),
+    // Тот же файл в обеих панелях — сцена конфликта копирования (S5-07).
+    ("Projects/Cargo.toml", 980),
 ];
 
 /// Скрытый (атрибут Hidden) и только для чтения.
@@ -64,6 +66,13 @@ pub fn create() -> io::Result<PathBuf> {
     for (name, size) in FILES {
         std::fs::write(root.join(name), vec![b'u'; size])?;
     }
+    // Существующий в правой панели — старше (2026-01-01) и меньше: в вопросе
+    // «новее, больше».
+    let older = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_hours(490_896);
+    std::fs::File::options()
+        .write(true)
+        .open(root.join("Projects/Cargo.toml"))?
+        .set_modified(older)?;
     hidden(&root.join(HIDDEN))?;
     let ro = root.join(READ_ONLY);
     std::fs::write(&ro, b"MIT")?;
