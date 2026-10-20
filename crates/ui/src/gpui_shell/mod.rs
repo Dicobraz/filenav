@@ -4,6 +4,7 @@
 
 mod chrome;
 mod input;
+mod menu;
 mod overlays;
 mod panel;
 mod theme;
@@ -108,6 +109,7 @@ pub struct CoreHost {
     /// Зажатые модификаторы — подписи F-клавиш.
     mods: crate::keybar::Mods,
     toasts: Vec<overlays::Toast>,
+    menu: menu::Menu,
     /// Остаток прокрутки колесом в строках (по панелям).
     wheel_acc: [f32; 2],
     /// Выбранный вариант видимого вопроса: (id вопроса, индекс).
@@ -137,6 +139,7 @@ impl CoreHost {
         } = launch;
         listen(wake, cx);
         let registered = crate::keybar::registered(core.registry());
+        let menu = menu::Menu::new(core.registry(), None);
         CoreHost {
             core: Some(core),
             signal,
@@ -148,6 +151,7 @@ impl CoreHost {
             registered,
             mods: crate::keybar::Mods::None,
             toasts: Vec::new(),
+            menu,
             wheel_acc: [0.0; 2],
             choice: (u64::MAX, 0),
             focus: cx.focus_handle(),
@@ -475,6 +479,21 @@ impl CoreHost {
         let Some(core) = self.core.as_ref() else {
             return false;
         };
+        // Открытое меню F9 разбирает клавиши само (S2 §2.6).
+        if let Some(open) = core
+            .state()
+            .ext
+            .get::<crate::UiState>()
+            .and_then(crate::menu::open_id)
+            .map(str::to_owned)
+        {
+            let cmds = self.menu.key(&open, ks);
+            self.out
+                .extend(cmds.into_iter().map(|c| c.from(urfin_core::Origin::Key)));
+            self.after_input(None, window, cx);
+            cx.notify();
+            return true;
+        }
         // Видимый вопрос разбирает клавиши сам (S2-15).
         if core.state().prompts.active().is_some() {
             if let Some(cmd) = self.prompt_key(ks) {
@@ -583,6 +602,7 @@ fn pump_in_window(this: &WeakEntity<CoreHost>, cx: &mut AsyncApp) -> bool {
 }
 
 impl Render for CoreHost {
+    #[allow(clippy::too_many_lines, reason = "сборка зон окна")]
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let gap = px(self.theme.m(Metric::GapPanels));
         let i18n = urfin_i18n::current();
@@ -611,18 +631,47 @@ impl Render for CoreHost {
                 h.run(cmd.clone(), w, cx);
             }))
         };
+        let click_all = |cmds: Vec<Command>| -> overlays::Handler {
+            Box::new(cx.listener(move |h: &mut CoreHost, _: &ClickEvent, w, cx| {
+                h.run_all(cmds.clone(), w, cx);
+            }))
+        };
+        let open = s
+            .ext
+            .get::<crate::UiState>()
+            .and_then(crate::menu::open_id)
+            .map(str::to_owned);
+        let content = match &open {
+            Some(id) => self.menu.bar(id, &self.theme, &click),
+            None => chrome::panel_tabs(s, &self.theme, &click),
+        };
         root = root.child(chrome::titlebar(
-            s,
+            content,
             &self.theme,
             window.is_maximized(),
-            &click,
         ));
         let widths = Self::layout(&self.theme, s, f32::from(window.viewport_size().width));
-        let mut panels = div().flex_1().min_h_0().flex().flex_row().gap(gap).px(gap);
+        let mut panels = div().flex_1().min_h_0().flex().flex_row().px(gap);
         for (i, side) in [Side::Left, Side::Right].into_iter().enumerate() {
             let Some(w) = widths[i] else {
                 continue;
             };
+            if i == 1 && widths[0].is_some() {
+                // Зазор между карточками: курсор ↔, двойной клик — 50/50 (S2-07).
+                panels = panels.child(
+                    div()
+                        .id("splitter")
+                        .w(gap)
+                        .flex_none()
+                        .h_full()
+                        .cursor(gpui_kit::CursorStyle::ResizeLeftRight)
+                        .on_click(cx.listener(|h, ev: &ClickEvent, w, cx| {
+                            if ev.click_count() >= 2 {
+                                h.run(Command::new("ui.split").arg("reset", true), w, cx);
+                            }
+                        })),
+                );
+            }
             let (rows, cols) = self.grid[i];
             panels = panels.child(
                 div()
@@ -651,6 +700,22 @@ impl Render for CoreHost {
                 &self.theme,
                 &click,
             ))
+            .children(open.as_ref().map(|_| {
+                // Щит под меню: клик мимо закрывает его и не уходит в панель.
+                div()
+                    .id("menu-shield")
+                    .absolute()
+                    .top(px(self.theme.m(Metric::HTitlebar)))
+                    .left_0()
+                    .size_full()
+                    .on_click(cx.listener(|h, _: &ClickEvent, w, cx| {
+                        h.run(Command::new("ui.cancel"), w, cx);
+                    }))
+            }))
+            .children(open.as_ref().and_then(|id| {
+                self.menu
+                    .flyout(id, &crate::keybar::FarStub, &self.theme, &click_all)
+            }))
             .children(overlays::toasts(&self.toasts, &self.theme))
     }
 }

@@ -163,13 +163,13 @@ pub(crate) struct MenuMemo {
 }
 
 /// Подпись пункта.
-fn label(i18n: &I18n, key: &str) -> String {
+pub(crate) fn label(i18n: &I18n, key: &str) -> String {
     i18n.get(key)
 }
 
 /// Буква выбора: атрибут `.menu-key`, если эта буква есть в подписи (атрибут из
 /// запасного языка — латиница у русской подписи — не годится), иначе первая буква.
-fn letter(i18n: &I18n, key: &str) -> Option<char> {
+pub(crate) fn letter(i18n: &I18n, key: &str) -> Option<char> {
     let lower = |c: char| c.to_lowercase().next().unwrap_or(c);
     let text: String = label(i18n, key).chars().map(lower).collect();
     let attr = i18n

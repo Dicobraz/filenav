@@ -16,6 +16,8 @@ const W_TOAST: f32 = 360.0;
 /// Обработчик клика (команда в Core).
 pub(super) type Handler = Box<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
 pub(super) type Click<'a> = &'a dyn Fn(Command) -> Handler;
+/// Клик с цепочкой команд (меню: закрыть, панель, пункт).
+pub(super) type ClickAll<'a> = &'a dyn Fn(Vec<Command>) -> Handler;
 
 /// Тост с дедлайном.
 pub(super) struct Toast {

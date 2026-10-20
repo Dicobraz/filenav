@@ -121,13 +121,26 @@ fn caption(
         .child(SharedString::from(glyph.to_string()))
 }
 
-/// Заголовок окна: [табы левой][зазор][табы правой][─ □ ✕]; пустое место — перетаскивание.
-pub(super) fn titlebar(
+/// Табы обеих панелей (содержимое заголовка, когда меню F9 закрыто).
+pub(super) fn panel_tabs(
     s: &AppState,
     theme: &Theme,
-    maximized: bool,
     click: &impl Fn(Command) -> super::overlays::Handler,
 ) -> Div {
+    let gap = px(theme.m(Metric::GapPanels));
+    div()
+        .flex_1()
+        .min_w_0()
+        .h_full()
+        .flex()
+        .flex_row()
+        .gap(gap)
+        .child(tabs(s, Side::Left, theme, click))
+        .child(tabs(s, Side::Right, theme, click))
+}
+
+/// Заголовок окна: [содержимое][место для перетаскивания][─ □ ✕].
+pub(super) fn titlebar(content: Div, theme: &Theme, maximized: bool) -> Div {
     let gap = px(theme.m(Metric::GapPanels));
     let hover = theme.c(Role::FillSubtleHover);
     let primary = theme.c(Role::TextPrimary);
@@ -147,8 +160,7 @@ pub(super) fn titlebar(
                 .flex()
                 .flex_row()
                 .gap(gap)
-                .child(tabs(s, Side::Left, theme, click))
-                .child(tabs(s, Side::Right, theme, click))
+                .child(content)
                 .child(
                     div()
                         .id("drag")
