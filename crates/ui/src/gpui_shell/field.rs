@@ -3,6 +3,7 @@
 //! Поле — `InputState` gpui-kit (IME, выделение, буфер обмена); Enter и Esc разбирает
 //! хост, остальные клавиши — поле.
 
+use gpui_kit::component::Sizable as _;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::prelude::*;
 use gpui_kit::{Context, Div, Entity, SharedString, Window, div, px};
@@ -132,7 +133,8 @@ impl CoreHost {
 pub(super) fn rename_input(field: Option<&Field>, t: &Tab) -> Option<Input> {
     let f = field?;
     match &f.key {
-        Key::Rename(tab, _) if *tab == t.id.0 => Some(Input::new(&f.input)),
+        // Высота поля — как у строки (24 px), не среднего поля gpui-kit (32 px).
+        Key::Rename(tab, _) if *tab == t.id.0 => Some(Input::new(&f.input).small()),
         _ => None,
     }
 }

@@ -7376,6 +7376,7 @@ dependencies = [
  "gpui-kit",
  "insta",
  "jiff",
+ "png 0.18.1",
  "proptest",
  "raw-window-handle",
  "rustc-hash 2.1.3",

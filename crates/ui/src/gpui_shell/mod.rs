@@ -8,6 +8,7 @@ mod input;
 mod menu;
 mod overlays;
 mod panel;
+mod screens;
 mod theme;
 mod views;
 
@@ -100,6 +101,8 @@ pub struct Launch {
     pub first_frame: Option<Box<dyn FnOnce() -> bool>>,
     /// `--bench`: сценарий замера (G-07).
     pub bench: Option<crate::bench::Bench>,
+    /// `--screens <каталог>`: снимки сцен для проверки дизайна.
+    pub screens: Option<std::path::PathBuf>,
 }
 
 impl std::fmt::Debug for Launch {
@@ -128,6 +131,7 @@ pub struct CoreHost {
     /// Таймер простоя бенча уже стоит: не ставить второй (иначе таймеры будят окно
     /// цепочкой и простой меряет сам себя).
     bench_timer: bool,
+    screens: Option<screens::Screens>,
     /// Открытое поле ввода (черновик, переименование).
     field: Option<field::Field>,
     /// Черновик удаления — сразу насовсем (Shift+F8 или корзины нет).
@@ -142,6 +146,8 @@ pub struct CoreHost {
     out: Vec<Command>,
     /// Панели — кэшируемые view (G-07) и отпечатки их последней отрисовки.
     panels: [[Entity<panel::PanelView>; 3]; 2],
+    /// Ширина карточек панелей в этом кадре (путь и колонки по ширине).
+    panel_w: [f32; 2],
     prints: [[u64; 3]; 2],
     /// Протяжка с зажатой ПКМ (Far): панель, ставить или снимать пометку, последняя строка.
     rdrag: Option<(Side, bool, String)>,
@@ -172,6 +178,7 @@ impl CoreHost {
             theme,
             first_frame,
             bench,
+            screens,
         } = launch;
         listen(wake, cx);
         let registered = crate::keybar::registered(core.registry());
@@ -201,6 +208,7 @@ impl CoreHost {
             first_frame,
             bench,
             bench_timer: false,
+            screens: screens.map(screens::Screens::new),
             field: None,
             ops_permanent: false,
             menu,
@@ -210,6 +218,7 @@ impl CoreHost {
             input: input::Input::new(keys),
             out: Vec::new(),
             panels,
+            panel_w: [0.0; 2],
             prints: [[0; 3]; 2],
             rdrag: None,
             slot: [None; 2],
@@ -266,6 +275,7 @@ impl CoreHost {
             let Some(w) = widths[i] else {
                 continue;
             };
+            self.panel_w[i] = w;
             let g = panel::grid(&self.theme, mode, w, h);
             if g == self.grid[i] {
                 continue;
@@ -607,6 +617,45 @@ impl CoreHost {
         }
     }
 
+    /// Шаг `--screens` на кадре: команды сцены, ожидание, снимок в фоне.
+    fn drive_screens(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let ready = self
+            .core
+            .as_ref()
+            .is_some_and(|c| screens::ready(c.state()));
+        let Some(sc) = self.screens.as_mut() else {
+            return;
+        };
+        match sc.frame(ready) {
+            screens::Step::Enter(cmds, to) => {
+                if let Some((w, h)) = to {
+                    window.resize(size(px(w), px(h)));
+                }
+                // Через `run_all`, как клик: `pump` окна — сетка панелей, черновики, тосты.
+                self.run_all(cmds, window, cx);
+                window.request_animation_frame();
+            }
+            screens::Step::Next => window.request_animation_frame(),
+            screens::Step::Shoot(path) => {
+                let hwnd = hwnd_of(window);
+                let task = cx.background_spawn(async move { screens::shoot(hwnd, &path) });
+                cx.spawn_in(window, async move |this, cx| {
+                    let r = task.await;
+                    let _ = this.update(cx, |h, cx| {
+                        if h.screens.as_mut().is_some_and(|s| s.shot(r)) {
+                            h.screens = None;
+                            h.shutdown(cx);
+                        } else {
+                            cx.notify();
+                        }
+                    });
+                })
+                .detach();
+            }
+            screens::Step::Idle => {}
+        }
+    }
+
     /// Команда от мыши (табы, F-клавиши).
     fn run(&mut self, cmd: Command, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(core) = self.core.as_mut() {
@@ -940,6 +989,7 @@ impl Render for CoreHost {
         self.sync_theme(window);
         self.track_slide(window);
         self.drive_bench(window, cx);
+        self.drive_screens(window, cx);
         if let Some(f) = self.first_frame.take() {
             // Кадр уже на экране к следующему циклу: замер и, для `--bench-startup`, выход.
             // Следующий цикл просим сразу: кадры по запросу, иначе он придёт, только когда
@@ -1125,7 +1175,7 @@ pub fn run(launch: Launch, geom: Option<WindowGeom>) {
         tracing::debug!(target: "startup", ms = t0.elapsed().as_secs_f64() * 1e3, "gpui-kit init");
         // `--bench` не мешает владельцу: окно на неосновном экране (ноутбук при втором
         // мониторе), без фокуса и без ограничения кадров неактивного окна.
-        let bench = launch.bench.is_some();
+        let bench = launch.bench.is_some() || launch.screens.is_some();
         let bench_display = bench
             .then(|| {
                 let primary = cx.primary_display().map(|d| d.id());
@@ -1228,4 +1278,13 @@ pub fn run(launch: Launch, geom: Option<WindowGeom>) {
         }
         cx.activate(true);
     });
+}
+
+/// Win32-дескриптор окна gpui как `isize` (0 — не Win32).
+fn hwnd_of(window: &Window) -> isize {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    match HasWindowHandle::window_handle(window).map(|h| h.as_raw()) {
+        Ok(RawWindowHandle::Win32(h)) => h.hwnd.get(),
+        _ => 0,
+    }
 }

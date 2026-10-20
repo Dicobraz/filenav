@@ -191,3 +191,4 @@ ui-info-kind-other = другое
 ui-qview-hint = F3 — просмотр
 ui-qview-binary = двоичный
 ui-qview-dir = Папка — её содержимое в панели
+ui-info-volume-local = Локальный диск

@@ -21,6 +21,8 @@ pub struct Launch {
     pub open: Vec<Command>,
     /// `--bench <каталог>`: сценарий замера на этом каталоге (G-07).
     pub bench: Option<std::path::PathBuf>,
+    /// `--screens <каталог>`: снимки сцен (проверка дизайна).
+    pub screens: Option<std::path::PathBuf>,
 }
 
 pub fn run(launch: Launch) {
@@ -30,6 +32,7 @@ pub fn run(launch: Launch) {
         ipc,
         open,
         bench,
+        screens,
     } = launch;
     let geom = boot.session.as_ref().and_then(|s| s.window);
     let services = crate::vfs_services(&boot.config);
@@ -63,6 +66,9 @@ pub fn run(launch: Launch) {
                     .arg("path", urfin_core::Location::local(dir.clone())),
             );
         }
+    }
+    if screens.is_some() {
+        open_demo_tree(&mut core);
     }
     if let Some(inbox) = &ipc {
         let s = signal.clone();
@@ -111,7 +117,29 @@ pub fn run(launch: Launch) {
             theme,
             first_frame: Some(first_frame),
             bench: bench.map(|_| urfin_ui::bench::Bench::new((1200.0, 760.0))),
+            screens: screens.inspect(|d| {
+                let _ = std::fs::create_dir_all(d);
+            }),
         },
         geom,
     );
+}
+
+/// `--screens`: обе панели — на демо-дерево (одно и то же на любой машине).
+fn open_demo_tree(core: &mut Core) {
+    match crate::demo_tree::create() {
+        Ok(root) => {
+            for (side, dir) in [("left", root.clone()), ("right", root.join("Projects"))] {
+                core.dispatch(
+                    Command::new("panel.go")
+                        .arg("side", side)
+                        .arg("path", urfin_core::Location::local(dir)),
+                );
+            }
+        }
+        Err(e) => {
+            eprintln!("screens: demo tree: {e}");
+            std::process::exit(1);
+        }
+    }
 }
