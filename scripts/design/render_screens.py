@@ -1,0 +1,90 @@
+"""Рендер Window.dc.html (холст Design) в PNG без рантайма холста:
+мини-интерпретатор {{holes}}, <sc-for>, <sc-if> + Playwright."""
+import json
+import os
+import sys
+
+from playwright.sync_api import sync_playwright
+
+SRC, OUT = sys.argv[1], sys.argv[2]
+os.makedirs(OUT, exist_ok=True)
+template = open(SRC, encoding="utf-8").read()
+
+JS = r"""
+([src, props]) => {
+  const doc = new DOMParser().parseFromString(src, 'text/html');
+  const code = doc.querySelector('script[data-dc-script]').textContent;
+  class DCLogic { constructor(p) { this.props = p; this.state = {}; } setState() {} }
+  const Component = new Function('DCLogic', code + '\nreturn Component;')(DCLogic);
+  const vals = new Component(props).renderVals();
+  const look = (scope, path) => {
+    path = path.trim();
+    if (path === 'true') return true; if (path === 'false') return false;
+    if (/^-?\d+(\.\d+)?$/.test(path)) return Number(path);
+    return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), scope);
+  };
+  const whole = /^\{\{([^}]+)\}\}$/;
+  const interp = (s, scope) => s.replace(/\{\{([^}]+)\}\}/g, (_, p) => { const v = look(scope, p); return v == null ? '' : String(v); });
+  const SVG = 'http://www.w3.org/2000/svg';
+  const render = (node, scope, parent, inSvg) => {
+    if (node.nodeType === 3) { parent.appendChild(document.createTextNode(interp(node.textContent, scope))); return; }
+    if (node.nodeType !== 1) return;
+    const tag = node.localName;
+    if (tag === 'helmet' || tag === 'script') return;
+    if (tag === 'sc-for') {
+      const list = look(scope, node.getAttribute('list').match(whole)[1]) || [];
+      const as = node.getAttribute('as');
+      list.forEach((it, i) => { const sc = Object.assign({}, scope, { [as]: it, $index: i }); node.childNodes.forEach((c) => render(c, sc, parent, inSvg)); });
+      return;
+    }
+    if (tag === 'sc-if') {
+      if (look(scope, node.getAttribute('value').match(whole)[1])) node.childNodes.forEach((c) => render(c, scope, parent, inSvg));
+      return;
+    }
+    const svg = inSvg || tag === 'svg';
+    const el = svg ? document.createElementNS(SVG, tag) : document.createElement(tag);
+    for (const a of node.attributes) {
+      if (a.name.startsWith('hint-') || a.name.startsWith('on')) continue;
+      const m = a.value.match(whole);
+      if (m) {
+        const v = look(scope, m[1]);
+        if (v === undefined || v === null || v === false || typeof v === 'function') continue;
+        el.setAttribute(a.name, v === true ? '' : String(v));
+      } else el.setAttribute(a.name, interp(a.value, scope));
+    }
+    node.childNodes.forEach((c) => render(c, scope, el, svg));
+    parent.appendChild(el);
+  };
+  document.body.style.margin = '0';
+  doc.querySelector('x-dc').childNodes.forEach((c) => render(c, vals, document.body, false));
+}
+"""
+
+SHOTS = [
+    ("theme-system-light", {"theme": "light"}),
+    ("theme-system-dark", {"theme": "dark"}),
+    ("theme-blue", {"theme": "blue"}),
+    ("theme-turquoise", {"theme": "turquoise"}),
+    ("theme-grass", {"theme": "grass"}),
+    ("theme-sepia", {"theme": "sepia"}),
+    ("screen-copy", {"screen": "copy"}),
+    ("screen-delete", {"screen": "delete"}),
+    ("screen-conflict", {"screen": "conflict"}),
+    ("screen-jobs", {"screen": "progress"}),
+    ("screen-search", {"screen": "search"}),
+    ("screen-viewer", {"screen": "viewer"}),
+    ("screen-editor", {"screen": "editor"}),
+    ("screen-settings", {"screen": "settings"}),
+    ("context-admin", {"context": "admin"}),
+    ("density-20-color-icons", {"density": "20", "icons": "color"}),
+]
+
+with sync_playwright() as p:
+    b = p.chromium.launch()
+    pg = b.new_page(viewport={"width": 1280, "height": 760}, device_scale_factor=1)
+    for name, props in SHOTS:
+        pg.set_content("<!doctype html><html><head><meta charset='utf-8'></head><body></body></html>")
+        pg.evaluate(JS, [template, props])
+        pg.screenshot(path=os.path.join(OUT, name + ".png"))
+    b.close()
+print(json.dumps([n for n, _ in SHOTS]))
