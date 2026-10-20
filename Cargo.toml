@@ -46,6 +46,8 @@ bitflags = "2.13"
 anyhow = "1.0"
 # Уже в графе через dirs и tracing-subscriber; features — в крейтах.
 windows-sys = "0.61"
+# HWND окна gpui (subclass записок клавиш, S3-07); уже в графе через gpui.
+raw-window-handle = "0.6"
 # statvfs в vfs (unix); S6 — PTY (S0 v3 «Зависимости»).
 rustix = { version = "1.1", default-features = false, features = ["std"] }
 # VERSIONINFO exe (R-01): без `toml` — поля задаёт build.rs.

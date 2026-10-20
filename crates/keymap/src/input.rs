@@ -64,6 +64,15 @@ impl KeyNotes {
         q.push_back(n);
     }
 
+    /// Сбросить записки: нажатие разобрал не конвейер (поле ввода, меню, вопрос) —
+    /// иначе записка позже дала бы синтетическое сочетание.
+    pub fn clear(&self) {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clear();
+    }
+
     fn drain_into(&self, out: &mut Vec<(KeyNote, bool)>) {
         let mut q = self
             .0
