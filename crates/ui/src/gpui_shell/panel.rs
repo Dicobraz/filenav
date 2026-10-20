@@ -119,6 +119,7 @@ impl Render for PanelView {
                 rows,
                 cols,
                 h.field.as_ref(),
+                h.slide_pos(side),
                 &l,
             )),
             Piece::Foot => body.child(footer(s, t, side, s.active == side, theme)),
@@ -135,6 +136,7 @@ pub(super) fn fingerprint(
     grid: (u32, u32),
     dark: bool,
     field: Option<&super::field::Field>,
+    anim: u64,
 ) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::hash::DefaultHasher::new();
@@ -148,7 +150,16 @@ pub(super) fn fingerprint(
     match piece {
         Piece::Head => format!("{:?}", t.loc).hash(&mut h),
         Piece::List => {
-            (active, grid, t.rev, t.cursor.row, t.cursor.top, t.rows()).hash(&mut h);
+            (
+                active,
+                grid,
+                t.rev,
+                t.cursor.row,
+                t.cursor.top,
+                t.rows(),
+                anim,
+            )
+                .hash(&mut h);
             (t.selection.len(), t.selection.bytes()).hash(&mut h);
             if t.mode != urfin_core::PanelMode::Files {
                 // Дерево, «Сведения», просмотр смотрят и на другую панель.
@@ -168,6 +179,16 @@ pub(super) fn fingerprint(
         }
     }
     h.finish()
+}
+
+/// Эксперимент с курсором (`URFIN_CURSOR=solid,slide`, выключен по умолчанию): сплошной
+/// акцентный курсор и скольжение полосы между строками. Решение — за владельцем.
+pub(super) fn cursor_mode() -> (bool, bool) {
+    static M: std::sync::OnceLock<(bool, bool)> = std::sync::OnceLock::new();
+    *M.get_or_init(|| {
+        let v = std::env::var("URFIN_CURSOR").unwrap_or_default();
+        (v.contains("solid"), v.contains("slide"))
+    })
 }
 
 /// Карточка панели (рамка активной — акцентом); части кладёт окно.
@@ -356,6 +377,8 @@ struct Line {
     color: Hsla,
     /// Иконка: каталог — акцент, скрытый и системный — третичный, прочее — вторичный.
     icon_color: Hsla,
+    /// Строка на сплошном акцентном курсоре (эксперимент `solid`): текст `accent.on`.
+    on_accent: bool,
     /// Вместо имени — поле переименования.
     renaming: bool,
 }
@@ -400,6 +423,10 @@ const MARK_W: f32 = 12.0;
 /// Цвета строк для `canvas`.
 #[derive(Clone, Copy)]
 struct Pal {
+    /// Эксперимент `URFIN_CURSOR=solid`: курсор активной панели — сплошной акцент.
+    solid: bool,
+    accent_fill: Hsla,
+    on_accent: Hsla,
     secondary: Hsla,
     marked: Hsla,
     cursor: Hsla,
@@ -421,6 +448,7 @@ fn list(
     rows: u32,
     cols: u32,
     field: Option<&super::field::Field>,
+    glide: Option<f32>,
     cx: &Listen,
 ) -> Stateful<Div> {
     let total = t.rows();
@@ -444,6 +472,7 @@ fn list(
         },
     };
     let rename = super::field::rename_input(field, t);
+    let solid = cursor_mode().0;
     let mut lines = Vec::with_capacity((rows * cols) as usize);
     let mut cell = Cell::new();
     for slot in 0..rows * cols {
@@ -484,12 +513,16 @@ fn list(
             name,
             marked,
             cursor: cursor.then_some(active),
-            color: if marked {
+            on_accent: solid && cursor && active,
+            color: if solid && cursor && active {
+                theme.c(Role::AccentOn)
+            } else if marked {
                 theme.c(Role::AccentText)
             } else {
                 color.map_or_else(|| theme.c(Role::TextPrimary), super::theme::hsla)
             },
             icon_color: theme.c(match entry {
+                _ if solid && cursor && active => Role::AccentOn,
                 Some(e)
                     if e.attrs.has(urfin_core::Attrs::HIDDEN)
                         || e.attrs.has(urfin_core::Attrs::SYSTEM) =>
@@ -505,6 +538,9 @@ fn list(
     let lines = Rc::new(lines);
     let bounds = Rc::new(std::cell::Cell::new(Bounds::<Pixels>::default()));
     let pal = Pal {
+        solid,
+        accent_fill: theme.c(Role::AccentFill),
+        on_accent: theme.c(Role::AccentOn),
         secondary: theme.c(Role::TextSecondary),
         marked: theme.c(Role::AccentSubtle),
         cursor: theme.c(Role::FillCursor),
@@ -517,7 +553,7 @@ fn list(
     let canvas = canvas(
         move |b, _, _| paint_bounds.set(b),
         move |b, (), window, cx| {
-            paint(&paint_lines, b, rows, cols, geo, pal, window, cx);
+            paint(&paint_lines, b, rows, cols, geo, pal, glide, window, cx);
         },
     )
     .size_full();
@@ -640,6 +676,7 @@ fn paint(
     cols: u32,
     geo: Geo,
     pal: Pal,
+    glide: Option<f32>,
     window: &mut Window,
     cx: &mut App,
 ) {
@@ -665,38 +702,70 @@ fn paint(
             .text_system()
             .shape_line(s.clone(), sz, &[run(s.len(), font, color)], None)
     };
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        reason = "номер строки на странице"
+    )]
+    let at = |k: usize| {
+        (
+            b.origin.x + px((k as u32 / rows) as f32 * col_w),
+            b.origin.y + row_h * ((k as u32 % rows) as f32),
+        )
+    };
+    let bar = |x0: Pixels, y: Pixels| {
+        Bounds::new(
+            point(x0 + px(ROW_MX), y),
+            size2(px(col_w - 2.0 * ROW_MX), row_h),
+        )
+    };
     window.with_content_mask(Some(ContentMask { bounds: b }), |window| {
+        // Сначала все фоны, потом содержимое: скользящий курсор не перекрывает текст.
         for (k, l) in lines.iter().enumerate() {
-            #[allow(
-                clippy::cast_possible_truncation,
-                clippy::cast_precision_loss,
-                reason = "номер строки на странице"
-            )]
-            let (x0, y) = (
-                b.origin.x + px((k as u32 / rows) as f32 * col_w),
-                b.origin.y + row_h * ((k as u32 % rows) as f32),
-            );
-            let r = Bounds::new(
-                point(x0 + px(ROW_MX), y),
-                size2(px(col_w - 2.0 * ROW_MX), row_h),
-            );
+            let (x0, y) = at(k);
             if l.marked {
-                window.paint_quad(gpui_kit::fill(r, pal.marked).corner_radii(px(geo.radius)));
+                window.paint_quad(
+                    gpui_kit::fill(bar(x0, y), pal.marked).corner_radii(px(geo.radius)),
+                );
             }
             if let Some(active) = l.cursor {
-                let fill = if active {
-                    pal.cursor
-                } else {
-                    pal.cursor_passive
+                // Эксперимент `slide`: полоса между прежней и новой строкой.
+                let y = match glide {
+                    Some(f) => b.origin.y + row_h * f,
+                    None => y,
                 };
-                let mut q = gpui_kit::fill(r, fill).corner_radii(px(geo.radius));
-                if active {
-                    q = q.border_widths(px(geo.stroke)).border_color(pal.stroke);
-                }
+                let q = if active && pal.solid {
+                    gpui_kit::fill(bar(x0, y), pal.accent_fill)
+                } else {
+                    let fill = if active {
+                        pal.cursor
+                    } else {
+                        pal.cursor_passive
+                    };
+                    let q = gpui_kit::fill(bar(x0, y), fill).corner_radii(px(geo.radius));
+                    if active {
+                        q.border_widths(px(geo.stroke)).border_color(pal.stroke)
+                    } else {
+                        q
+                    }
+                };
                 window.paint_quad(q);
             }
+        }
+        for (k, l) in lines.iter().enumerate() {
+            let (x0, y) = at(k);
+            let secondary = if l.on_accent {
+                pal.on_accent
+            } else {
+                pal.secondary
+            };
             if l.marked {
-                let mark = shape(window, &check, &icons, pal.accent, px(geo.mark_size));
+                let tone = if l.on_accent {
+                    pal.on_accent
+                } else {
+                    pal.accent
+                };
+                let mark = shape(window, &check, &icons, tone, px(geo.mark_size));
                 let _ = mark.paint(
                     point(x0 + px(ROW_MX + geo.pad), y),
                     row_h,
@@ -739,7 +808,7 @@ fn paint(
             let mut right = x0 + px(col_w - ROW_MX - geo.pad);
             for (s, w) in [(&l.mtime, geo.mtime_w), (&l.size, geo.size_w)] {
                 if let Some(s) = s {
-                    let line = shape(window, s, &font, pal.secondary, size);
+                    let line = shape(window, s, &font, secondary, size);
                     let _ = line.paint(
                         point(right - line.width, y),
                         row_h,

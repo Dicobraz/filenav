@@ -145,6 +145,9 @@ pub struct CoreHost {
     prints: [[u64; 3]; 2],
     /// Протяжка с зажатой ПКМ (Far): панель, ставить или снимать пометку, последняя строка.
     rdrag: Option<(Side, bool, String)>,
+    /// Эксперимент `slide`: где был курсор (таб, верх страницы, строка) и скольжение полосы.
+    slot: [Option<(u32, u32, u32)>; 2],
+    slide: [Option<Slide>; 2],
     /// Низ окна (cmdline, F-клавиши) — кэшируемая view, отпечаток как у панелей.
     bottom: Entity<chrome::ChromeView>,
     bottom_print: u64,
@@ -209,6 +212,8 @@ impl CoreHost {
             panels,
             prints: [[0; 3]; 2],
             rdrag: None,
+            slot: [None; 2],
+            slide: [None, None],
             bottom,
             bottom_print: 0,
         }
@@ -857,6 +862,70 @@ fn cached<V: Render>(view: &Entity<V>, print: u64, last: &mut u64) -> gpui_kit::
     }
 }
 
+/// Скольжение полосы курсора (эксперимент `slide`): строки страницы «откуда» и «куда».
+#[derive(Clone, Copy)]
+struct Slide {
+    from: f32,
+    to: f32,
+    at: std::time::Instant,
+}
+
+/// Длительность скольжения: короче шага автоповтора (~31 мс).
+const SLIDE: Duration = Duration::from_millis(28);
+
+impl CoreHost {
+    /// Положение полосы курсора на странице (дробная строка) во время скольжения.
+    fn slide_pos(&self, side: Side) -> Option<f32> {
+        let sl = self.slide[usize::from(side == Side::Right)]?;
+        let p = (sl.at.elapsed().as_secs_f32() / SLIDE.as_secs_f32()).min(1.0);
+        // ease-out: быстро стартует, мягко садится.
+        let e = 1.0 - (1.0 - p) * (1.0 - p);
+        Some(sl.from + (sl.to - sl.from) * e)
+    }
+
+    /// Курсор сдвинулся в пределах страницы и колонки — начать скольжение; кадры — до конца.
+    fn track_slide(&mut self, window: &mut Window) {
+        if !panel::cursor_mode().1 {
+            return;
+        }
+        let Some(core) = self.core.as_ref() else {
+            return;
+        };
+        let s = core.state();
+        for (i, side) in [Side::Left, Side::Right].into_iter().enumerate() {
+            let t = s.panel(side).tab();
+            let rows = self.grid[i].0.max(1);
+            let now = (t.id.0, t.cursor.top, t.cursor.row);
+            if let Some((tab, top, row)) = self.slot[i]
+                && (tab, top) == (now.0, now.1)
+                && row != now.2
+                && row >= top
+                && now.2 >= top
+                && (row - top) / rows == (now.2 - top) / rows
+            {
+                #[allow(clippy::cast_precision_loss, reason = "строки страницы")]
+                let from = self.slide_pos(side).unwrap_or(((row - top) % rows) as f32);
+                #[allow(clippy::cast_precision_loss, reason = "строки страницы")]
+                let to = ((now.2 - top) % rows) as f32;
+                self.slide[i] = Some(Slide {
+                    from,
+                    to,
+                    at: std::time::Instant::now(),
+                });
+            } else if self.slot[i].is_some_and(|o| o != now) {
+                self.slide[i] = None;
+            }
+            self.slot[i] = Some(now);
+            if self.slide[i].is_some_and(|sl| sl.at.elapsed() >= SLIDE) {
+                self.slide[i] = None;
+            }
+            if self.slide[i].is_some() {
+                window.request_animation_frame();
+            }
+        }
+    }
+}
+
 impl Render for CoreHost {
     #[allow(clippy::too_many_lines, reason = "сборка зон окна")]
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -869,6 +938,7 @@ impl Render for CoreHost {
         }
         self.sync_field(window, cx);
         self.sync_theme(window);
+        self.track_slide(window);
         self.drive_bench(window, cx);
         if let Some(f) = self.first_frame.take() {
             // Кадр уже на экране к следующему циклу: замер и, для `--bench-startup`, выход.
@@ -970,8 +1040,16 @@ impl Render for CoreHost {
                     panel::Piece::List => div().flex_1().min_h_0(),
                     _ => continue,
                 };
-                let print =
-                    panel::fingerprint(s, side, piece, self.grid[i], dark, self.field.as_ref());
+                let anim = self.slide[i].map_or(0, |sl| sl.at.elapsed().as_micros() as u64 + 1);
+                let print = panel::fingerprint(
+                    s,
+                    side,
+                    piece,
+                    self.grid[i],
+                    dark,
+                    self.field.as_ref(),
+                    anim,
+                );
                 card = card.child(slot.flex().child(cached(
                     &self.panels[i][k],
                     print,
