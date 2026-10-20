@@ -4,7 +4,7 @@
 
 mod chrome;
 mod field;
-mod input;
+pub(crate) mod input;
 mod menu;
 mod overlays;
 mod panel;

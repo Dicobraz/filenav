@@ -5,7 +5,9 @@
 //!
 //! На Windows subclass окна (`sys::key_notes`) пишет записки `KeyNotes` в очередь этого
 //! же `KeyInput` — их разбирает каждый `process`; записки без нажатия gpui (`Num5` без
-//! `NumLock`) — [`Input::flush`] по будильнику subclass.
+//! `NumLock`) — [`Input::flush`] по будильнику subclass. Он же на время разбора клавиши
+//! отдаёт [`KeyMsg`] — скан-код и надпись клавиши, которых нет в `Keystroke`: по ним
+//! сочетание не зависит от раскладки (v4 №5, [`pressed`]).
 
 use std::time::Instant;
 
@@ -13,6 +15,33 @@ use gpui_kit::{Keystroke, Modifiers};
 use urfin_core::{AppState, Command};
 use urfin_keymap::ev::{Event, Key, Modifiers as EMods, RawInput};
 use urfin_keymap::{ActiveKeymap, KeyInput, KeyNotes};
+
+/// Сообщение клавиши Windows, которое gpui разбирает прямо сейчас (`sys::key_notes`):
+/// то, чего нет в `Keystroke`.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct KeyMsg {
+    /// Код клавиши `VK_*` (`wParam`).
+    pub vk: u16,
+    /// Скан-код (биты 16–23 `lParam`): место клавиши, от раскладки не зависит.
+    pub scan: u8,
+    /// Бит 24 `lParam`: расширенная клавиша (стрелки, серый `/`, `NumEnter`).
+    pub extended: bool,
+    /// Shift зажат. gpui снимает Shift, когда меняет клавишу на символ (Shift+1 → `!`).
+    pub shift: bool,
+    /// Надпись клавиши без модификаторов в текущей раскладке (`MapVirtualKeyW`,
+    /// `MAPVK_VK_TO_CHAR`): у букв — латиница при любой раскладке, у прочих — символ
+    /// раскладки (`х` на месте `[` в русской).
+    pub label: Option<char>,
+}
+
+/// Клавиша нажатия для keymap.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+struct Pressed {
+    key: Option<Key>,
+    physical: Option<Key>,
+    /// Shift, в том числе снятый gpui.
+    shift: bool,
+}
 
 /// Состояние моста: конвейер keymap и последние модификаторы.
 pub(super) struct Input {
@@ -79,30 +108,37 @@ impl Input {
         self.run(Vec::new(), st, out)
     }
 
-    /// Нажатие: клавиша (логическая и физическая — из кода клавиши gpui, он не зависит от
-    /// раскладки) и введённый символ.
+    /// Нажатие: клавиша (по надписи или по месту — [`pressed`]) и введённый символ.
     pub(super) fn key_down(
         &mut self,
         ks: &Keystroke,
         st: &AppState,
         out: &mut Vec<Command>,
     ) -> Outcome {
-        self.mods = mods(ks.modifiers);
+        self.key_down_with(ks, key_msg(), st, out)
+    }
+
+    fn key_down_with(
+        &mut self,
+        ks: &Keystroke,
+        msg: Option<KeyMsg>,
+        st: &AppState,
+        out: &mut Vec<Command>,
+    ) -> Outcome {
+        let p = pressed(ks, msg);
+        self.mods = mods(ks.modifiers, p.shift);
         let mut events = Vec::with_capacity(2);
-        if let Some(key) = key_of(&ks.key) {
+        if let Some(key) = p.key {
             events.push(Event::Key {
                 key,
-                physical_key: physical_of(key, down_vk()),
+                physical_key: p.physical,
                 pressed: true,
                 repeat: false,
                 modifiers: self.mods,
             });
         }
-        // Символ — только без Ctrl/Alt (AltGr на Windows — Ctrl+Alt: это символ).
-        let altgr = ks.modifiers.control && ks.modifiers.alt;
         if let Some(text) = ks.key_char.as_deref()
-            && !text.chars().any(char::is_control)
-            && (altgr || !(ks.modifiers.control || ks.modifiers.alt))
+            && typed(ks.modifiers, text)
         {
             events.push(Event::Text(text.to_owned()));
         }
@@ -112,11 +148,24 @@ impl Input {
     }
 
     pub(super) fn key_up(&mut self, ks: &Keystroke, st: &AppState, out: &mut Vec<Command>) {
-        self.mods = mods(ks.modifiers);
-        if let Some(key) = key_of(&ks.key) {
+        self.key_up_with(ks, key_msg(), st, out);
+    }
+
+    /// Отпускание — та же клавиша, что у нажатия: иначе keymap счёл бы следующее нажатие
+    /// повтором.
+    fn key_up_with(
+        &mut self,
+        ks: &Keystroke,
+        msg: Option<KeyMsg>,
+        st: &AppState,
+        out: &mut Vec<Command>,
+    ) {
+        let p = pressed(ks, msg);
+        self.mods = mods(ks.modifiers, p.shift);
+        if let Some(key) = p.key {
             let ev = Event::Key {
                 key,
-                physical_key: Some(key),
+                physical_key: p.physical,
                 pressed: false,
                 repeat: false,
                 modifiers: self.mods,
@@ -132,7 +181,7 @@ impl Input {
         st: &AppState,
         out: &mut Vec<Command>,
     ) -> Outcome {
-        self.mods = mods(m);
+        self.mods = mods(m, m.shift);
         self.run(vec![Event::ModifiersChanged(self.mods)], st, out)
     }
 
@@ -143,32 +192,98 @@ impl Input {
     }
 }
 
-fn mods(m: Modifiers) -> EMods {
+fn mods(m: Modifiers, shift: bool) -> EMods {
     EMods {
         alt: m.alt,
         ctrl: m.control,
-        shift: m.shift,
+        shift,
         mac_cmd: false,
         command: m.control,
     }
 }
 
-/// Код клавиши (`VK_*`) нажатия, которое сейчас разбирает gpui (Windows).
-fn down_vk() -> Option<u16> {
+/// Нажатие даёт символ (`Text`): без Ctrl или с `AltGr` (на Windows — Ctrl+Alt). С Alt —
+/// тоже: Alt+буква начинает быстрый поиск Far, символ — из `Text` (v4 №5). Кроме
+/// пробела: Alt+пробел — меню окна.
+fn typed(m: Modifiers, text: &str) -> bool {
+    if text.chars().any(char::is_control) {
+        return false;
+    }
+    match (m.control, m.alt) {
+        (true, alt) => alt,
+        (false, true) => !text.chars().any(char::is_whitespace),
+        (false, false) => true,
+    }
+}
+
+/// Сообщение клавиши, которое сейчас разбирает gpui (Windows).
+fn key_msg() -> Option<KeyMsg> {
     #[cfg(windows)]
-    return crate::sys::key_notes::key_down_vk();
+    return crate::sys::key_notes::key_msg();
     #[cfg(not(windows))]
     None
 }
 
-/// Физическая клавиша для keymap. `Plus` в keymap — серый `+` (S3-07, `GrayPlus`);
-/// gpui отдаёт `"+"` и для Shift+= основного ряда — его выдаёт код клавиши не `VK_ADD`.
-/// Кода нет (subclass не стоит) — как раньше, по имени.
-fn physical_of(key: Key, vk: Option<u16>) -> Option<Key> {
-    match vk {
-        Some(v) if key == Key::Plus && v != urfin_keymap::input::vk::ADD => None,
-        _ => Some(key),
+/// Клавиша нажатия по v4 №5 (S3 §1 №1 — как `logical.or(physical)` у egui-winit): надпись
+/// в раскладке, если это клавиша keymap (латиница; Dvorak, AZERTY, QWERTZ — «по надписи»),
+/// иначе — место в US-QWERTY по скан-коду (кириллица, греческий, иврит, арабский: `х` →
+/// `[`; мёртвая `^` AZERTY → `[`). Надпись букв gpui берёт из кода клавиши: она латинская
+/// при любой раскладке.
+///
+/// Клавиша со Shift — надпись без Shift и Shift: gpui отдаёт символ (`{`, `!`, `Х`) и
+/// снимает Shift, а пресеты пишут `Ctrl+Shift+OpenBracket`, `Ctrl+Shift+1`.
+///
+/// Физическая `Plus` в keymap — серый `+` (S3-07, `GrayPlus`): она только у `VK_ADD`.
+/// Сообщения нет (subclass не стоит) — по имени gpui, как раньше.
+fn pressed(ks: &Keystroke, msg: Option<KeyMsg>) -> Pressed {
+    let Some(m) = msg else {
+        let key = key_of(&ks.key);
+        return Pressed {
+            key,
+            physical: key,
+            shift: ks.modifiers.shift,
+        };
+    };
+    let shifted = m.shift && !ks.modifiers.shift;
+    let label = if shifted {
+        m.label.and_then(|c| key_of(c.encode_utf8(&mut [0; 4])))
+    } else {
+        key_of(&ks.key)
+    };
+    let place = place_of(m.scan, m.extended);
+    let key = label.or(place);
+    let physical = if m.vk == urfin_keymap::input::vk::ADD {
+        Some(Key::Plus)
+    } else {
+        match place {
+            Some(p) => Some(p),
+            None if key == Some(Key::Plus) => None,
+            None => key,
+        }
+    };
+    Pressed {
+        key,
+        physical,
+        shift: ks.modifiers.shift || shifted,
     }
+}
+
+/// Клавиша US-QWERTY на месте скан-кода основного блока (буквы, цифры, символы). Прочие
+/// клавиши (F1…, стрелки, цифровой блок, Enter, пробел) gpui называет сам.
+fn place_of(scan: u8, extended: bool) -> Option<Key> {
+    /// Ряды: первый скан-код и клавиши подряд.
+    const ROWS: [(u8, &str); 4] = [
+        (0x02, "1234567890-="),
+        (0x10, "qwertyuiop[]"),
+        (0x1E, "asdfghjkl;'`"),
+        (0x2B, "\\zxcvbnm,./"),
+    ];
+    if extended {
+        return None;
+    }
+    let (first, row) = ROWS.iter().rev().find(|(s, _)| scan >= *s)?;
+    let c = row.chars().nth(usize::from(scan - first))?;
+    key_of(c.encode_utf8(&mut [0; 4]))
 }
 
 /// Имя клавиши gpui (`"down"`, `"pagedown"`, `"a"`, `"f5"`, `"-"`) → клавиша keymap.
@@ -240,8 +355,27 @@ mod tests {
         assert_eq!(key_of("shift"), None);
     }
 
+    fn ks(key: &str, m: Modifiers) -> Keystroke {
+        Keystroke {
+            modifiers: m,
+            key: key.into(),
+            key_char: None,
+        }
+    }
+
+    fn msg(vk: u16, scan: u8, shift: bool, label: char) -> KeyMsg {
+        KeyMsg {
+            vk,
+            scan,
+            extended: false,
+            shift,
+            label: Some(label),
+        }
+    }
+
     /// Серые клавиши gpui называет как основной ряд; различает их записка subclass.
-    /// Серый `+` — по коду клавиши: `"+"` основного ряда (Shift+=) не `GrayPlus`.
+    /// Серый `+` — по коду клавиши: `"+"` основного ряда (Shift+=, `+` QWERTZ) не
+    /// `GrayPlus`.
     #[test]
     fn numpad_names_and_gray_plus() {
         for (g, k) in [
@@ -253,10 +387,86 @@ mod tests {
         ] {
             assert_eq!(key_of(g), Some(k), "{g}");
         }
-        let add = urfin_keymap::input::vk::ADD;
-        assert_eq!(physical_of(Key::Plus, Some(add)), Some(Key::Plus));
-        assert_eq!(physical_of(Key::Plus, Some(0xBB)), None, "VK_OEM_PLUS");
-        assert_eq!(physical_of(Key::Plus, None), Some(Key::Plus));
-        assert_eq!(physical_of(Key::Minus, Some(0xBD)), Some(Key::Minus));
+        let none = Modifiers::default();
+        let p = |key, m: Option<KeyMsg>| {
+            let p = pressed(&ks(key, none), m);
+            (p.key, p.physical, p.shift)
+        };
+        let (add, sub) = (
+            urfin_keymap::input::vk::ADD,
+            urfin_keymap::input::vk::SUBTRACT,
+        );
+        let plus = Some(Key::Plus);
+        assert_eq!(
+            p("+", Some(msg(add, 0x4E, false, '+'))),
+            (plus, plus, false)
+        );
+        assert_eq!(
+            p("+", Some(msg(0xBB, 0x0D, true, '='))),
+            (Some(Key::Equals), Some(Key::Equals), true),
+            "Shift+= US"
+        );
+        assert_eq!(
+            p("+", Some(msg(0xBB, 0x1B, false, '+'))),
+            (plus, Some(Key::CloseBracket), false),
+            "+ QWERTZ"
+        );
+        assert_eq!(p("+", None), (plus, plus, false));
+        let minus = Some(Key::Minus);
+        assert_eq!(
+            p("-", Some(msg(sub, 0x4A, false, '-'))),
+            (minus, minus, false)
+        );
+    }
+
+    /// Места скан-кодов основного блока — US-QWERTY; прочие клавиши и расширенные — нет.
+    #[test]
+    fn scan_places() {
+        for (scan, k) in [
+            (0x02, Key::Num1),
+            (0x0B, Key::Num0),
+            (0x0D, Key::Equals),
+            (0x10, Key::Q),
+            (0x1A, Key::OpenBracket),
+            (0x1B, Key::CloseBracket),
+            (0x1E, Key::A),
+            (0x27, Key::Semicolon),
+            (0x28, Key::Quote),
+            (0x29, Key::Backtick),
+            (0x2B, Key::Backslash),
+            (0x2E, Key::C),
+            (0x35, Key::Slash),
+        ] {
+            assert_eq!(place_of(scan, false), Some(k), "{scan:#x}");
+        }
+        // Esc, Backspace, Tab, Enter, Ctrl, LShift, RShift, серая `*`, пробел, `<>` ISO,
+        // серый `+`, японские `ろ` и `¥`.
+        for scan in [
+            0x01, 0x0E, 0x0F, 0x1C, 0x1D, 0x2A, 0x36, 0x37, 0x39, 0x56, 0x4E, 0x73, 0x7D,
+        ] {
+            assert_eq!(place_of(scan, false), None, "{scan:#x}");
+        }
+        assert_eq!(place_of(0x35, true), None, "серый /");
+    }
+
+    /// Alt+буква даёт символ (быстрый поиск), Ctrl+буква — нет; `AltGr` — символ.
+    #[test]
+    fn typed_text() {
+        let m = |control, alt| Modifiers {
+            control,
+            alt,
+            ..Modifiers::default()
+        };
+        assert!(typed(m(false, false), "ф"));
+        assert!(typed(m(false, true), "ф"));
+        assert!(!typed(m(true, false), "ф"));
+        assert!(typed(m(true, true), "€"), "AltGr");
+        assert!(!typed(m(false, true), " "), "Alt+пробел — меню окна");
+        assert!(typed(m(false, false), " "));
+        assert!(!typed(m(false, false), "\u{1b}"));
     }
 }
+
+#[cfg(test)]
+#[path = "input_matrix_tests.rs"]
+mod matrix_tests;
