@@ -1,0 +1,30 @@
+---
+source: crates/ops/src/lib.rs
+expression: "toml::to_string(&OpsConfig::default()).unwrap()"
+---
+delete_to_trash = true
+max_threads = 64
+small_file = 1048576
+large_file = 268435456
+experimental_fast_trash = false
+
+[defaults]
+conflict = "Ask"
+dirs = "Merge"
+errors = "Ask"
+verify = "Off"
+preserve = "TIMES | ATTRS | STREAMS | XATTRS"
+links = "Preserve"
+priority = "Normal"
+engine = "Auto"
+durability = "Fast"
+cloud = "Hydrate"
+queue = "Auto"
+
+[device_jobs]
+hdd = 1
+ssd = 3
+net = 2
+usb = 1
+
+[strategy]

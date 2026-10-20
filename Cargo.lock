@@ -617,6 +617,9 @@ name = "bitflags"
 version = "2.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
+dependencies = [
+ "serde_core",
+]
 
 [[package]]
 name = "bitstream-io"
@@ -5904,9 +5907,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.15"
+version = "0.103.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3c3cf1d8b1e7d4927e2d154c3fcb02979afb9939629c62cd9048d4f07b60ac2"
+checksum = "4443b1b6d39d7c663139942cc4558262562d2c84123bb6282ef177009ca8b281"
 dependencies = [
  "ring",
  "rustls-pki-types",
@@ -6668,7 +6671,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
@@ -7260,6 +7263,7 @@ dependencies = [
  "urfin-core",
  "urfin-i18n",
  "urfin-keymap",
+ "urfin-ops",
  "urfin-ui",
  "urfin-vfs",
  "windows-sys 0.61.2",
@@ -7332,6 +7336,20 @@ dependencies = [
 [[package]]
 name = "urfin-ops"
 version = "0.1.0"
+dependencies = [
+ "bitflags 2.13.2",
+ "compact_str",
+ "insta",
+ "serde",
+ "smallvec",
+ "tempfile",
+ "thiserror 2.0.21",
+ "toml 1.1.8+spec-1.1.0",
+ "tracing",
+ "urfin-core",
+ "urfin-i18n",
+ "windows-sys 0.61.2",
+]
 
 [[package]]
 name = "urfin-search"
@@ -7370,6 +7388,7 @@ dependencies = [
  "urfin-core",
  "urfin-i18n",
  "urfin-keymap",
+ "urfin-ops",
  "urfin-vfs",
  "windows-sys 0.61.2",
 ]
