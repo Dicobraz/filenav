@@ -137,7 +137,9 @@ fn run() -> anyhow::Result<()> {
     // Один экземпляр (S1-15, решение владельца №3): второй запуск отдаёт пути
     // первому и выходит. Smoke, замер старта и самопроверка — всегда отдельно.
     let request = ipc::Request::from_args(&args);
-    let separate = flag("--new-instance") || flag("--smoke") || flag("--bench-startup");
+    let bench = bench_dir(&args);
+    let separate =
+        flag("--new-instance") || flag("--smoke") || flag("--bench-startup") || bench.is_some();
     let ControlFlow::Continue(inbox) = single_instance(&paths, &request, separate) else {
         return Ok(());
     };
@@ -181,8 +183,22 @@ fn run() -> anyhow::Result<()> {
         startup,
         ipc: inbox,
         open: request.commands(),
+        bench,
     });
     Ok(())
+}
+
+/// `--bench [каталог]` (G-07): по умолчанию — датасет `gen-100000-s1` в
+/// `%LOCALAPPDATA%\Pets\testdata\urfin` (`cargo run -p urfin-testdata --example gen_tree --release`).
+fn bench_dir(args: &[String]) -> Option<PathBuf> {
+    let i = args.iter().position(|a| a == "--bench")?;
+    args.get(i + 1)
+        .filter(|a| !a.starts_with("--"))
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("LOCALAPPDATA")
+                .map(|d| PathBuf::from(d).join(r"Pets\testdata\urfin\gen-100000-s1"))
+        })
 }
 
 fn single_instance(

@@ -19,6 +19,8 @@ pub struct Launch {
     pub ipc: Option<crate::ipc::Inbox>,
     /// Пути из своей командной строки: новые табы после восстановления сессии.
     pub open: Vec<Command>,
+    /// `--bench <каталог>`: сценарий замера на этом каталоге (G-07).
+    pub bench: Option<std::path::PathBuf>,
 }
 
 pub fn run(launch: Launch) {
@@ -27,6 +29,7 @@ pub fn run(launch: Launch) {
         mut startup,
         ipc,
         open,
+        bench,
     } = launch;
     let geom = boot.session.as_ref().and_then(|s| s.window);
     let services = crate::vfs_services(&boot.config);
@@ -50,6 +53,16 @@ pub fn run(launch: Launch) {
     let theme = gpui_shell::Theme::new(&urfin_ui::sys::probe_system(), &ui_cfg);
     for c in open {
         core.dispatch(c);
+    }
+    // Бенч: обе панели — на каталог замера, курсор в начало.
+    if let Some(dir) = &bench {
+        for side in ["left", "right"] {
+            core.dispatch(
+                Command::new("panel.go")
+                    .arg("side", side)
+                    .arg("path", urfin_core::Location::local(dir.clone())),
+            );
+        }
     }
     if let Some(inbox) = &ipc {
         let s = signal.clone();
@@ -89,6 +102,7 @@ pub fn run(launch: Launch) {
             keys,
             theme,
             first_frame: Some(first_frame),
+            bench: bench.map(|_| urfin_ui::bench::Bench::new((1200.0, 760.0))),
         },
         geom,
     );

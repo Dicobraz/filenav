@@ -10,6 +10,9 @@ use urfin_core::ConfigWarning;
 
 use crate::accent::AccentPalette;
 
+/// Время CPU процесса и потока (бенч G-07).
+pub mod cpu;
+
 #[cfg(windows)]
 mod windows;
 #[cfg(windows)]

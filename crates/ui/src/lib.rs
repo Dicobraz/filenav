@@ -7,6 +7,7 @@
 //! модели дерева, «Сведений» и просмотра ([`views`]).
 
 pub mod accent;
+pub mod bench;
 pub mod color;
 pub mod commands_doc;
 pub mod config;

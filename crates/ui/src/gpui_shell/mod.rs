@@ -90,6 +90,8 @@ pub struct Launch {
     pub theme: Theme,
     /// После первого кадра; `true` — выйти (замер старта).
     pub first_frame: Option<Box<dyn FnOnce() -> bool>>,
+    /// `--bench`: сценарий замера (G-07).
+    pub bench: Option<crate::bench::Bench>,
 }
 
 impl std::fmt::Debug for Launch {
@@ -114,6 +116,7 @@ pub struct CoreHost {
     mods: crate::keybar::Mods,
     toasts: Vec<overlays::Toast>,
     first_frame: Option<Box<dyn FnOnce() -> bool>>,
+    bench: Option<crate::bench::Bench>,
     /// Открытое поле ввода (черновик, переименование).
     field: Option<field::Field>,
     /// Черновик удаления — сразу насовсем (Shift+F8 или корзины нет).
@@ -146,6 +149,7 @@ impl CoreHost {
             keys,
             theme,
             first_frame,
+            bench,
         } = launch;
         listen(wake, cx);
         let registered = crate::keybar::registered(core.registry());
@@ -162,6 +166,7 @@ impl CoreHost {
             mods: crate::keybar::Mods::None,
             toasts: Vec::new(),
             first_frame,
+            bench,
             field: None,
             ops_permanent: false,
             menu,
@@ -472,6 +477,44 @@ impl CoreHost {
         }
     }
 
+    /// Шаг сценария `--bench` на кадре: команды, размер окна, простой или отчёт и выход.
+    fn drive_bench(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(b) = self.bench.as_mut() else {
+            return;
+        };
+        match b.frame(std::time::Instant::now()) {
+            crate::bench::Step::Next => window.request_animation_frame(),
+            crate::bench::Step::Cmds(cmds) => {
+                if let Some(core) = self.core.as_mut() {
+                    for c in cmds {
+                        core.dispatch(c);
+                    }
+                    core.pump(PUMP_BUDGET);
+                }
+                window.request_animation_frame();
+            }
+            crate::bench::Step::Resize(w, h) => {
+                window.resize(size(px(w), px(h)));
+                window.request_animation_frame();
+            }
+            crate::bench::Step::Idle(d) => {
+                // Простой: кадров не просим; разбудит таймер, кадр — по notify.
+                let this = cx.entity().downgrade();
+                cx.spawn_in(window, async move |_, cx| {
+                    cx.background_executor().timer(d).await;
+                    let _ = this.update(cx, |_, cx| cx.notify());
+                })
+                .detach();
+            }
+            crate::bench::Step::Done(report) => {
+                println!("bench ui=gpui {report}");
+                tracing::info!(%report, "bench");
+                self.bench = None;
+                self.shutdown(cx);
+            }
+        }
+    }
+
     /// Команда от мыши (табы, F-клавиши).
     fn run(&mut self, cmd: Command, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(core) = self.core.as_mut() {
@@ -689,6 +732,7 @@ impl Render for CoreHost {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.sync_field(window, cx);
         self.sync_theme(window);
+        self.drive_bench(window, cx);
         if let Some(f) = self.first_frame.take() {
             // Кадр уже на экране к следующему циклу: замер и, для `--bench-startup`, выход.
             cx.on_next_frame(window, move |h, _, cx| {
