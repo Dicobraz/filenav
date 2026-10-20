@@ -206,7 +206,11 @@ fn info(s: &AppState, side: Side, theme: &Theme) -> Div {
             _ => String::new(),
         };
         col = col
-            .child(pair(theme, "ui-info-volume", format!("{}{media}", v.label)))
+            .child(pair(
+                theme,
+                "ui-info-volume",
+                format!("{}{media}", volume_name(v, &i18n)),
+            ))
             .child(pair(theme, "ui-info-fs", v.fs_name.clone()));
         if let Some(sp) = v.space {
             #[allow(clippy::cast_precision_loss, reason = "доля для полосы")]
@@ -315,4 +319,20 @@ fn preview(p: &PreviewState, theme: &Theme, rows: u32) -> Div {
         }
     }
     col
+}
+
+/// Имя тома как в Проводнике: метка или «Локальный диск», плюс корень (`C:`).
+fn volume_name(v: &crate::views::VolumeView, i18n: &urfin_i18n::I18n) -> String {
+    let root = v.root.display().to_string();
+    let root = root.trim_end_matches(['\\', '/']);
+    let label = if v.label.is_empty() {
+        i18n.get("ui-info-volume-local")
+    } else {
+        v.label.clone()
+    };
+    if root.is_empty() {
+        label
+    } else {
+        format!("{label} ({root})")
+    }
 }

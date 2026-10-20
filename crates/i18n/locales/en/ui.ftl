@@ -180,3 +180,4 @@ ui-info-kind-other = other
 ui-qview-hint = F3 — viewer
 ui-qview-binary = binary
 ui-qview-dir = A folder — its contents are in the panel
+ui-info-volume-local = Local Disk

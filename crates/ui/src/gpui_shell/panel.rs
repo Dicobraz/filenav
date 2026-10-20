@@ -86,7 +86,7 @@ pub(super) struct PanelView {
 }
 
 impl Render for PanelView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(host) = self.host.upgrade() else {
             return div();
         };
@@ -102,11 +102,40 @@ impl Render for PanelView {
         let (rows, cols) = h.grid[usize::from(side == Side::Right)];
         let body = div().size_full().flex().flex_col();
         match self.piece {
-            Piece::Head => body
-                .child(path_bar(t, side, theme, h.field.as_ref(), &l))
+            Piece::Head => {
+                let panel_w = h.panel_w[usize::from(side == Side::Right)];
+                let font_px = px(theme.m(Metric::TypeBody));
+                let font = window.text_style().font();
+                let measure = |text: &str| -> f32 {
+                    let run = TextRun {
+                        len: text.len(),
+                        font: font.clone(),
+                        color: Hsla::default(),
+                        background_color: None,
+                        underline: None,
+                        strikethrough: None,
+                    };
+                    f32::from(
+                        window
+                            .text_system()
+                            .shape_line(SharedString::from(text.to_owned()), font_px, &[run], None)
+                            .width,
+                    )
+                };
+                let cols = fit_cols(theme, t.view_mode, panel_w);
+                body.child(path_bar(
+                    t,
+                    side,
+                    theme,
+                    h.field.as_ref(),
+                    panel_w,
+                    &measure,
+                    &l,
+                ))
                 .when(matches!(t.view_mode, ViewMode::Full), |d| {
-                    d.child(col_header(side, theme, &l))
-                }),
+                    d.child(col_header(side, theme, cols, &l))
+                })
+            }
             // Дерево, «Сведения», просмотр (S2 §2.4–2.5).
             Piece::List if t.mode != urfin_core::PanelMode::Files => {
                 body.child(super::views::body(s, side, theme, rows))
@@ -236,12 +265,18 @@ fn crumbs(t: &Tab) -> Vec<(String, std::path::PathBuf)> {
     out
 }
 
-/// Breadcrumb (S2-12): сегмент — переход к нему, пустое место — правка пути.
+/// Breadcrumb (S2-12): сегмент — переход к нему, пустое место — правка пути. Не
+/// влезает в ширину панели — начальные сегменты сворачиваются в «…» (переход к
+/// последнему скрытому), текущая папка видна всегда.
+#[allow(clippy::too_many_arguments, reason = "плоский вызов отрисовки")]
+#[allow(clippy::too_many_lines, reason = "сегменты слева направо")]
 fn path_bar(
     t: &Tab,
     side: Side,
     theme: &Theme,
     field: Option<&super::field::Field>,
+    width: f32,
+    measure: &dyn Fn(&str) -> f32,
     cx: &Listen,
 ) -> Div {
     let bar = div()
@@ -263,42 +298,62 @@ fn path_bar(
         Vec::new()
     };
     let final_seg = list.len().saturating_sub(1);
-    for (k, (label, path)) in list.into_iter().enumerate() {
-        if k > 0 {
-            segs = segs.child(
-                div()
-                    .px_1()
-                    .font_family("Segoe Fluent Icons")
-                    .text_size(px(8.0))
-                    .text_color(theme.c(Role::TextSecondary))
-                    .child(SharedString::from("\u{E76C}")),
-            );
-        }
+    let first = first_shown(&list, width - 2.0 * theme.m(Metric::PadRowX), measure);
+    let chevron = || {
+        div()
+            .px_1()
+            .font_family("Segoe Fluent Icons")
+            .text_size(px(8.0))
+            .text_color(theme.c(Role::TextSecondary))
+            .child(SharedString::from("\u{E76C}"))
+    };
+    let seg = |id: String, label: SharedString, path: std::path::PathBuf, last: bool| {
         let loc = urfin_core::Location::local(path);
-        segs = segs.child(
-            div()
-                .id(SharedString::from(format!("crumb-{name}-{k}")))
-                .px_1()
-                .rounded(px(theme.m(Metric::RadiusControl)))
-                .whitespace_nowrap()
-                .text_color(theme.c(if k == final_seg {
-                    Role::TextPrimary
-                } else {
-                    Role::TextSecondary
-                }))
-                .when(k == final_seg, |d| d.font_weight(FontWeight::SEMIBOLD))
-                .hover(|d| d.bg(theme.c(Role::FillSubtleHover)))
-                .child(SharedString::from(label))
-                .on_click(cx.listener(move |h, _: &ClickEvent, w, cx| {
-                    h.run(
-                        urfin_core::Command::new("panel.go")
-                            .arg("side", name)
-                            .arg("path", loc.clone()),
-                        w,
-                        cx,
-                    );
-                })),
-        );
+        div()
+            .id(SharedString::from(id))
+            .px_1()
+            .rounded(px(theme.m(Metric::RadiusControl)))
+            .whitespace_nowrap()
+            .text_color(theme.c(if last {
+                Role::TextPrimary
+            } else {
+                Role::TextSecondary
+            }))
+            .when(last, |d| d.font_weight(FontWeight::SEMIBOLD))
+            .hover(|d| d.bg(theme.c(Role::FillSubtleHover)))
+            .child(label)
+            .on_click(cx.listener(move |h, _: &ClickEvent, w, cx| {
+                h.run(
+                    urfin_core::Command::new("panel.go")
+                        .arg("side", name)
+                        .arg("path", loc.clone()),
+                    w,
+                    cx,
+                );
+            }))
+    };
+    if first > 0 {
+        // «…» — к последнему скрытому сегменту.
+        let (_, path) = &list[first - 1];
+        segs = segs
+            .child(seg(
+                format!("crumb-{name}-more"),
+                SharedString::new_static("…"),
+                path.clone(),
+                false,
+            ))
+            .child(chevron());
+    }
+    for (k, (label, path)) in list.into_iter().enumerate().skip(first) {
+        if k > first {
+            segs = segs.child(chevron());
+        }
+        segs = segs.child(seg(
+            format!("crumb-{name}-{k}"),
+            SharedString::from(label),
+            path,
+            k == final_seg,
+        ));
     }
     if !t.loc.is_local() {
         segs = segs.child(SharedString::from(t.loc.to_uri()));
@@ -318,7 +373,36 @@ fn path_bar(
     )
 }
 
-fn col_header(side: Side, theme: &Theme, cx: &Listen) -> Div {
+/// Ширина сегмента пути с полями и разделитель между сегментами.
+const CRUMB_PAD: f32 = 8.0;
+const CRUMB_CHEVRON: f32 = 16.0;
+/// Место справа от пути под клик «править путь».
+const CRUMB_EDIT_MIN: f32 = 32.0;
+
+/// Первый показываемый сегмент: начальные уходят в «…», пока путь не влезет в `avail`.
+fn first_shown(
+    list: &[(String, std::path::PathBuf)],
+    avail: f32,
+    measure: &dyn Fn(&str) -> f32,
+) -> usize {
+    let cost: Vec<f32> = list.iter().map(|(l, _)| measure(l) + CRUMB_PAD).collect();
+    let budget = avail - CRUMB_EDIT_MIN;
+    #[allow(clippy::cast_precision_loss, reason = "сегментов десятки")]
+    let full: f32 = cost.iter().sum::<f32>() + CRUMB_CHEVRON * list.len().saturating_sub(1) as f32;
+    if full <= budget || list.len() < 2 {
+        return 0;
+    }
+    let more = measure("…") + CRUMB_PAD + CRUMB_CHEVRON;
+    let mut total = full + more;
+    let mut first = 0;
+    while total > budget && first + 1 < list.len() {
+        total -= cost[first] + CRUMB_CHEVRON;
+        first += 1;
+    }
+    first
+}
+
+fn col_header(side: Side, theme: &Theme, cols: (f32, f32), cx: &Listen) -> Div {
     let i18n = urfin_i18n::current();
     // Клик по колонке — сортировка по ней (повтор — обратная, S2 §2.1).
     let cell = |key: &str, sort: &'static str, w: Option<f32>| {
@@ -358,8 +442,12 @@ fn col_header(side: Side, theme: &Theme, cx: &Listen) -> Div {
                 .flex_none(),
         )
         .child(cell("ui-col-name", "name", None))
-        .child(cell("ui-col-size", "size", Some(W_SIZE)))
-        .child(cell("ui-col-mtime", "mtime", Some(W_MTIME)))
+        .when(cols.0 > 0.0, |d| {
+            d.child(cell("ui-col-size", "size", Some(cols.0)))
+        })
+        .when(cols.1 > 0.0, |d| {
+            d.child(cell("ui-col-mtime", "mtime", Some(cols.1)))
+        })
 }
 
 /// Строка видимой страницы для отрисовки: всё готово, `canvas` только рисует.
@@ -398,6 +486,19 @@ struct Geo {
     mtime_w: f32,
 }
 
+/// То же правило колонок, что [`fit_cols`], для колонки списка шириной `w`.
+fn fit_cols_geo(geo: &Geo, w: f32) -> (f32, f32) {
+    let avail = w - ROW_MX - geo.pad - geo.name_x();
+    let (mut size, mut mtime) = (geo.size_w, geo.mtime_w);
+    if avail - size - mtime < NAME_MIN {
+        mtime = 0.0;
+    }
+    if avail - size - mtime < NAME_MIN {
+        size = 0.0;
+    }
+    (size, mtime)
+}
+
 impl Geo {
     /// Левый край иконки в колонке.
     fn icon_x(&self) -> f32 {
@@ -417,6 +518,32 @@ impl Geo {
 
 /// Отступ строки от краёв колонки (`mx_1`).
 const ROW_MX: f32 = 4.0;
+/// Имя не уже этого: в узкой панели сначала уходит дата, потом размер (как в egui).
+const NAME_MIN: f32 = 120.0;
+
+/// Ширины колонок размера и даты для панели шириной `w` (0 — колонки нет).
+pub(super) fn fit_cols(theme: &Theme, mode: ViewMode, w: f32) -> (f32, f32) {
+    let pad = theme.m(Metric::PadRowX) - ROW_MX;
+    let name_x = ROW_MX + pad + MARK_W + theme.m(Metric::WIcon) + 8.0;
+    let avail = w - ROW_MX - pad - name_x;
+    let mut size = if matches!(mode, ViewMode::Full | ViewMode::Wide) {
+        W_SIZE
+    } else {
+        0.0
+    };
+    let mut mtime = if matches!(mode, ViewMode::Full) {
+        W_MTIME
+    } else {
+        0.0
+    };
+    if avail - size - mtime < NAME_MIN {
+        mtime = 0.0;
+    }
+    if avail - size - mtime < NAME_MIN {
+        size = 0.0;
+    }
+    (size, mtime)
+}
 /// Ширина колонки галочки.
 const MARK_W: f32 = 12.0;
 
@@ -688,6 +815,12 @@ fn paint(
     let row_h = px(geo.row_h);
     #[allow(clippy::cast_precision_loss, reason = "колонок единицы")]
     let col_w = f32::from(b.size.width) / cols as f32;
+    let (size_w, mtime_w) = fit_cols_geo(&geo, col_w);
+    let geo = Geo {
+        size_w,
+        mtime_w,
+        ..geo
+    };
     let name_w = px(geo.name_w(col_w));
     let run = |len: usize, font: &Font, color: Hsla| TextRun {
         len,
@@ -807,6 +940,9 @@ fn paint(
             // Колонки прижаты вправо: дата у края, размер левее.
             let mut right = x0 + px(col_w - ROW_MX - geo.pad);
             for (s, w) in [(&l.mtime, geo.mtime_w), (&l.size, geo.size_w)] {
+                if w <= 0.0 {
+                    continue;
+                }
                 if let Some(s) = s {
                     let line = shape(window, s, &font, secondary, size);
                     let _ = line.paint(
