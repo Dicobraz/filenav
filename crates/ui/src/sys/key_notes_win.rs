@@ -7,8 +7,9 @@
 //! `WM_GPUI_KEYDOWN` с теми же `wParam`/`lParam` и только если gpui его не обработал —
 //! исходное `WM_KEYDOWN`. Поэтому записка нажатия пишется по `WM_GPUI_KEYDOWN`, а
 //! следующее за ним такое же `WM_KEYDOWN` пропускается (иначе записка двоилась бы).
-//! Мост клавиатуры (`gpui_shell::input`) получает нажатие синхронно, внутри
-//! `WM_GPUI_KEYDOWN`: на это время [`key_down_vk`] отдаёт код клавиши.
+//! Мост клавиатуры (`gpui_shell::input`) получает нажатие и отпускание синхронно, внутри
+//! `WM_GPUI_KEYDOWN` и `WM_(SYS)KEYUP`: на это время [`key_msg`] отдаёт скан-код,
+//! надпись клавиши и Shift — по ним сочетание не зависит от раскладки (v4 №5).
 
 #![allow(unsafe_code)]
 #![allow(clippy::cast_sign_loss, reason = "Win32: биты lParam")]
@@ -20,12 +21,15 @@ use urfin_keymap::input::vk;
 use urfin_keymap::{KeyNote, KeyNotes, Mods};
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    GetKeyState, VK_LCONTROL, VK_LMENU, VK_RCONTROL, VK_RMENU, VK_SHIFT,
+    GetKeyState, MAPVK_VK_TO_CHAR, MapVirtualKeyW, VK_LCONTROL, VK_LMENU, VK_RCONTROL, VK_RMENU,
+    VK_SHIFT,
 };
 use windows_sys::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     WM_KEYDOWN, WM_KEYUP, WM_NCDESTROY, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_USER,
 };
+
+use crate::gpui_shell::input::KeyMsg;
 
 const SUBCLASS_ID: usize = 0x4B4E;
 /// Нажатие в gpui (`pets-gpui-windows`, `events.rs`: `WM_USER + 8`); версия gpui
@@ -33,14 +37,35 @@ const SUBCLASS_ID: usize = 0x4B4E;
 const WM_GPUI_KEYDOWN: u32 = WM_USER + 8;
 
 thread_local! {
-    /// Код клавиши нажатия, которое gpui разбирает прямо сейчас (поток окна).
-    static KEY_DOWN: Cell<Option<u16>> = const { Cell::new(None) };
+    /// Сообщение клавиши, которое gpui разбирает прямо сейчас (поток окна).
+    static KEY: Cell<Option<KeyMsg>> = const { Cell::new(None) };
 }
 
-/// Код клавиши (`VK_*`) нажатия, которое сейчас разбирает gpui; `None` — вне
-/// нажатия или subclass не стоит.
-pub fn key_down_vk() -> Option<u16> {
-    KEY_DOWN.with(Cell::get)
+/// Сообщение клавиши (нажатие или отпускание), которое сейчас разбирает gpui; `None` —
+/// вне сообщения или subclass не стоит.
+pub(crate) fn key_msg() -> Option<KeyMsg> {
+    KEY.with(Cell::get)
+}
+
+/// Скан-код, extended, Shift и надпись клавиши сообщения (`MapVirtualKeyW` — по
+/// раскладке потока, как у gpui).
+fn msg_of(wparam: WPARAM, lparam: LPARAM) -> KeyMsg {
+    let code = u16::try_from(wparam & 0xFFFF).unwrap_or(0);
+    // SAFETY: функции без побочных эффектов, аргументы — числа.
+    let (shift, mapped) = unsafe {
+        (
+            GetKeyState(i32::from(VK_SHIFT)) < 0,
+            MapVirtualKeyW(u32::from(code), MAPVK_VK_TO_CHAR),
+        )
+    };
+    KeyMsg {
+        vk: code,
+        scan: ((lparam >> 16) & 0xFF) as u8,
+        extended: (lparam >> 24) & 1 == 1,
+        shift,
+        // Старший бит — мёртвая клавиша (`^` AZERTY): надпись та же.
+        label: char::from_u32(mapped & 0xFFFF).filter(|c| *c != '\0' && !c.is_control()),
+    }
 }
 
 /// Данные subclass: живут, пока живёт окно (освобождаются в `WM_NCDESTROY`).
@@ -110,12 +135,12 @@ unsafe extern "system" fn proc(
     if let Some(n) = noted {
         c.notes.push(n);
     }
-    let r = if msg == WM_GPUI_KEYDOWN {
-        let code = u16::try_from(wparam & 0xFFFF).ok();
-        let prev = KEY_DOWN.with(|k| k.replace(code));
+    // Нажатие и отпускание gpui разбирает внутри этих сообщений.
+    let r = if matches!(msg, WM_GPUI_KEYDOWN | WM_KEYUP | WM_SYSKEYUP) {
+        let prev = KEY.with(|k| k.replace(Some(msg_of(wparam, lparam))));
         // SAFETY: штатная обработка (gpui).
         let r = unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) };
-        KEY_DOWN.with(|k| k.set(prev));
+        KEY.with(|k| k.set(prev));
         r
     } else {
         // SAFETY: штатная обработка.
@@ -234,9 +259,20 @@ mod tests {
         assert_eq!(n(0x0102, vk::INSERT, 0), None, "WM_CHAR");
     }
 
-    /// Вне нажатия gpui кода клавиши нет.
+    /// Вне сообщения клавиши gpui его данных нет.
     #[test]
-    fn no_key_down_outside_message() {
-        assert_eq!(key_down_vk(), None);
+    fn no_key_msg_outside_message() {
+        assert_eq!(key_msg(), None);
+    }
+
+    /// Скан-код и extended — из `lParam`; надпись буквы — латиница (код клавиши), у
+    /// клавиш без символа (F7) надписи нет.
+    #[test]
+    fn msg_bits() {
+        let m = msg_of(0x43, (0x2E << 16) | 1);
+        assert_eq!((m.vk, m.scan, m.extended), (0x43, 0x2E, false));
+        assert_eq!(m.label, Some('C'));
+        let f7 = msg_of(0x76, (0x41 << 16) | EXT);
+        assert_eq!((f7.scan, f7.extended, f7.label), (0x41, true, None));
     }
 }
