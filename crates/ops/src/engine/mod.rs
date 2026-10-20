@@ -69,6 +69,11 @@ pub(crate) trait OpExec: Send + Sync + Sized + 'static {
     /// Работа осталась без ответа (отмена job): убрать следы (temp).
     fn discard(&self, _item: Self::Item, _issue: &Issue) {}
 
+    /// Как повторить упавшее (`ops.retry`): хранится с отчётом job.
+    fn retry(&self) -> Option<Retry> {
+        None
+    }
+
     /// Итог для пользователя (тост) по отчёту; поток координатора, после всех
     /// работ. `outcome` — то, с чем job завершится.
     fn finished(&self, _report: &Report, _outcome: &Result<JobSummary, String>) -> Option<Note> {
@@ -78,6 +83,9 @@ pub(crate) trait OpExec: Send + Sync + Sized + 'static {
 
 /// Тост по итогу job.
 pub(crate) type Note = (Level, String);
+
+/// Данные операции для `ops.retry` (тип знает сама операция).
+pub(crate) type Retry = Arc<dyn std::any::Any + Send + Sync>;
 
 /// Работа в очереди: элемент и каталог, которому он принадлежит.
 pub(crate) struct Work<E: OpExec> {
@@ -151,20 +159,36 @@ impl JobEngine {
 
 /// Отчёты последних завершённых job (`AppState.ext`, S0 v2 №10): столько же,
 /// сколько завершённых хранит `JobRegistry` (S1 §7.1), — для `ops.retry` и истории.
-#[derive(Debug, Default)]
-pub(crate) struct Reports(VecDeque<(JobId, Arc<Report>)>);
+#[derive(Default)]
+pub(crate) struct Reports(VecDeque<(JobId, Arc<Report>, Option<Retry>)>);
+
+impl std::fmt::Debug for Reports {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Reports")
+            .field("len", &self.0.len())
+            .finish()
+    }
+}
 
 impl Reports {
-    #[cfg_attr(not(test), allow(dead_code, reason = "ops.retry — S5-11"))]
+    #[cfg(test)]
     pub(crate) fn get(&self, id: JobId) -> Option<&Arc<Report>> {
-        self.0.iter().find(|(j, _)| *j == id).map(|(_, r)| r)
+        self.0.iter().find(|(j, ..)| *j == id).map(|(_, r, _)| r)
     }
 
-    fn put(&mut self, id: JobId, r: Arc<Report>) {
+    /// Отчёт и данные повтора job.
+    pub(crate) fn retry(&self, id: JobId) -> Option<(Arc<Report>, Retry)> {
+        self.0
+            .iter()
+            .find(|(j, ..)| *j == id)
+            .and_then(|(_, r, t)| Some((Arc::clone(r), Arc::clone(t.as_ref()?))))
+    }
+
+    fn put(&mut self, id: JobId, r: Arc<Report>, retry: Option<Retry>) {
         if self.0.len() == JobRegistry::KEEP_FINISHED {
             self.0.pop_front();
         }
-        self.0.push_back((id, r));
+        self.0.push_back((id, r, retry));
     }
 }
 

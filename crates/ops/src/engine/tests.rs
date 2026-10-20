@@ -230,6 +230,7 @@ impl OpExec for FakeOp {
                 op: ItemOp::Copy,
                 error: "fake".into(),
                 class: IoClass::Other,
+                pair: None,
             }),
             _ => ItemResult::Done,
         }

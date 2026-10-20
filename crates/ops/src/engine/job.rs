@@ -120,6 +120,11 @@ impl ExecCx<'_> {
         self.progress().bytes_done.fetch_add(n, Ordering::Relaxed);
     }
 
+    /// Ошибка всей job (`ErrorPolicy::Abort`): движок останавливается.
+    pub(crate) fn abort(&self, why: &str) {
+        self.ctl.fail(why);
+    }
+
     /// Каталог изменился: табы с ним обновятся (не чаще раза в секунду).
     pub(crate) fn touch(&self, dir: &Location) {
         let mut set = self
@@ -543,12 +548,13 @@ impl<E: OpExec> Coord<E> {
         }))
         .ok()
         .flatten();
+        let retry = self.sh.exec.retry();
         let m = msg("ops.finished", move |cx| {
             if cx.state.ext.get::<Reports>().is_none() {
                 cx.state.ext.insert(Reports::default());
             }
             if let Some(r) = cx.state.ext.get_mut::<Reports>() {
-                r.put(id, report);
+                r.put(id, report, retry);
             }
             if let Some((level, text)) = note {
                 cx.toast(level, text);

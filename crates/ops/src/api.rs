@@ -296,6 +296,8 @@ pub struct Issue {
     pub op: ItemOp,
     /// Данные уже скопированы во временный файл (гонка при rename).
     pub temp: Option<PathBuf>,
+    /// Текст ошибки ОС (`IssueKind::Io`, `LowSpace`).
+    pub error: Option<Arc<str>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -328,6 +330,13 @@ pub enum IoClass {
     Network,
     NotFound,
     Other,
+}
+
+impl IoClass {
+    /// Может пройти сама: повторяется автоматически (0,2 / 1 / 4 с, S5-11).
+    pub fn transient(self) -> bool {
+        matches!(self, IoClass::Sharing | IoClass::Busy | IoClass::Network)
+    }
 }
 
 /// Ответ на проблему (id выбора в `PromptSpec.choices`).
@@ -388,4 +397,7 @@ pub struct FailedItem {
     pub op: ItemOp,
     pub error: Arc<str>,
     pub class: IoClass,
+    /// Источник и назначение для `ops.retry`; `None` — повтор не поможет
+    /// (копия в себя, нет источника и т.п.).
+    pub pair: Option<(PathBuf, PathBuf)>,
 }
