@@ -294,6 +294,10 @@ fn preset_switch() {
     cmd(&mut c, "keymap.preset name=nope");
     pump_until(&mut c, |c| c.state().banner.is_some());
     assert_eq!(active(&c).1, "dn");
+    // Принятый пресет — в `[keymap] preset` (S2-22), отвергнутый — нет.
+    let _ = c.shutdown(Duration::from_millis(500));
+    let text = std::fs::read_to_string(tmp.path().join("config.toml")).unwrap();
+    assert!(text.ends_with("[keymap]\npreset = \"dn\"\n"), "{text}");
 }
 
 /// `app.reload_config` с новой секцией `[keymap]` перечитывает раскладку.
