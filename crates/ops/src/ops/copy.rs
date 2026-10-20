@@ -16,7 +16,9 @@
 //!
 //! Перенос: тот же том — rename каждого элемента (каталог целиком; в
 //! существующий — по детям, пустой источник удаляется в Finalizer); другой
-//! том — копия и удаление источника файла сразу после его commit.
+//! том — копия и удаление источника файла сразу после его commit, когда копия
+//! сброшена на диск и её размер равен источнику (S0 №12, S5-08): прерванный
+//! перенос оставляет каждый файл целым хотя бы в одном месте.
 //!
 //! `ConflictPolicy::Ask` (по умолчанию): файл с занятым именем паркуется, вопрос
 //! задаётся без модального окна, остальное копируется дальше (S5-07, движок —
@@ -375,12 +377,8 @@ impl Transfer {
             };
             match r {
                 Ok(()) => {
-                    if self.mode == Mode::Move
-                        && !rename
-                        && let Err(e) = remove_src(&it.src, it.kind)
-                    {
-                        let msg = tr("ops-move-src-left", &[("error", &io_text(&e))]);
-                        return ItemResult::Failed(self.failed(&it.src, &msg, class(&e)));
+                    if self.mode == Mode::Move && !rename {
+                        return self.finish_move(it, &dst);
                     }
                     return ItemResult::Done;
                 }
@@ -495,6 +493,31 @@ impl Transfer {
         }
     }
 
+    /// Межтомный перенос файла после commit копии: копия на диске (fsync) и того
+    /// же размера, что источник сейчас, — тогда источник удаляется (S0 №12).
+    fn finish_move(&self, it: &Item, dst: &Path) -> ItemResult {
+        if !is_link(it.kind) {
+            let want = std::fs::symlink_metadata(&it.src).map_or(it.size, |m| m.len());
+            match durable(dst) {
+                Ok(got) if got == want => {}
+                Ok(got) => {
+                    let (got, want) = (got.to_string(), want.to_string());
+                    let msg = tr("ops-move-size", &[("got", &got), ("want", &want)]);
+                    return ItemResult::Failed(self.failed(dst, &msg, IoClass::Other));
+                }
+                Err(e) => {
+                    let msg = tr("ops-move-flush", &[("error", &io_text(&e))]);
+                    return ItemResult::Failed(self.failed(dst, &msg, class(&e)));
+                }
+            }
+        }
+        if let Err(e) = remove_src(&it.src, it.kind) {
+            let msg = tr("ops-move-src-left", &[("error", &io_text(&e))]);
+            return ItemResult::Failed(self.failed(&it.src, &msg, class(&e)));
+        }
+        ItemResult::Done
+    }
+
     /// Проблема «имя занято» для вопроса.
     fn issue(
         &self,
@@ -557,6 +580,29 @@ impl Transfer {
             cx.add_bytes(it.size - last);
         }
         Ok(())
+    }
+}
+
+/// Сбросить файл на диск (`FlushFileBuffers`) и вернуть его размер. Read-only
+/// (атрибут скопирован с источника) на время снимается: сброс требует записи.
+fn durable(p: &Path) -> io::Result<u64> {
+    let sync = || -> io::Result<u64> {
+        let f = std::fs::OpenOptions::new().write(true).open(p)?;
+        f.sync_all()?;
+        Ok(f.metadata()?.len())
+    };
+    match sync() {
+        Err(e) if e.kind() == io::ErrorKind::PermissionDenied => {
+            let a = sys::attrs(p)?;
+            if a & sys::ATTR_READONLY == 0 {
+                return Err(e);
+            }
+            sys::set_attrs(p, a & !sys::ATTR_READONLY)?;
+            let r = sync();
+            sys::set_attrs(p, a)?;
+            r
+        }
+        r => r,
     }
 }
 
