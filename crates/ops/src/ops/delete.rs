@@ -1,13 +1,12 @@
 //! Удаление (S0-decisions №11): F8/Del — в корзину, Shift — насовсем.
 //!
-//! MVP до движка (S5-04): корзина — крейт `trash` (на Windows — `IFileOperation`,
-//! как Проводник), насовсем — `remove_dir_all` (надёжное удаление дерева на
-//! Windows: read-only, открытые другими процессами файлы). Ссылки и junction
+//! Насовсем — `remove_dir_all` (надёжное удаление дерева на Windows: read-only,
+//! открытые другими процессами файлы); корзина — [`super::trash`] (S5-13). Ссылки и junction
 //! удаляются как ссылки, цель не трогается. Параллельное удаление по каталогам —
 //! S5-09 на движке, `remove_dir_all` остаётся базой для бенча.
 
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use compact_str::CompactString;
 
@@ -44,7 +43,7 @@ pub fn delete_permanent(
 }
 
 /// Один элемент: ссылка (в том числе junction) — сама ссылка, каталог — деревом.
-fn remove(path: &Path) -> io::Result<()> {
+pub(crate) fn remove(path: &Path) -> io::Result<()> {
     let meta = std::fs::symlink_metadata(path)?;
     let ft = meta.file_type();
     if ft.is_symlink() {
@@ -68,12 +67,6 @@ fn remove(path: &Path) -> io::Result<()> {
         }
         r => r,
     }
-}
-
-/// В корзину одним системным вызовом (Проводник показывает это как одну операцию).
-pub fn delete_to_trash(dir: &Path, items: &[CompactString]) -> Result<(), String> {
-    let paths: Vec<PathBuf> = items.iter().map(|n| dir.join(n.as_str())).collect();
-    trash::delete_all(&paths).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

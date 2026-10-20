@@ -18,8 +18,6 @@ thiserror.workspace = true
 tracing.workspace = true
 # Удаление дерева (S5-09, S0-decisions №58), MIT OR Apache-2.0.
 remove_dir_all = "1.0"
-# Корзина (S5-13; на Windows — IFileOperation), MIT.
-trash = "5.2"
 # Журнал job (S5 §6.2): записи `[len][crc32][postcard]`. postcard — MIT OR
 # Apache-2.0, crc32fast — MIT OR Apache-2.0 (уже в дереве транзитивно).
 crc32fast = "1.4"
@@ -32,6 +30,16 @@ urfin-vfs.workspace = true
 # Открытие файлов: ShellExecuteExW (S5 §2.5 `file.open`); копирование и перенос:
 # CopyFileExW, MoveFileExW, точки повторной обработки (S5-06).
 [target.'cfg(windows)'.dependencies]
+# Корзина через Shell `IFileOperation` с progress sink (S5-13): COM-интерфейсы и
+# `#[implement]` есть только в `windows` (не в `windows-sys`). MIT OR Apache-2.0;
+# та же версия уже в дереве (gpui, accesskit).
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_UI_Shell",
+] }
+# `#[implement]` раскрывается в пути `windows_core::…`.
+windows-core = "0.62"
 windows-sys = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Storage_FileSystem",

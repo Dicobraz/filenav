@@ -5,3 +5,4 @@ pub(crate) mod copy;
 pub mod delete;
 pub mod mkdir;
 pub mod rename;
+pub(crate) mod trash;

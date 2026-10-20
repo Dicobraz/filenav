@@ -366,6 +366,10 @@ impl Handler for OpsHandler {
                     draft(cx, cmd, a.bool("permanent").unwrap_or(false));
                     return Ok(());
                 }
+                if req.kind == OpKind::Trash && req.base.is_local() {
+                    crate::ops::trash::start(&self.engine, cx, req.base, req.items);
+                    return Ok(());
+                }
                 delete(cx, req)
             }
             "ops.mkdir" => {
@@ -490,27 +494,19 @@ fn rename(cx: &mut Cx<'_>, to: &str) -> Result<(), CmdError> {
     })
 }
 
-/// Удаление задачей (прогресс, отмена в job-баре): корзина одним системным
-/// вызовом, насовсем — по элементам. По окончании листинг перечитывается.
+/// Удаление насовсем задачей (прогресс, отмена в job-баре), по элементам; по
+/// окончании листинг перечитывается. Корзина — job движка ([`crate::ops::trash`]).
 fn delete(cx: &mut Cx<'_>, req: OpRequest) -> Result<(), CmdError> {
     if !req.base.is_local() {
         return Err(CmdError::Rejected(
             text("ops-not-yet", &[("what", "ops.delete")]).into(),
         ));
     }
-    let trash = req.kind == OpKind::Trash;
     let tab = cx.state.panel(cx.state.active).tab().id;
     let job = cx.state.jobs.start(
         urfin_core::JobSpec {
-            kind: if trash { "trash" } else { "delete" },
-            title: text(
-                if trash {
-                    "ops-job-trash"
-                } else {
-                    "ops-job-delete"
-                },
-                &[],
-            ),
+            kind: "delete",
+            title: text("ops-job-delete", &[]),
             lane: Lane::Bulk,
             priority: 0,
             owner_ns: "ops",
@@ -522,28 +518,21 @@ fn delete(cx: &mut Cx<'_>, req: OpRequest) -> Result<(), CmdError> {
     cx.rt
         .spawn_dedicated("ops.delete".into(), cx.rt.token(), move |tcx| {
             use std::sync::atomic::Ordering;
-            let _span =
-                tracing::info_span!("ops.job", kind = if trash { "trash" } else { "delete" })
-                    .entered();
+            let _span = tracing::info_span!("ops.job", kind = "delete").entered();
             let p = job.progress();
             let n = items.len() as u64;
             p.items_total.store(n, Ordering::Relaxed);
             p.total_final.store(true, Ordering::Relaxed);
-            let errors: Vec<String> = if trash {
-                let r = crate::ops::delete::delete_to_trash(&dir, &items);
-                p.items_done.store(n, Ordering::Relaxed);
-                r.err().into_iter().collect()
-            } else {
-                let stop = || tcx.cancel.is_cancelled() || job.checkpoint().is_err();
-                let done = |name: &str| {
-                    p.set_current(name);
-                    p.items_done.fetch_add(1, Ordering::Relaxed);
-                };
+            let stop = || tcx.cancel.is_cancelled() || job.checkpoint().is_err();
+            let done = |name: &str| {
+                p.set_current(name);
+                p.items_done.fetch_add(1, Ordering::Relaxed);
+            };
+            let errors: Vec<String> =
                 crate::ops::delete::delete_permanent(&dir, &items, &stop, &done)
                     .into_iter()
                     .map(|e| format!("{}: {}", e.name, e.error))
-                    .collect()
-            };
+                    .collect();
             let failed = errors.len() as u64;
             let m = urfin_core::msg("ops.delete", move |cx| {
                 if let Some(first) = errors.first() {
