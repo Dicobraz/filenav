@@ -3,7 +3,8 @@
 //! перенос в пределах тома и между «томами», отмена посреди файла, обход с
 //! маской и ссылками, убитый посреди копии процесс (fault injection);
 //! немодальные конфликты с автоответчиком (приёмка S5-07); ошибки,
-//! автоповтор и `ops.retry` (приёмка S5-11).
+//! автоповтор и `ops.retry` (приёмка S5-11); журнал, «Продолжить» после
+//! убитого процесса и вопрос при выходе (приёмка S5-12).
 
 #![allow(clippy::many_single_char_names, reason = "короткие имена в тестах")]
 
@@ -145,6 +146,7 @@ fn transfer(
             dest_raw: raw.map_or_else(|| dest.display().to_string(), str::to_owned),
             mask,
             small_file: 1 << 20,
+            journal_dir: None,
         },
     )
 }
@@ -715,12 +717,8 @@ fn kill_child() {
     let Ok(arg) = std::env::var(CHILD_ENV) else {
         return;
     };
-    let mut parts = arg.splitn(3, '|');
-    let (mode, src, dst) = (
-        parts.next().unwrap(),
-        parts.next().unwrap(),
-        parts.next().unwrap(),
-    );
+    let parts: Vec<&str> = arg.split('|').collect();
+    let (mode, src, dst) = (parts[0], parts[1], parts[2]);
     let (src, dst) = (PathBuf::from(src), PathBuf::from(dst));
     let mut h = H::new(64);
     let base = src.parent().unwrap().to_path_buf();
@@ -739,7 +737,10 @@ fn kill_child() {
             .unwrap();
         t
     } else {
-        transfer(Mode::Copy, &base, &[&name], &dst, None, o)
+        let mut t = transfer(Mode::Copy, &base, &[&name], &dst, None, o);
+        // `jcopy|src|dst|journals`: с журналом job (S5-12).
+        t.journal_dir = parts.get(3).map(PathBuf::from);
+        t
     };
     let id = h.start(4, t);
     std::fs::write(dst.with_extension("started"), b"1").unwrap();
@@ -1411,4 +1412,230 @@ fn retry_copies_only_failed() {
     }
     assert_eq!(std::fs::read(dst.join("t/f2.txt")).unwrap(), b"src-2");
     assert_eq!(std::fs::read(dst.join("t/f0.txt")).unwrap(), b"mine");
+}
+
+// --- S5-12: журнал и восстановление ---
+
+fn journals(dir: &Path) -> usize {
+    std::fs::read_dir(dir).map_or(0, |rd| {
+        rd.flatten()
+            .filter(|e| e.path().extension().is_some_and(|x| x == "jnl"))
+            .count()
+    })
+}
+
+/// Приёмка S5-12: копия убита (kill -9) около половины → «Продолжить» доводит
+/// до конца без повторного копирования готовых файлов: байт не больше остатка.
+#[test]
+fn killed_copy_continues_without_recopy() {
+    if std::env::var_os(CHILD_ENV).is_some() {
+        return;
+    }
+    let d = tmp();
+    let src = d.path().join("src");
+    let t = old(1_300_000_000);
+    let mut total_bytes = 0u64;
+    for i in 0..400u64 {
+        let size = match i % 8 {
+            0 => (3 << 20) + i as usize,
+            1 => (1 << 20) + 17,
+            _ => 300_000 + 1_000 * i as usize,
+        };
+        total_bytes += size as u64;
+        write(
+            &src.join(format!("d{}/f{i}.bin", i % 10)),
+            &bytes(size, i),
+            t,
+        );
+    }
+    let (dst, jdir) = (d.path().join("dst"), d.path().join("jobs"));
+    std::fs::create_dir(&dst).unwrap();
+    let exe = std::env::current_exe().unwrap();
+    let mut child = std::process::Command::new(exe)
+        .args(["--exact", "ops::copy::tests::kill_child", "--nocapture"])
+        .env(
+            CHILD_ENV,
+            format!(
+                "jcopy|{}|{}|{}",
+                src.display(),
+                dst.display(),
+                jdir.display()
+            ),
+        )
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let started = dst.with_extension("started");
+    let t0 = Instant::now();
+    while !started.exists() {
+        assert!(
+            t0.elapsed() < Duration::from_secs(30),
+            "child did not start"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let total = count_files(&src);
+    while count_files(&dst) < total / 2 && t0.elapsed() < Duration::from_secs(60) {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    child.kill().unwrap();
+    child.wait().unwrap();
+    assert!(
+        !dst.with_extension("finished").exists(),
+        "copy finished before kill: make the data bigger"
+    );
+    let srcs = snapshot(&src);
+    let ready: u64 = snapshot(&dst.join("src"))
+        .iter()
+        .filter(|(rel, (dir, h, m))| !dir && srcs.get(*rel).is_some_and(|s| s.1 == *h && s.2 == *m))
+        .map(|(rel, _)| std::fs::metadata(src.join(rel)).unwrap().len())
+        .sum();
+    // Как при старте: журнал прерванной job, «Продолжить».
+    let found = journal::scan(&jdir);
+    assert_eq!(found.len(), 1, "interrupted journal");
+    let i = &found[0];
+    i.remove_temps();
+    std::fs::remove_file(&i.path).unwrap();
+    let start = recovered(&i.header, 1 << 20, Some(jdir.clone())).unwrap();
+    let mut h = H::new(64);
+    let r = run(&mut h, Transfer::new(Mode::Copy, start));
+    let s = done(&r);
+    assert_eq!(r.asked, 0, "continue asks nothing");
+    let left = total_bytes - ready;
+    eprintln!(
+        "continue: ready {ready} of {total_bytes}, copied {} (left {left})",
+        s.bytes
+    );
+    assert!(
+        ready > 0 && s.bytes <= left,
+        "copied {} > left {left}",
+        s.bytes
+    );
+    for (rel, (dir, h, m)) in &srcs {
+        if !dir {
+            let p = dst.join("src").join(rel);
+            assert_eq!((hash(&p), mtime(&p)), (*h, *m), "{rel}");
+        }
+    }
+    no_temps(&dst);
+    assert_eq!(journals(&jdir), 0, "finished job removes its journal");
+}
+
+/// Приёмка S5-12 (§6.4): выход при идущей копии — вопрос; «Прервать и выйти»
+/// отменяет job и оставляет журнал для «Продолжить».
+#[test]
+fn quit_with_running_copy_asks_and_keeps_journal() {
+    let d = tmp();
+    let (src, dst, jdir) = (
+        d.path().join("s"),
+        d.path().join("d"),
+        d.path().join("jobs"),
+    );
+    for i in 0..50 {
+        write(
+            &src.join(format!("t/f{i}.bin")),
+            &bytes(400_000, i),
+            old(1_500_000_000),
+        );
+    }
+    std::fs::create_dir(&dst).unwrap();
+    let mut h = H::new(64);
+    h.core.register(Box::new(
+        crate::OpsHandler::new(crate::OpsConfig::default()),
+    ));
+    let mut t = transfer(Mode::Copy, &src, &["t"], &dst, None, OpOptions::default());
+    t.journal_dir = Some(jdir.clone());
+    let id = h.start(4, t);
+    h.cmd("job.pause", id);
+    h.pump_until("journal created", |_| journals(&jdir) == 1);
+    h.core.dispatch(Command::new("app.quit"));
+    h.pump_until("quit question", has_prompt);
+    let spec = reply(&mut h, "quit", false);
+    assert_eq!(
+        spec.choices
+            .iter()
+            .map(|c| c.id.as_str())
+            .collect::<Vec<_>>(),
+        ["wait", "quit"]
+    );
+    h.pump_until("job cancelled", |h| !h.state(id).is_active());
+    assert_eq!(h.state(id), JobState::Cancelled);
+    h.pump_until("engine threads gone", |h| h.eng.live_threads() == 0);
+    let found = journal::scan(&jdir);
+    assert_eq!(found.len(), 1, "journal kept for Continue");
+    assert_eq!(found[0].header.req.items, [CompactString::from("t")]);
+}
+
+/// S5-12 сквозь handler: при старте — баннер о прерванной job, «Продолжить»
+/// доводит копию, журнал удаляется; «Очистить» удаляет журнал и temp.
+#[test]
+fn startup_banner_continue_and_clear() {
+    let d = tmp();
+    let (src, dst, jdir) = (
+        d.path().join("s"),
+        d.path().join("d"),
+        d.path().join("jobs"),
+    );
+    for i in 0..5 {
+        write(
+            &src.join(format!("t/f{i}.txt")),
+            format!("src-{i}").as_bytes(),
+            old(1_500_000_000),
+        );
+    }
+    std::fs::create_dir(&dst).unwrap();
+    // Две «прерванные» job: заголовок есть, `Done` нет.
+    let header = |dest: &Path| journal::Header {
+        v: journal::VERSION,
+        req: OpRequest {
+            kind: OpKind::Copy,
+            base: Location::local(&src),
+            items: vec![CompactString::from("t")],
+            dest: None,
+            opts: OpOptions::default(),
+        },
+        dest: dest.to_path_buf(),
+        dest_raw: dest.display().to_string(),
+        started: 1,
+        pid: 1,
+    };
+    let orphan = dst.join(".x.fnv~zz");
+    std::fs::write(&orphan, b"partial").unwrap();
+    let j1 = Journal::create(&jdir, header(&dst)).unwrap();
+    j1.keep();
+    let mut h2 = header(&d.path().join("other"));
+    h2.started = 2;
+    let j2 = Journal::create(&jdir, h2).unwrap();
+    j2.append_now(&Record::Temp(orphan.clone()));
+    j2.keep();
+    let mut h = H::new(64);
+    h.core.register(Box::new(crate::OpsHandler::with_journal(
+        crate::OpsConfig::default(),
+        Some(jdir.clone()),
+    )));
+    let banner = |h: &H| h.core.state().banner.clone();
+    h.pump_until("banner", |h| banner(h).is_some());
+    let b = banner(&h).unwrap();
+    assert!(b.text.contains(&dst.display().to_string()), "{}", b.text);
+    assert_eq!(b.actions.len(), 2);
+    h.core.dispatch(b.actions[0].1.clone()); // Продолжить
+    h.pump_until("copy done", |_| dst.join("t/f4.txt").exists());
+    // Следующая прерванная — свой баннер; «Очистить».
+    h.pump_until("second banner", |h| {
+        banner(h).is_some_and(|b| b.text.contains("other"))
+    });
+    let b = banner(&h).unwrap();
+    h.core.dispatch(b.actions[1].1.clone()); // Очистить
+    h.pump_until("journals gone, jobs done", |h| {
+        journals(&jdir) == 0 && !h.core.state().jobs.any_active()
+    });
+    assert!(!orphan.exists(), "temp of the cleared job removed");
+    assert!(banner(&h).is_none());
+    for i in 0..5 {
+        assert_eq!(
+            std::fs::read(dst.join(format!("t/f{i}.txt"))).unwrap(),
+            format!("src-{i}").into_bytes()
+        );
+    }
 }

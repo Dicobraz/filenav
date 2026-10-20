@@ -36,7 +36,7 @@ use std::collections::HashMap;
 use std::ffi::OsString;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock, PoisonError};
 use std::time::{Duration, SystemTime};
 
@@ -57,10 +57,16 @@ use crate::engine::walker::{Enter, Visit, Walker, loc};
 use crate::engine::{
     DirNode, ExecCx, ItemResult, JobEngine, Note, OpExec, Plan, PlanError, Resolved, Retry, Work,
 };
+use crate::journal::{self, Journal, Record};
 use crate::sys::fs as sys;
 
 /// Воркеров на job по умолчанию (носитель и AIMD — S5-19).
 const WORKERS: u16 = 8;
+/// Выход с прерыванием задач (вопрос при выходе, S5 §6.4): прерванные job
+/// оставляют журнал для «Продолжить».
+pub(crate) static QUITTING: AtomicBool = AtomicBool::new(false);
+/// Раз в столько секунд — счётчики в журнал.
+const COUNTERS_EVERY: u64 = 5;
 /// Паузы автоповтора транзиентных ошибок (S5 §2.2, S5-11).
 const RETRY_WAITS: [Duration; 3] = [
     Duration::from_millis(200),
@@ -206,6 +212,10 @@ pub(crate) struct Transfer {
     pairs: Vec<(PathBuf, PathBuf)>,
     /// Метка временных файлов job.
     tag: String,
+    /// Каталог журналов (`None` — без журнала: повтор, тесты).
+    journal_dir: Option<PathBuf>,
+    journal: OnceLock<Journal>,
+    ticks: AtomicU64,
     info: OnceLock<Info>,
     gate: Gate,
     /// Тест: перед commit временного файла (гонка за имя).
@@ -221,6 +231,31 @@ pub(crate) struct Start {
     pub dest_raw: String,
     pub mask: Option<Mask>,
     pub small_file: u64,
+    pub journal_dir: Option<PathBuf>,
+}
+
+/// «Продолжить» прерванную job (S5 §6.3): тот же запрос; файлы, равные
+/// источнику (размер и время), пропускаются, отличающиеся — наши недописанные —
+/// копируются заново без вопросов.
+pub(crate) fn recovered(
+    h: &journal::Header,
+    small_file: u64,
+    journal_dir: Option<PathBuf>,
+) -> Option<Start> {
+    let mut req = h.req.clone();
+    req.opts.conflict = ConflictPolicy::OverwriteIfDiffers;
+    let mask = match req.opts.filter.as_deref() {
+        None | Some("") => None,
+        Some(m) => Some(Mask::parse(m).ok()?),
+    };
+    Some(Start {
+        req,
+        dest: Location::local(&h.dest),
+        dest_raw: h.dest_raw.clone(),
+        mask,
+        small_file,
+        journal_dir,
+    })
 }
 
 /// Как повторить упавшее: режим и опции исходной job (хранится с отчётом).
@@ -280,6 +315,9 @@ pub(crate) fn start_retry(
         small: spec.small,
         pairs,
         tag: new_tag(),
+        journal_dir: None,
+        journal: OnceLock::new(),
+        ticks: AtomicU64::new(0),
         info: OnceLock::new(),
         gate: Gate::default(),
         #[cfg(test)]
@@ -375,6 +413,9 @@ impl Transfer {
             small: s.small_file,
             pairs: Vec::new(),
             tag: new_tag(),
+            journal_dir: s.journal_dir,
+            journal: OnceLock::new(),
+            ticks: AtomicU64::new(0),
             info: OnceLock::new(),
             gate: Gate::default(),
             #[cfg(test)]
@@ -600,6 +641,9 @@ impl Transfer {
                 }
                 _ => {}
             }
+            if let Some(j) = self.journal.get() {
+                j.append_now(&Record::Temp(fresh.clone()));
+            }
             self.data(it, &fresh, false, cx)?;
             *temp = Some(fresh.clone());
             fresh
@@ -610,6 +654,9 @@ impl Transfer {
         }
         match sys::move_file(&staged, dst, how == How::Replace) {
             Ok(()) => {
+                if let Some(j) = self.journal.get() {
+                    j.append(&Record::TempDone(staged));
+                }
                 *temp = None;
                 Ok(())
             }
@@ -1325,6 +1372,7 @@ impl OpExec for Transfer {
             })?;
         }
         self.setup(&base, &root);
+        self.open_journal(&root);
 
         let mut touch = SmallVec::new();
         touch.push(Location::local(shown(&root)));
@@ -1498,7 +1546,29 @@ impl OpExec for Transfer {
         }
     }
 
+    fn tick(&self, cx: &ExecCx<'_>) {
+        let Some(j) = self.journal.get() else {
+            return;
+        };
+        if self.ticks.fetch_add(1, Ordering::Relaxed) % COUNTERS_EVERY == COUNTERS_EVERY - 1 {
+            let p = cx.progress();
+            j.append(&Record::Counters {
+                items: p.items_done.load(Ordering::Relaxed),
+                bytes: p.bytes_done.load(Ordering::Relaxed),
+                items_total: p.items_total.load(Ordering::Relaxed),
+                bytes_total: p.bytes_total.load(Ordering::Relaxed),
+            });
+        }
+        j.flush();
+    }
+
     fn finished(&self, r: &Report, outcome: &Result<JobSummary, String>) -> Option<Note> {
+        if let Some(j) = self.journal.get() {
+            match outcome {
+                Err(e) if e == "cancelled" && QUITTING.load(Ordering::Relaxed) => j.keep(),
+                _ => j.finish(r.summary.items, r.summary.bytes),
+            }
+        }
         let s = match outcome {
             Err(e) if e == "cancelled" => return None,
             Err(e) => return Some((Level::Error, tr("ops-copy-job-failed", &[("error", e)]))),
@@ -1523,6 +1593,38 @@ impl OpExec for Transfer {
 }
 
 impl Transfer {
+    /// Журнал job (S5-12): заголовок с запросом, корень назначения.
+    fn open_journal(&self, root: &Path) {
+        let Some(dir) = &self.journal_dir else {
+            return;
+        };
+        let header = journal::Header {
+            v: journal::VERSION,
+            req: OpRequest {
+                kind: if self.mode == Mode::Move {
+                    OpKind::Move
+                } else {
+                    OpKind::Copy
+                },
+                base: self.base.clone(),
+                items: self.items.clone(),
+                dest: None,
+                opts: self.opts.clone(),
+            },
+            dest: self.dest.path.clone(),
+            dest_raw: self.dest_raw.clone(),
+            started: nanos(std::time::SystemTime::now()) / 1_000_000_000,
+            pid: std::process::id(),
+        };
+        match Journal::create(dir, header) {
+            Ok(j) => {
+                j.append(&Record::Root(root.to_path_buf()));
+                let _ = self.journal.set(j);
+            }
+            Err(e) => tracing::warn!(dir = %dir.display(), error = %e, "journal not created"),
+        }
+    }
+
     /// План повтора (`ops.retry`): каждая упавшая пара заново — файл или каталог
     /// целиком в своё назначение; каталог назначения создаётся при нужде.
     fn plan_pairs(&self, p: &mut Plan<'_, Self>) -> Result<(), PlanError> {

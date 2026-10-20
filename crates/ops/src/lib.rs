@@ -9,6 +9,7 @@ pub mod config;
 pub mod dest;
 mod engine;
 mod handler;
+mod journal;
 pub mod names;
 pub mod ops;
 pub mod sys;
@@ -27,7 +28,13 @@ use urfin_core::Core;
 
 /// Регистрирует handlers `ops` и `file`. Конфиг — `config.section("ops")`.
 pub fn register(core: &mut Core, cfg: OpsConfig) {
-    core.register(Box::new(OpsHandler::new(cfg)));
+    register_with(core, cfg, None);
+}
+
+/// [`register`] с каталогом журналов job (`state_dir/jobs`, S5-12): job пишут
+/// журнал, при старте прерванные предлагаются баннером «Продолжить / Очистить».
+pub fn register_with(core: &mut Core, cfg: OpsConfig, journal_dir: Option<std::path::PathBuf>) {
+    core.register(Box::new(OpsHandler::with_journal(cfg, journal_dir)));
     core.register(Box::new(FileHandler));
 }
 

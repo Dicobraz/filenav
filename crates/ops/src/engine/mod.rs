@@ -69,6 +69,9 @@ pub(crate) trait OpExec: Send + Sync + Sized + 'static {
     /// Работа осталась без ответа (отмена job): убрать следы (temp).
     fn discard(&self, _item: Self::Item, _issue: &Issue) {}
 
+    /// Раз в секунду из координатора (журнал: сброс, счётчики).
+    fn tick(&self, _cx: &ExecCx<'_>) {}
+
     /// Как повторить упавшее (`ops.retry`): хранится с отчётом job.
     fn retry(&self) -> Option<Retry> {
         None
@@ -123,7 +126,7 @@ impl From<Cancelled> for PlanError {
 
 /// Запуск job: общий потолок потоков и счётчик живых потоков движка.
 /// Живёт в handler `ops` (UI-поток).
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct JobEngine {
     budget: Arc<ThreadBudget>,
     live: Arc<AtomicUsize>,

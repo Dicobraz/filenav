@@ -238,6 +238,7 @@ pub(super) fn start<E: OpExec>(
         sink: cx.rt.sink(),
         live: Arc::clone(&eng.live),
         last_touch: None,
+        last_tick: Instant::now(),
         next_tick: Instant::now(),
         rate: (Instant::now(), 0),
         peak_bps: 0,
@@ -269,6 +270,8 @@ struct Coord<E: OpExec> {
     sink: MsgSink,
     live: Arc<AtomicUsize>,
     last_touch: Option<Instant>,
+    /// Последний [`OpExec::tick`].
+    last_tick: Instant,
     /// Не раньше — троттлинг и замер скорости (`service` зовётся на каждую работу плана).
     next_tick: Instant,
     /// Начало окна скорости и `bytes_done` в нём.
@@ -427,6 +430,10 @@ impl<E: OpExec> Coord<E> {
         self.next_tick = now + POLL;
         if self.last_touch.is_none_or(|t| now - t >= TOUCH_EVERY) {
             self.flush_touched(now);
+        }
+        if now - self.last_tick >= TOUCH_EVERY {
+            self.last_tick = now;
+            self.sh.exec.tick(&self.cx());
         }
         let dt = now - self.rate.0;
         if dt >= RATE_WINDOW {

@@ -290,14 +290,15 @@ pub(crate) fn vfs_services(config: &Config) -> Services {
 
 /// Handlers сессий поверх core: ui, vfs, ops (keymap регистрируется последним — ему
 /// нужен полный реестр команд).
-pub(crate) fn register_handlers(core: &mut Core, config: &Config) {
+pub(crate) fn register_handlers(core: &mut Core, config: &Config, paths: Option<&Paths>) {
     urfin_ui::register(core);
     urfin_vfs::register(core, Arc::new(VfsRegistry::with_local()), vfs_cfg(config));
     let (ops, warning) = config.section::<urfin_ops::OpsConfig>("ops");
     if let Some(w) = warning {
         tracing::warn!(warning = ?w, "[ops] config section ignored");
     }
-    urfin_ops::register(core, ops);
+    // Журналы job (S5-12): прерванные — баннер «Продолжить / Очистить» при старте.
+    urfin_ops::register_with(core, ops, paths.map(|p| p.state_dir.join("jobs")));
 }
 
 /// Корень демо-дерева `FakeListing` для `--smoke`: детерминированный прогон без ФС.
@@ -385,7 +386,7 @@ fn smoke(
     boot.crashed_last_time = crashed;
     let smoke_config = boot.config.clone();
     let mut core = Core::new(boot, demo_services(), Arc::new(NoWake));
-    register_handlers(&mut core, &smoke_config);
+    register_handlers(&mut core, &smoke_config, None);
     let _ = urfin_keymap::register(
         &mut core,
         Paths::in_dir(scratch.join("keymap")),

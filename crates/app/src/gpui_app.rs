@@ -42,7 +42,9 @@ pub fn run(launch: Launch) {
         let _s = tracing::info_span!("startup.core").entered();
         let t = Instant::now();
         let mut core = Core::new(boot, services, signal.clone());
-        crate::register_handlers(&mut core, &config);
+        // `--screens`: без журналов job — сцены не должны зависеть от прошлых прогонов.
+        let jpaths = screens.is_none().then_some(&paths);
+        crate::register_handlers(&mut core, &config, jpaths);
         startup.core = t.elapsed();
         core
     };
