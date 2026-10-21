@@ -543,6 +543,13 @@ body{margin:0}
 </sc-for>
 </div>
 </div>
+<div style="display: flex; align-items: center; gap: 24px">
+<span style="width: 160px; font-weight: 500">Анимация</span>
+<div style="display: flex; gap: 4px">
+<sc-for list="{{animOpts}}" as="o" hint-placeholder-count="2"><button type="button" style="{{o.style}}">{{o.label}}</button></sc-for>
+</div>
+<span style="color: {{t.s}}; font-size: 12px">подробнее — в разделе «Доступность»</span>
+</div>
 <div style="display: flex; align-items: flex-start; gap: 24px">
 <sc-if value="{{enRu}}" hint-placeholder-val="{{ true }}"><span style="width: 160px; font-weight: 500">Шрифты</span></sc-if><sc-if value="{{enEn}}" hint-placeholder-val="{{ false }}"><span style="width: 160px; font-weight: 500">Fonts</span></sc-if>
 <div style="display: flex; flex-direction: column; gap: 6px">
@@ -1641,7 +1648,7 @@ body{margin:0}
 </sc-if>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark","blue","turquoise","grass","sepia","hcblack","hcdesert"],"default":"light"},"screen":{"editor":"enum","options":["panels","a11yfocus","a11ysheet","motion","zoomind","link","touch","linkview","syncplan","syncmirror","syncrun","clipcut","clippaste","extract","extractpw","tabsmany","tabsdrag","kit","operror","opbusy","toasterror","settings-ops","settings-policies","settings-viewer","settings-terminal","termsearch","termshell","searchpanel","searchgrep","cmdcomplete","cmdhistory","firstrun","whatsnew","viewerhex","viewerenc","editreplace","editgoto","columns","columnswide","usermenu","usermenuedit","jobslist","dragpanel","dragfolder","pack","pack-pw","help","about","bookmarks","history","sort","filter","filtered","attrs","mkdir","mkdirtree","move","rename","journal","multirename","compare","settings-panels","settings-keys","settings-editor","terminal","termhalf","menu","context","select","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress","search","viewer","editor","settings"],"default":"panels"},"density":{"editor":"enum","options":["20","24","28"],"default":"24"},"icons":{"editor":"enum","options":["none","mono","color"],"default":"mono"},"context":{"editor":"enum","options":["none","admin","remote"],"default":"none"},"width":{"editor":"enum","options":["1280","1024","800"],"default":"1280"},"lang":{"editor":"enum","options":["ru","en"],"default":"ru"},"zoom":{"editor":"enum","options":["100","125","150"],"default":"100"},"$preview":{"width":1280,"height":760}}'>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark","blue","turquoise","grass","sepia","hcblack","hcdesert"],"default":"light"},"screen":{"editor":"enum","options":["panels","settings-a11y","a11yfocus","a11ysheet","motion","zoomind","link","touch","linkview","syncplan","syncmirror","syncrun","clipcut","clippaste","extract","extractpw","tabsmany","tabsdrag","kit","operror","opbusy","toasterror","settings-ops","settings-policies","settings-viewer","settings-terminal","termsearch","termshell","searchpanel","searchgrep","cmdcomplete","cmdhistory","firstrun","whatsnew","viewerhex","viewerenc","editreplace","editgoto","columns","columnswide","usermenu","usermenuedit","jobslist","dragpanel","dragfolder","pack","pack-pw","help","about","bookmarks","history","sort","filter","filtered","attrs","mkdir","mkdirtree","move","rename","journal","multirename","compare","settings-panels","settings-keys","settings-editor","terminal","termhalf","menu","context","select","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress","search","viewer","editor","settings"],"default":"panels"},"density":{"editor":"enum","options":["20","24","28"],"default":"24"},"icons":{"editor":"enum","options":["none","mono","color"],"default":"mono"},"context":{"editor":"enum","options":["none","admin","remote"],"default":"none"},"width":{"editor":"enum","options":["1280","1024","800"],"default":"1280"},"lang":{"editor":"enum","options":["ru","en"],"default":"ru"},"zoom":{"editor":"enum","options":["100","125","150"],"default":"100"},"$preview":{"width":1280,"height":760}}'>
 class Component extends DCLogic {
 renderVals() {
 const TH = {
@@ -2059,8 +2066,8 @@ return { soOps: sec === "ops", soPol: sec === "policies", soOpsForm, soPolRows,
 soNote: "display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid " + t.b + "; border-radius: 4px; background: " + t.h + "; color: " + t.t + "; font-size: 12.5px; line-height: 1.45" };
 })();
 const NAV = ["Вид","Панели","Клавиатура","Редактор","Просмотр","Терминал","Операции","Политики"];
-NAV.push("О программе");
-const navSel = sec === "about" ? NAV.indexOf("О программе") : sec === "viewer" ? NAV.indexOf("Просмотр") : sec === "terminal" ? NAV.indexOf("Терминал") : { view: 0, panels: 1, keys: 2, editor: 3 }[sec] || 0;
+NAV.push("Доступность"); NAV.push("О программе");
+const navSel = sec === "a11y" ? NAV.indexOf("Доступность") : sec === "about" ? NAV.indexOf("О программе") : sec === "viewer" ? NAV.indexOf("Просмотр") : sec === "terminal" ? NAV.indexOf("Терминал") : { view: 0, panels: 1, keys: 2, editor: 3 }[sec] || 0;
 const nav = NAV.map((label, j) => ({ label, i: j === navSel ? 0 : 1 })).map(({ label, i }) => ({ label, style: "height: 32px; padding: 0 12px; text-align: left; border: 0; border-radius: 4px; background: " + (i === 0 ? t.c : "transparent") + "; color: " + (i === 0 ? t.ct : t.t) + "; font: inherit; font-weight: " + (i === 0 ? 500 : 400) }));
 if (sec === "ops" || sec === "policies") { const soJ = NAV.indexOf(sec === "ops" ? "Операции" : "Политики"), soOn = nav[0].style, soOff = nav[1].style; nav.forEach((n, k) => { n.style = k === soJ ? soOn : soOff; }); }
 const followOs = st.followOs !== undefined ? st.followOs : false;
@@ -2661,12 +2668,17 @@ PS("Get-ChildItem target\\release\\urfin.exe | Select-Object Length"),
 [S("12268544", "t")]
 ];
 })(),
-secView: sec === "view", secForm: sec === "panels" || sec === "editor" || sec === "viewer" || sec === "terminal", secKeys: sec === "keys",
+secView: sec === "view", secForm: sec === "panels" || sec === "editor" || sec === "viewer" || sec === "terminal" || sec === "a11y", secKeys: sec === "keys",
 form: (() => {
 const segS = (on) => "height: 28px; padding: 0 12px; border: 1px solid " + (on ? t.a : t.b) + "; border-radius: 4px; background: " + (on ? t.c : t.p) + "; color: " + (on ? t.ct : t.t) + "; font: inherit";
 const SEG = (label, opts, on, note) => ({ label, seg: true, opts: opts.map((o, i) => ({ label: o, style: segS(i === on) })), note: note || "" });
 const CHK = (label, text, on, note) => ({ label, check: true, text, on, note: note || "" });
 const SEL = (label, value, note) => ({ label, select: true, value, note: note || "" });
+if (sec === "a11y") return [
+{ title: "Движение", rows: [SEG("Анимация", ["Как в Windows","Выкл."], 0, "в Windows сейчас: включена"), CHK("Вспышка баннеров", "Привлекать внимание к новым баннерам", true, "выкл. — ровная подсветка 1 с")] },
+{ title: "Видимость", rows: [SEL("Масштаб интерфейса", "100 %", "Ctrl+колесо, Ctrl+0 — сброс"), SEG("Высота строки", ["20","24","28"], 1, "то же, что в «Вид»"), CHK("Фокус-кольцо", "Показывать и при работе мышью", false, "по умолчанию — только с клавиатуры"), CHK("Курсор панели", "Толстая рамка — 2 px", false)] },
+{ title: "Контраст", rows: [SEL("Контрастная тема", "Как в Windows — выключена", "Параметры Windows → Специальные возможности"), CHK("Подчёркивать ссылки и пути", "Не только цветом", true)] }
+];
 if (sec === "viewer" || sec === "terminal") return sec === "viewer" ? [
 { title: "Открытие", rows: [SEG("Где открывать по F3", ["Окно","Панель"], 0, "панель — как быстрый просмотр"), SEL("Внешний просмотрщик", "Программа Windows для типа файла", "Alt+F3"), CHK("Запоминать позицию", "Позиция, кодировка и режим файла", true, "500 последних · Alt+F11")] },
 { title: "Текст", rows: [SEL("Кодировка по умолчанию", "Авто — по содержимому", "F8: Авто → UTF-8 → 1251 → 866"), SEG("Перенос строк", ["Не переносить","По словам","По символам"], 0), SEG("Табуляция", ["2","4","8"], 2), SEG("Hex: байт в строке", ["Авто","8","16","32"], 0, "авто — по ширине окна")] },
@@ -2733,7 +2745,7 @@ showToast: screen === "panels", isCmp: screen === "compare", ...syVals,
 toastPos: "bottom: " + (82 + 12 + (screen === "progress" ? 64 : (screen === "conflict" ? 34 : 0))) + "px;",
 toast: screen === "compare" ? { title: "Сравнение папок", text: "только слева 2 · только справа 1 · новее слева 1", act: true, acts: ["Синхронизировать →", "Синхронизировать ←"] } : { title: "Копирование завершено", text: "48 файлов · 1,9 ГБ · 6,2 с", act: false, acts: [] },
 showBanner: screen === "journal", frFirst: screen === "firstrun", frNews: screen === "whatsnew", isRename: screen === "multirename",
-...ayVals, ...soVals, ...hpVals, popShadow, inputStyle, chipOn: chip(true), chipOff: chip(false), btn, btnPrimary,
+...ayVals, ...soVals, ...hpVals, animOpts: [["Как в Windows", true], ["Выкл.", false]].map(([label, on]) => ({ label, style: seg(on) + "; white-space: nowrap" })), popShadow, inputStyle, chipOn: chip(true), chipOff: chip(false), btn, btnPrimary,
 sfIsFilter: screen === "filter",
 sfChipStyle: "height: 20px; box-sizing: border-box; padding: 0 7px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid " + t.a + "; border-radius: 4px; background: " + t.c + "; color: " + t.ct + "; font-size: 11.5px; white-space: nowrap",
 sfSortItems: [["Имя","Ctrl+F3",1],["Расширение","Ctrl+F4"],["Размер","Ctrl+F6"],["Дата изменения","Ctrl+F5"],["Дата создания","Ctrl+F8"],["Без сортировки","Ctrl+F7"],null,["По убыванию","",0,"sw",false],["Папки сверху","",0,"sw",true]].map((m, i) => {
