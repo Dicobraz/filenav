@@ -7459,6 +7459,7 @@ dependencies = [
  "tracing",
  "urfin-core",
  "urfin-i18n",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
