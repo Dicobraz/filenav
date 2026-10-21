@@ -242,6 +242,9 @@ pub(crate) struct Transfer {
     /// Тест: носитель обоих томов вместо ОС.
     #[cfg(test)]
     media: Option<urfin_vfs::volume::Media>,
+    /// Тест: сразу после commit (порча копии для проверки).
+    #[cfg(test)]
+    after_commit: Option<fn(&Path)>,
 }
 
 /// Параметры запуска.
@@ -351,6 +354,8 @@ pub(crate) fn start_retry(
         free_space: None,
         #[cfg(test)]
         media: None,
+        #[cfg(test)]
+        after_commit: None,
     };
     let workers = spec.opts.workers.map_or(WORKERS, |n| u16::from(n.get()));
     Some(eng.start(cx, spec_job, workers, t))
@@ -463,6 +468,8 @@ impl Transfer {
             free_space: None,
             #[cfg(test)]
             media: None,
+            #[cfg(test)]
+            after_commit: None,
         }
     }
 
@@ -587,12 +594,7 @@ impl Transfer {
                 self.copy_one(it, &dst, how, &mut temp, cx)
             };
             match r {
-                Ok(()) => {
-                    if self.mode == Mode::Move && !rename {
-                        return self.finish_move(it, &dst);
-                    }
-                    return ItemResult::Done;
-                }
+                Ok(()) => return self.committed(it, &dst, rename, cx),
                 Err(e) if e.raw_os_error() == Some(sys::ERR_ABORTED) => {
                     return ItemResult::Cancelled;
                 }
@@ -717,6 +719,28 @@ impl Transfer {
                 Err(e)
             }
         }
+    }
+
+    /// Файл на месте: проверка копии (S5-21), при переносе между томами — удаление
+    /// источника.
+    fn committed(&self, it: &Item, dst: &Path, rename: bool, cx: &ExecCx<'_>) -> ItemResult {
+        #[cfg(test)]
+        if let Some(f) = self.after_commit {
+            f(dst);
+        }
+        if !rename
+            && !is_link(it.kind)
+            && matches!(self.opts.verify, crate::api::Verify::Hash(_))
+            && let Err(e) = verify(&it.src, dst)
+        {
+            // Копия не та: убрать её; источник не трогаем (и при переносе).
+            let _ = remove_src(dst, it.kind);
+            return self.on_error(it, &e, cx);
+        }
+        if self.mode == Mode::Move && !rename {
+            return self.finish_move(it, dst);
+        }
+        ItemResult::Done
     }
 
     /// Межтомный перенос файла после commit копии: копия на диске (fsync) и того
@@ -884,6 +908,21 @@ fn durable(p: &Path) -> io::Result<u64> {
         }
         r => r,
     }
+}
+
+/// Проверка копии (S5 §4.9, S5-21): xxh3-128 источника (обычно ещё в кэше после
+/// копии) и копии, перечитанной мимо кэша, — с диска, а не из памяти. Не совпало —
+/// ошибка «контрольная сумма не совпала».
+fn verify(src: &Path, dst: &Path) -> io::Result<()> {
+    let hash = |p: &Path, uncached: bool| -> io::Result<u128> {
+        let mut h = xxhash_rust::xxh3::Xxh3::new();
+        sys::read_chunks(p, uncached, &mut |b| h.update(b))?;
+        Ok(h.digest128())
+    };
+    if hash(src, false)? == hash(dst, true)? {
+        return Ok(());
+    }
+    Err(io::Error::other(tr("ops-verify-mismatch", &[])))
 }
 
 /// Удалить временный файл, если он есть.

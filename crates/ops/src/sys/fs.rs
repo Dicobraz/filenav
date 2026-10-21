@@ -63,6 +63,12 @@ pub fn move_file(src: &Path, dst: &Path, replace: bool) -> io::Result<()> {
     imp::move_file(src, dst, replace)
 }
 
+/// Читает файл кусками в `f`: `uncached` — мимо кэша ОС (`FILE_FLAG_NO_BUFFERING`,
+/// буфер выровнен по странице), чтобы проверка копии читала диск, а не память.
+pub fn read_chunks(p: &Path, uncached: bool, f: &mut dyn FnMut(&[u8])) -> io::Result<()> {
+    imp::read_chunks(p, uncached, f)
+}
+
 /// Физическое устройство тома пути (`IOCTL_STORAGE_GET_DEVICE_NUMBER`): два
 /// раздела одного диска — один ключ (S5-19). `None` — не узнать (сеть, RAID).
 pub fn device_key(p: &Path) -> Option<u64> {
@@ -167,6 +173,33 @@ mod imp {
         match catch_unwind(AssertUnwindSafe(|| f(done))) {
             Ok(true) => PROGRESS_CONTINUE,
             _ => PROGRESS_CANCEL,
+        }
+    }
+
+    pub fn read_chunks(p: &Path, uncached: bool, f: &mut dyn FnMut(&[u8])) -> io::Result<()> {
+        use std::io::Read;
+        use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_NO_BUFFERING;
+        /// Кусок чтения: кратен сектору и странице.
+        const CHUNK: usize = 1 << 20;
+        let mut file = OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_DELETE)
+            .custom_flags(if uncached {
+                FILE_FLAG_NO_BUFFERING | FILE_FLAG_SEQUENTIAL_SCAN
+            } else {
+                FILE_FLAG_SEQUENTIAL_SCAN
+            })
+            .open(crate::names::os_path(p))?;
+        // Выравнивание буфера по 4 КиБ: требование `FILE_FLAG_NO_BUFFERING`.
+        let mut raw = vec![0u8; CHUNK + 4096];
+        let off = raw.as_ptr().align_offset(4096);
+        let buf = &mut raw[off..off + CHUNK];
+        loop {
+            let n = file.read(buf)?;
+            if n == 0 {
+                return Ok(());
+            }
+            f(&buf[..n]);
         }
     }
 

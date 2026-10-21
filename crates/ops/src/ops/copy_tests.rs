@@ -2111,3 +2111,125 @@ fn two_jobs_on_hdd_queue_on_ssd_run_together() {
         }
     }
 }
+
+// --- S5-21: проверка копии ---
+
+/// Портит копию сразу после commit (первый байт).
+fn corrupt(p: &Path) {
+    use std::io::{Seek, SeekFrom, Write};
+    let mut f = std::fs::OpenOptions::new().write(true).open(p).unwrap();
+    f.seek(SeekFrom::Start(0)).unwrap();
+    f.write_all(b"\xff").unwrap();
+}
+
+fn hash_opts() -> OpOptions {
+    OpOptions {
+        verify: crate::api::Verify::Hash(crate::api::HashAlgo::Xxh3_128),
+        ..OpOptions::default()
+    }
+}
+
+/// Приёмка S5-21: порча копии (хук после commit) детектируется — вопрос об
+/// ошибке, испорченная копия убрана; при переносе источник не удаляется.
+#[test]
+fn verify_detects_corruption_and_move_keeps_source() {
+    for mode in [Mode::Copy, Mode::Move] {
+        let d = tmp();
+        let (src, dst) = (d.path().join("s"), d.path().join("d"));
+        // Мелкий (сразу под именем) и крупный (через временный файл).
+        write(&src.join("small.bin"), &bytes(5000, 1), old(1_500_000_000));
+        write(&src.join("big.bin"), &bytes(3 << 20, 2), old(1_500_000_000));
+        std::fs::create_dir(&dst).unwrap();
+        let mut t = transfer(
+            mode,
+            &src,
+            &["small.bin", "big.bin"],
+            &dst,
+            None,
+            hash_opts(),
+        );
+        t.after_commit = Some(corrupt);
+        t.info
+            .set(Info {
+                rename: false,
+                ..Info::default()
+            })
+            .unwrap();
+        let mut h = H::new(64);
+        let r = run(&mut h, t);
+        let s = done(&r);
+        assert_eq!((s.items, s.errors, r.asked), (0, 2, 2), "{mode:?}");
+        for n in ["small.bin", "big.bin"] {
+            assert!(!dst.join(n).exists(), "{mode:?}: corrupt copy removed");
+            assert!(src.join(n).exists(), "{mode:?}: source kept");
+        }
+        assert!(
+            r.report.failed.iter().all(|f| f.pair.is_some()),
+            "retryable"
+        );
+    }
+}
+
+/// S5-21: целая копия с проверкой — без вопросов, данные равны.
+#[test]
+fn verify_passes_on_good_copy() {
+    let d = tmp();
+    let (src, dst) = (d.path().join("s"), d.path().join("d"));
+    write(&src.join("a.bin"), &bytes(5000, 1), old(1_500_000_000));
+    write(
+        &src.join("b.bin"),
+        &bytes((3 << 20) + 17, 2),
+        old(1_500_000_000),
+    );
+    std::fs::create_dir(&dst).unwrap();
+    let mut h = H::new(64);
+    let r = run(
+        &mut h,
+        transfer(
+            Mode::Copy,
+            &src,
+            &["a.bin", "b.bin"],
+            &dst,
+            None,
+            hash_opts(),
+        ),
+    );
+    let s = done(&r);
+    assert_eq!((s.items, s.errors, r.asked), (2, 0, 0));
+    assert_eq!(hash(&dst.join("b.bin")), hash(&src.join("b.bin")));
+}
+
+/// Замер S5-21 (бенч #12): копия 256 МБ (64 файла) без проверки и с xxh3 +
+/// перечитыванием копии мимо кэша.
+/// `cargo nextest run --release -p urfin-ops bench_verify --run-ignored only --no-capture`.
+#[test]
+#[ignore = "замер на стенде"]
+fn bench_verify() {
+    let d = tmp();
+    let src = d.path().join("s");
+    for i in 0..64 {
+        write(
+            &src.join(format!("t/f{i}.bin")),
+            &bytes(4 << 20, i),
+            old(1_500_000_000),
+        );
+    }
+    let mut h = H::new(64);
+    for round in 0..2 {
+        for opts in [OpOptions::default(), hash_opts()] {
+            let dst = d
+                .path()
+                .join(format!("d{round}-{:?}", opts.verify).replace(['(', ')'], ""));
+            std::fs::create_dir(&dst).unwrap();
+            let t0 = Instant::now();
+            let r = run(
+                &mut h,
+                transfer(Mode::Copy, &src, &["t"], &dst, None, opts.clone()),
+            );
+            let dt = t0.elapsed();
+            assert_eq!(done(&r).errors, 0);
+            eprintln!("verify {:?}: 256 MB in {dt:?}", opts.verify);
+            remove_dir_all::remove_dir_all(&dst).unwrap();
+        }
+    }
+}
