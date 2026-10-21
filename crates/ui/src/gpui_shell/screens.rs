@@ -88,10 +88,20 @@ const SCENES: &[Scene] = &[
         name: "narrow",
         steps: &["ui.theme mode=light", "resize 720x600"],
     },
+    Scene {
+        name: "multi-rename",
+        steps: &[
+            "panel.focus side=left",
+            "sel.add mask=\"*.md;*.pdf;*.jpg;*.txt\"",
+            "ui.draft command=ops.multi_rename arg=pattern init=\"[N]_[C:1:1:2].[E]\"",
+        ],
+    },
     // Последней: вопрос о конфликте остаётся открытым (S5-07).
     Scene {
         name: "conflict",
         steps: &[
+            "ui.cancel",
+            "sel.none",
             "panel.focus side=left",
             "panel.cursor.to name=Cargo.toml",
             // Назначение относительно левой панели (корень демо-дерева).

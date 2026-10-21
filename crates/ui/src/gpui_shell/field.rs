@@ -29,6 +29,58 @@ pub(super) enum Key {
 pub(super) struct Field {
     pub key: Key,
     pub input: Entity<InputState>,
+    /// Подписка на правку поля (превью группового переименования).
+    pub _sub: Option<gpui_kit::Subscription>,
+}
+
+/// Черновик группового переименования (S5-23): поле — шаблон, под ним превью.
+pub(super) const MULTI_RENAME: &str = "ops.multi_rename";
+
+/// Превью плана группового переименования от handler ops.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(super) struct MrPreview {
+    /// (было, станет, проблема: `""`, `invalid`, `duplicate`, `exists`).
+    pub rows: Vec<(String, String, String)>,
+    pub changed: i64,
+    pub problems: i64,
+    pub error: Option<String>,
+}
+
+impl MrPreview {
+    pub(super) fn from_args(a: &urfin_core::Args) -> MrPreview {
+        let rows = a
+            .list("rows")
+            .map(|l| {
+                l.iter()
+                    .filter_map(|v| match v {
+                        urfin_core::Value::Str(s) => Some(s.as_str()),
+                        _ => None,
+                    })
+                    .map(|r| {
+                        let mut it = r.splitn(3, '\t');
+                        let mut next = || it.next().unwrap_or_default().to_owned();
+                        (next(), next(), next())
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        MrPreview {
+            rows,
+            changed: a.int("changed").unwrap_or(0),
+            problems: a.int("problems").unwrap_or(0),
+            error: a.str("error").map(str::to_owned),
+        }
+    }
+}
+
+/// Команда превью (или применения) по тексту шаблона. Шаблон с `/` — regex
+/// «найти/заменить» (в имени файла `/` не бывает), это решает handler.
+pub(super) fn mr_command(pattern: &str, apply: bool) -> Command {
+    let mut c = Command::new(MULTI_RENAME).arg("pattern", pattern);
+    if apply {
+        c = c.arg("apply", true);
+    }
+    c
 }
 
 /// Черновик с полем ввода (у удаления поля нет — кнопки).
@@ -54,6 +106,8 @@ pub(super) fn wanted(s: &AppState) -> Option<(Key, String)> {
         }
         let init = if d.text.is_empty() && matches!(d.cmd.as_str(), "ops.copy" | "ops.move") {
             path_text(s.panel(s.active.other()).tab())
+        } else if d.text.is_empty() && d.cmd == MULTI_RENAME {
+            "[N].[E]".to_owned()
         } else {
             d.text.to_string()
         };
@@ -74,15 +128,38 @@ impl CoreHost {
         match (&self.field, want) {
             (Some(f), Some((k, _))) if f.key == k => {}
             (_, Some((key, init))) => {
-                let input = cx.new(|cx| InputState::new(window, cx).default_value(init));
+                let input = cx.new(|cx| InputState::new(window, cx).default_value(init.clone()));
                 input.update(cx, |s, cx| {
                     s.focus(window, cx);
                     s.select_all(window, cx);
                 });
-                self.field = Some(Field { key, input });
+                // Групповое переименование: превью на каждую правку шаблона.
+                let sub = (key == Key::Draft(MULTI_RENAME.to_owned())).then(|| {
+                    self.run(mr_command(&init, false), window, cx);
+                    cx.subscribe_in(
+                        &input,
+                        window,
+                        |h: &mut CoreHost,
+                         input,
+                         ev: &gpui_kit::component::input::InputEvent,
+                         window,
+                         cx| {
+                            if matches!(ev, gpui_kit::component::input::InputEvent::Change) {
+                                let text = input.read(cx).value().to_string();
+                                h.run(mr_command(&text, false), window, cx);
+                            }
+                        },
+                    )
+                });
+                self.field = Some(Field {
+                    key,
+                    input,
+                    _sub: sub,
+                });
             }
             (Some(_), None) => {
                 self.field = None;
+                self.mr_preview = None;
                 window.focus(&self.focus, cx);
             }
             (None, None) => {}
@@ -108,6 +185,8 @@ impl CoreHost {
                     c = c.arg("permanent", true);
                 }
                 out.push(c);
+            } else if d.cmd == MULTI_RENAME {
+                out.push(mr_command(&text, true));
             } else if let Ok(c) = Command::parse(&d.cmd) {
                 out.push(c.arg(&d.arg, text.as_str()));
             }
@@ -156,6 +235,7 @@ pub(super) fn draft_bar(
     s: &AppState,
     field: Option<&Field>,
     permanent: bool,
+    preview: Option<&MrPreview>,
     theme: &Theme,
     click: overlays::ClickAll<'_>,
 ) -> Option<Div> {
@@ -252,23 +332,95 @@ pub(super) fn draft_bar(
             ));
         }
     }
+    let multi = d.cmd == MULTI_RENAME;
     row = row.child(button(
         i18n.get("ui-button-cancel"),
         "Esc",
         false,
         vec![Command::new("ui.cancel")],
     ));
-    Some(
+    let mut bar = div()
+        .flex_none()
+        .flex()
+        .flex_col()
+        .gap_2()
+        .mx(px(theme.m(Metric::GapPanels)))
+        .mt(px(theme.m(Metric::GapPanels)))
+        .p_3()
+        .rounded(px(theme.m(Metric::RadiusOverlay)))
+        .border_1()
+        .border_color(theme.c(tone))
+        .bg(theme.c(Role::LayerPanel))
+        .child(row);
+    if multi && let Some(p) = preview {
+        bar = bar.child(mr_preview(p, theme));
+    }
+    Some(bar)
+}
+
+/// Превью группового переименования: «было → станет», проблемные — красным,
+/// итог или ошибка шаблона.
+fn mr_preview(p: &MrPreview, theme: &Theme) -> Div {
+    let i18n = urfin_i18n::current();
+    let secondary = theme.c(Role::TextSecondary);
+    if let Some(e) = &p.error {
+        return div()
+            .text_color(theme.c(Role::CriticalFg))
+            .child(SharedString::from(i18n.fmt("ui-mr-pattern-error", &{
+                let mut a = FluentArgs::new();
+                a.set("error", e.clone());
+                a
+            })));
+    }
+    let mut list = div().flex().flex_col().gap_1();
+    for (from, to, problem) in &p.rows {
+        let bad = !problem.is_empty();
+        let note = if bad {
+            i18n.get(&format!("ui-mr-problem-{problem}"))
+        } else {
+            String::new()
+        };
+        list = list.child(
+            div()
+                .flex()
+                .flex_row()
+                .gap_2()
+                .child(
+                    div()
+                        .w(px(260.0))
+                        .overflow_hidden()
+                        .text_color(secondary)
+                        .child(SharedString::from(from.clone())),
+                )
+                .child(div().text_color(secondary).child("→"))
+                .child(
+                    div()
+                        .text_color(theme.c(if bad {
+                            Role::CriticalFg
+                        } else {
+                            Role::TextPrimary
+                        }))
+                        .child(SharedString::from(to.clone())),
+                )
+                .when(bad, |d| {
+                    d.child(
+                        div()
+                            .text_size(px(theme.m(Metric::TypeCaption)))
+                            .text_color(theme.c(Role::CriticalFg))
+                            .child(SharedString::from(note)),
+                    )
+                }),
+        );
+    }
+    let mut a = FluentArgs::new();
+    a.set("changed", p.changed);
+    a.set("problems", p.problems);
+    a.set("shown", p.rows.len());
+    div().flex().flex_col().gap_2().child(list).child(
         div()
-            .flex_none()
-            .mx(px(theme.m(Metric::GapPanels)))
-            .mt(px(theme.m(Metric::GapPanels)))
-            .p_3()
-            .rounded(px(theme.m(Metric::RadiusOverlay)))
-            .border_1()
-            .border_color(theme.c(tone))
-            .bg(theme.c(Role::LayerPanel))
-            .child(row),
+            .text_size(px(theme.m(Metric::TypeCaption)))
+            .text_color(secondary)
+            .child(SharedString::from(i18n.fmt("ui-mr-summary", &a))),
     )
 }
 

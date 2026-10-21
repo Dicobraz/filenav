@@ -69,6 +69,12 @@ pub fn read_chunks(p: &Path, uncached: bool, f: &mut dyn FnMut(&[u8])) -> io::Re
     imp::read_chunks(p, uncached, f)
 }
 
+/// Местная дата (год, месяц, день) по времени изменения (нс от эпохи Unix):
+/// `[Y][M][D]` группового переименования.
+pub fn local_ymd(ns: i64) -> Option<(u16, u8, u8)> {
+    imp::local_ymd(ns)
+}
+
 /// Физическое устройство тома пути (`IOCTL_STORAGE_GET_DEVICE_NUMBER`): два
 /// раздела одного диска — один ключ (S5-19). `None` — не узнать (сеть, RAID).
 pub fn device_key(p: &Path) -> Option<u64> {
@@ -201,6 +207,38 @@ mod imp {
             }
             f(&buf[..n]);
         }
+    }
+
+    pub fn local_ymd(ns: i64) -> Option<(u16, u8, u8)> {
+        use windows_sys::Win32::Foundation::{FILETIME, SYSTEMTIME};
+        use windows_sys::Win32::System::Time::{
+            FileTimeToSystemTime, SystemTimeToTzSpecificLocalTime,
+        };
+        if ns == i64::MIN {
+            return None;
+        }
+        // FILETIME: 100 нс от 1601-01-01.
+        let ticks = u64::try_from(ns / 100 + 116_444_736_000_000_000).ok()?;
+        let ft = FILETIME {
+            dwLowDateTime: (ticks & 0xFFFF_FFFF) as u32,
+            dwHighDateTime: (ticks >> 32) as u32,
+        };
+        // SAFETY: POD.
+        let (mut utc, mut local): (SYSTEMTIME, SYSTEMTIME) =
+            unsafe { (std::mem::zeroed(), std::mem::zeroed()) };
+        // SAFETY: указатели на локальные структуры; синхронные вызовы.
+        let ok = unsafe {
+            FileTimeToSystemTime(&raw const ft, &raw mut utc) != 0
+                && SystemTimeToTzSpecificLocalTime(std::ptr::null(), &raw const utc, &raw mut local)
+                    != 0
+        };
+        ok.then(|| {
+            (
+                local.wYear,
+                u8::try_from(local.wMonth).unwrap_or(0),
+                u8::try_from(local.wDay).unwrap_or(0),
+            )
+        })
     }
 
     pub fn device_key(p: &Path) -> Option<u64> {

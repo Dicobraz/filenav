@@ -114,6 +114,7 @@ cmd-ops-delete = Удалить
 cmd-ops-mkdir = Создать папку
 cmd-ops-rename = Переименовать
 cmd-ops-multi_rename = Групповое переименование
+    .menu-key = у
 cmd-ops-attrs = Атрибуты
 cmd-ops-touch = Изменить время
 cmd-ops-link = Создать ссылку

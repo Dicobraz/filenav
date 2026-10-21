@@ -136,6 +136,8 @@ pub struct CoreHost {
     field: Option<field::Field>,
     /// Черновик удаления — сразу насовсем (Shift+F8 или корзины нет).
     ops_permanent: bool,
+    /// Превью группового переименования (S5-23).
+    mr_preview: Option<field::MrPreview>,
     menu: menu::Menu,
     /// Остаток прокрутки колесом в строках (по панелям).
     wheel_acc: [f32; 2],
@@ -211,6 +213,7 @@ impl CoreHost {
             screens: screens.map(screens::Screens::new),
             field: None,
             ops_permanent: false,
+            mr_preview: None,
             menu,
             wheel_acc: [0.0; 2],
             choice: overlays::PromptSel::NONE,
@@ -341,11 +344,18 @@ impl CoreHost {
                     cx.notify();
                 }
                 // Черновик операции (F5/F6/F7/F8): строка с полем или кнопками (S2-15).
+                urfin_core::UiEvent::Ext { id, args }
+                    if id.as_str() == "ops.multi_rename.preview" =>
+                {
+                    self.mr_preview = Some(field::MrPreview::from_args(&args));
+                    cx.notify();
+                }
                 urfin_core::UiEvent::Ext { id, args } if id.as_str() == "ops.draft" => {
                     let command = args.str("command").unwrap_or_default().to_owned();
                     let arg = match command.as_str() {
                         "ops.copy" | "ops.move" => "dest",
                         "ops.mkdir" => "name",
+                        field::MULTI_RENAME => "pattern",
                         _ => "confirmed",
                     };
                     self.ops_permanent = args.bool("permanent").unwrap_or(false);
@@ -1122,6 +1132,7 @@ impl Render for CoreHost {
                 s,
                 self.field.as_ref(),
                 self.ops_permanent,
+                self.mr_preview.as_ref(),
                 &self.theme,
                 &click_all,
             ))

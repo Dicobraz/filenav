@@ -114,6 +114,7 @@ cmd-ops-delete = Delete
 cmd-ops-mkdir = Make folder
 cmd-ops-rename = Rename
 cmd-ops-multi_rename = Multi-rename
+    .menu-key = m
 cmd-ops-attrs = Attributes
 cmd-ops-touch = Set time
 cmd-ops-link = Make link

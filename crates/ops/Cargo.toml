@@ -24,6 +24,9 @@ crc32fast = "1.4"
 postcard = { version = "1.1", default-features = false, features = ["use-std"] }
 # Проверка копии (S5-21, S5 §4.9): xxh3-128. BSL-1.0.
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
+# Групповое переименование regex-заменой (S5-23). MIT OR Apache-2.0; уже в
+# дереве через gpui.
+regex = "1.11"
 
 urfin-core.workspace = true
 urfin-i18n.workspace = true
@@ -52,6 +55,7 @@ windows-sys = { workspace = true, features = [
     "Win32_System_Ioctl",
     "Win32_System_Registry",
     "Win32_System_SystemInformation",
+    "Win32_System_Time",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }

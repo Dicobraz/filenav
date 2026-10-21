@@ -33,6 +33,7 @@ id = "files"
 title = "menu-files"
 items = [
     { cmd = "ui.rename" },
+    { cmd = "ops.multi_rename" },
     { sep = true },
     { cmd = "ui.draft command=sel.add arg=mask", label = "menu-sel-add" },
     { cmd = "ui.draft command=sel.remove arg=mask", label = "menu-sel-remove" },
