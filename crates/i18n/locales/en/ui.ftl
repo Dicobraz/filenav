@@ -140,7 +140,6 @@ ui-draft-move = Move { $count } { $count ->
    *[other] items
 } ({ $size }) to
 ui-draft-ops-mkdir = New folder
-ui-draft-mkdir-hint = a\b\c is fine
 ui-draft-sel-add = Select by mask
 ui-draft-sel-remove = Deselect by mask
 ui-draft-panel-filter = Filter
@@ -251,3 +250,50 @@ ui-tree-label = tree
 ui-qv-title = Quick view
 ui-info-summary = Folder { $path }: { $files } files, { $dirs } folders · { $bytes }
 ui-info-free-of = { $free } free of { $total }
+
+## Встроенные строки (D-04)
+ui-strip-ifexists = If the file exists
+ui-strip-ifexists-ask = Ask
+ui-strip-ifexists-overwrite = Replace
+ui-strip-ifexists-skip = Skip
+ui-strip-ifexists-newer = Replace if newer
+ui-strip-keep-dates = Keep dates
+ui-strip-verify = Verify hash after copying
+ui-strip-verify-move = Verify hash before deleting the source
+ui-strip-background = In background
+ui-strip-matches = { $count } match
+ui-strip-mr-summary = will change { $changed } · problems { $problems }
+ui-strip-conflict-of = { $name } · conflict { $index } of { $total }
+ui-strip-newer = newer
+ui-strip-mkdir = New folder
+ui-strip-mkdir-many = Several, separated by ;
+ui-strip-mkdir-nested = nested — with \
+ui-strip-filter = Show
+ui-strip-filter-matches = matches { $count } of { $total }
+ui-strip-attrs = { $count ->
+    [one] Attributes of { $count } item
+   *[other] Attributes of { $count } items
+}
+ui-strip-attrs-mtime = Modified
+ui-strip-attrs-now = now
+ui-strip-attrs-varies = various
+ui-attr-readonly = Read-only
+ui-attr-hidden = Hidden
+ui-attr-system = System
+ui-attr-archive = Archive
+ui-filter-chip = filter { $mask }
+ui-panel-count-filtered = { $count } of { $total }
+ui-button-create = Create
+ui-button-reset = Reset
+ui-keys-apply = Apply
+ui-keys-cancel = Cancel
+ui-keys-name-ext = Name ↔ extension
+ui-button-copy = Copy
+ui-button-move = Move
+ui-button-mark = Select
+ui-button-unmark = Deselect
+ui-button-rename = Rename
+ui-button-ok = OK
+ui-keys-qs-next = Next
+ui-keys-qs-prev = Previous
+ui-keys-close = Close

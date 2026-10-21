@@ -128,10 +128,46 @@ impl CoreHost {
         match (&self.field, want) {
             (Some(f), Some((k, _))) if f.key == k => {}
             (_, Some((key, init))) => {
-                let input = cx.new(|cx| InputState::new(window, cx).default_value(init.clone()));
+                // Новый черновик — опции строк по умолчанию.
+                self.strip_opts = StripOpts::default();
+                let mut init = init;
+                let mut placeholder = None;
+                if key == Key::Draft("ops.attrs".to_owned())
+                    && let Some(core) = self.core.as_ref()
+                {
+                    let (now, mtime) = attrs_of(core.state().active_tab(), &self.theme.fmt);
+                    self.strip_opts.attrs_now = now;
+                    self.strip_opts.attrs = now;
+                    if mtime.is_empty() {
+                        placeholder = Some(urfin_i18n::current().get("ui-strip-attrs-varies"));
+                    }
+                    self.strip_opts.mtime_init.clone_from(&mtime);
+                    init = mtime;
+                }
+                // Переименование: выделено имя без расширения (Tab — расширение).
+                let range = match &key {
+                    Key::Rename(_, name) => {
+                        let dir = self.core.as_ref().is_some_and(|c| {
+                            matches!(c.state().active_tab().current(),
+                                Some(Row::Entry { entry, .. }) if entry.kind.is_dir_like())
+                        });
+                        Some(stem_range(name, dir))
+                    }
+                    _ => None,
+                };
+                let input = cx.new(|cx| {
+                    let s = InputState::new(window, cx).default_value(init.clone());
+                    match placeholder {
+                        Some(p) => s.placeholder(p),
+                        None => s,
+                    }
+                });
                 input.update(cx, |s, cx| {
                     s.focus(window, cx);
-                    s.select_all(window, cx);
+                    match range {
+                        Some(r) => s.set_selected_range(r, cx),
+                        None => s.select_all(window, cx),
+                    }
                 });
                 // Групповое переименование: превью на каждую правку шаблона.
                 let sub = (key == Key::Draft(MULTI_RENAME.to_owned())).then(|| {
@@ -187,8 +223,19 @@ impl CoreHost {
                 out.push(c);
             } else if d.cmd == MULTI_RENAME {
                 out.push(mr_command(&text, true));
+            } else if d.cmd == "ops.attrs" {
+                return attrs_commands(&self.strip_opts, &text);
+            } else if d.cmd == "ops.mkdir" {
+                return mkdir_commands(self.strip_opts.many, &text);
             } else if let Ok(c) = Command::parse(&d.cmd) {
-                out.push(c.arg(&d.arg, text.as_str()));
+                let mut c = c.arg(&d.arg, text.as_str());
+                if matches!(d.cmd.as_str(), "ops.copy" | "ops.move") {
+                    c = self.strip_opts.apply(c);
+                    if shift {
+                        c = c.arg("queue", "bg");
+                    }
+                }
+                out.push(c);
             }
         } else if let Some(Key::Path(side)) = self.field.as_ref().map(|f| &f.key) {
             // Проверку и переход делает handler; он же закрывает поле.
@@ -208,12 +255,50 @@ impl CoreHost {
     }
 }
 
+impl CoreHost {
+    /// «Сейчас» для поля времени (ISO, локальное).
+    pub(super) fn now_iso(&self) -> String {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(i64::MIN, |d| {
+                i64::try_from(d.as_nanos()).unwrap_or(i64::MIN)
+            });
+        let mut c = crate::fmt_cell::Cell::default();
+        self.theme.fmt.write_iso(&mut c, nanos);
+        c.as_str().to_owned()
+    }
+
+    /// Tab в поле переименования: выделение имени ↔ расширения. `false` — не наше поле.
+    pub(super) fn field_tab(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(f) = self.field.as_ref() else {
+            return false;
+        };
+        let Key::Rename(_, _) = &f.key else {
+            return false;
+        };
+        f.input.update(cx, |s, cx| {
+            let text = s.value().to_string();
+            let stem = stem_range(&text, false);
+            let next = if s.selected_range() == stem && stem.end < text.len() {
+                stem.end + 1..text.len()
+            } else {
+                stem
+            };
+            s.set_selected_range(next, cx);
+        });
+        true
+    }
+}
+
 /// Поле переименования для строки курсора таба `t` (если оно открыто для него).
 pub(super) fn rename_input(field: Option<&Field>, t: &Tab) -> Option<Input> {
     let f = field?;
     match &f.key {
         // Высота поля — как у строки (24 px), не среднего поля gpui-kit (32 px).
-        Key::Rename(tab, _) if *tab == t.id.0 => Some(Input::new(&f.input).small()),
+        // Без своей рамки и фона: рамку и черту `accent` рисует строка (D-04).
+        Key::Rename(tab, _) if *tab == t.id.0 => {
+            Some(Input::new(&f.input).small().appearance(false))
+        }
         _ => None,
     }
 }
@@ -229,16 +314,185 @@ fn targets(t: &Tab) -> (u64, u64) {
     }
 }
 
-/// Строка черновика над cmdline: текст, поле (если есть), кнопки.
-#[allow(clippy::too_many_lines, reason = "строка черновика слева направо")]
+/// Опции встроенных строк (D-04): F5/F6 — «Если файл есть» и проверка хэша; F7 —
+/// несколько папок через `;`; Ctrl+A — флажки атрибутов и прежнее время.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(super) struct StripOpts {
+    /// Индекс в [`CONFLICT`]: спросить / заменить / пропустить / если новее.
+    pub conflict: usize,
+    pub verify: bool,
+    /// F7: имена через `;` — несколько папок.
+    pub many: bool,
+    /// Ctrl+A: атрибуты целей по [`ATTRS`] (`None` — у целей разные) и выбранные.
+    pub attrs_now: [Option<bool>; 4],
+    pub attrs: [Option<bool>; 4],
+    /// Ctrl+A: время изменения целей в поле (ISO); пусто — у целей разное.
+    pub mtime_init: String,
+}
+
+/// Атрибуты строки Ctrl+A: бит `Attrs`, буква `ops.attrs`, подпись.
+pub(super) const ATTRS: [(u32, char, &str); 4] = [
+    (urfin_core::Attrs::READONLY, 'r', "ui-attr-readonly"),
+    (urfin_core::Attrs::HIDDEN, 'h', "ui-attr-hidden"),
+    (urfin_core::Attrs::SYSTEM, 's', "ui-attr-system"),
+    (urfin_core::Attrs::ARCHIVE, 'a', "ui-attr-archive"),
+];
+
+/// Следующее значение флажка атрибута по клику: «разные» → да → нет → «разные»
+/// (если у целей было по-разному), иначе да ↔ нет.
+pub(super) fn next_attr(was: Option<bool>, now: Option<bool>) -> Option<bool> {
+    match (now, was) {
+        (None, _) | (Some(false), Some(_)) => Some(true),
+        (Some(true), _) => Some(false),
+        (Some(false), None) => None,
+    }
+}
+
+/// Атрибуты целей активного таба и общее время изменения (ISO), если оно одно.
+fn attrs_of(t: &Tab, fmt: &crate::fmt_cell::FmtCfg) -> ([Option<bool>; 4], String) {
+    let Some(tg) = t.targets() else {
+        return ([None; 4], String::new());
+    };
+    let items = &tg.items;
+    let flags = ATTRS.map(|(bit, _, _)| {
+        let on = items.iter().filter(|e| e.attrs.0 & bit != 0).count();
+        match on {
+            0 => Some(false),
+            n if n == items.len() => Some(true),
+            _ => None,
+        }
+    });
+    let mut cell = crate::fmt_cell::Cell::default();
+    if let Some(first) = items.first()
+        && items.iter().all(|e| e.mtime == first.mtime)
+    {
+        fmt.write_iso(&mut cell, first.mtime);
+    }
+    (flags, cell.as_str().to_owned())
+}
+
+/// Ctrl+A: `ops.attrs` с изменёнными флажками и `ops.touch`, если время правили.
+fn attrs_commands(o: &StripOpts, text: &str) -> Vec<Command> {
+    let (mut set, mut clear) = (String::new(), String::new());
+    for (k, (_, letter, _)) in ATTRS.iter().enumerate() {
+        match (o.attrs[k], o.attrs_now[k]) {
+            (Some(true), was) if was != Some(true) => set.push(*letter),
+            (Some(false), was) if was != Some(false) => clear.push(*letter),
+            _ => {}
+        }
+    }
+    let mut out = Vec::with_capacity(3);
+    if !set.is_empty() || !clear.is_empty() {
+        let mut c = Command::new("ops.attrs");
+        if !set.is_empty() {
+            c = c.arg("set", set.as_str());
+        }
+        if !clear.is_empty() {
+            c = c.arg("clear", clear.as_str());
+        }
+        out.push(c);
+    }
+    let t = text.trim();
+    if !t.is_empty() && t != o.mtime_init {
+        out.push(Command::new("ops.touch").arg("mtime", t));
+    }
+    out.push(Command::new("ui.cancel"));
+    out
+}
+
+/// F7: одно имя или (флажок «несколько») по одному `ops.mkdir` на имя через `;`.
+fn mkdir_commands(many: bool, text: &str) -> Vec<Command> {
+    let names: Vec<&str> = if many {
+        text.split(';')
+            .map(str::trim)
+            .filter(|n| !n.is_empty())
+            .collect()
+    } else {
+        vec![text]
+    };
+    let mut out: Vec<Command> = names
+        .into_iter()
+        .map(|n| Command::new("ops.mkdir").arg("name", n))
+        .collect();
+    out.push(Command::new("ui.cancel"));
+    out
+}
+
+/// Фильтр (Ctrl+I): сколько объектов останется видно с маской — папки остаются всегда.
+fn filter_matches(t: &Tab, mask: &str) -> Option<(usize, usize)> {
+    let m = urfin_core::Mask::parse(mask.trim()).ok()?;
+    let all = &t.listing.entries;
+    let n = all
+        .iter()
+        .filter(|e| e.kind.is_dir_like() || m.matches(&e.name))
+        .count();
+    Some((n, all.len()))
+}
+
+/// Выделение при переименовании: имя без расширения (у папки и `.файла` — всё).
+fn stem_range(name: &str, dir: bool) -> std::ops::Range<usize> {
+    match name.rfind('.') {
+        Some(i) if i > 0 && !dir => 0..i,
+        _ => 0..name.len(),
+    }
+}
+
+/// Политики «Если файл есть» (`ops.copy conflict=`) и их подписи.
+pub(super) const CONFLICT: [(&str, &str); 4] = [
+    ("ask", "ui-strip-ifexists-ask"),
+    ("overwrite", "ui-strip-ifexists-overwrite"),
+    ("skip", "ui-strip-ifexists-skip"),
+    ("newer", "ui-strip-ifexists-newer"),
+];
+
+impl StripOpts {
+    /// Аргументы `ops.copy`/`ops.move` из опций.
+    pub(super) fn apply(&self, mut c: Command) -> Command {
+        if self.conflict != 0 {
+            c = c.arg("conflict", CONFLICT[self.conflict % CONFLICT.len()].0);
+        }
+        if self.verify {
+            c = c.arg("verify", "hash");
+        }
+        c
+    }
+}
+
+/// Отметка группы по маске (`sel.add`/`sel.remove`): маска для подсветки совпавших
+/// имён и их число в видимом списке.
+pub(super) fn mask_matches(t: &Tab, mask: &str) -> Option<(urfin_core::Mask, usize)> {
+    let m = urfin_core::Mask::parse(mask.trim()).ok()?;
+    let n = t
+        .listing
+        .order
+        .iter()
+        .filter(|&&i| {
+            t.listing
+                .entries
+                .get(i as usize)
+                .is_some_and(|e| !e.kind.is_dir_like() && m.matches(&e.name))
+        })
+        .count();
+    Some((m, n))
+}
+
+/// Встроенная строка черновика (D-04): F5/F6 — на всю ширину в две линии (куда; если
+/// файл есть, даты, хэш, кнопки), F8 — с чертой `modified`, отметка группы — с числом
+/// совпадений, групповое переименование — с превью; кнопки с клавишами.
+#[allow(clippy::too_many_lines, reason = "строка черновика сверху вниз")]
+#[allow(clippy::too_many_arguments, reason = "плоский вызов отрисовки")]
 pub(super) fn draft_bar(
     s: &AppState,
     field: Option<&Field>,
+    field_text: &str,
     permanent: bool,
+    opts: &StripOpts,
     preview: Option<&MrPreview>,
     theme: &Theme,
     click: overlays::ClickAll<'_>,
+    toggle: &dyn Fn(u8) -> overlays::Handler,
 ) -> Option<Div> {
+    use super::strip::{Btn, Tone, button, check, check3, container};
     let d = s.ext.get::<UiState>()?.draft.as_ref()?;
     let i18n = urfin_i18n::current();
     let (count, bytes) = targets(s.active_tab());
@@ -253,109 +507,411 @@ pub(super) fn draft_bar(
             i18n.get(&format!("cmd-{}", d.cmd.replace('.', "-")))
         }
     };
-    let delete = d.cmd == "ops.delete";
-    let (text, tone) = match d.cmd.as_str() {
-        "ops.delete" if permanent => (i18n.fmt("ui-draft-delete-permanent", &a), Role::CriticalFg),
-        "ops.delete" => (i18n.fmt("ui-draft-delete", &a), Role::CautionFg),
-        "ops.copy" => (i18n.fmt("ui-draft-copy", &a), Role::AccentFill),
-        "ops.move" => (i18n.fmt("ui-draft-move", &a), Role::AccentFill),
-        _ => (fallback(), Role::AccentFill),
+    let cancel = || {
+        button(
+            theme,
+            "draft-cancel".into(),
+            i18n.get("ui-button-cancel"),
+            "Esc",
+            Btn::Normal,
+        )
+        .on_click(click(vec![Command::new("ui.cancel")]))
     };
-    let button = |label: String, chip: &str, accent: bool, cmds: Vec<Command>| {
+    let input = field
+        .filter(|f| matches!(f.key, Key::Draft(_)))
+        .map(|f| div().flex_1().min_w_0().child(Input::new(&f.input)));
+    let title = |text: String| {
         div()
-            .id(SharedString::from(format!("draft-{chip}")))
-            .h(px(theme.m(Metric::HControl) + 4.0))
-            .px_3()
-            .flex()
-            .items_center()
-            .gap_2()
-            .rounded(px(theme.m(Metric::RadiusControl)))
-            .border_1()
-            .border_color(theme.c(Role::StrokeControl))
-            .bg(theme.c(if accent {
-                Role::AccentFill
-            } else {
-                Role::FillControl
-            }))
-            .text_color(theme.c(if accent {
-                Role::AccentOn
-            } else {
-                Role::TextPrimary
-            }))
-            .child(SharedString::from(label))
-            .child(
-                div()
-                    .text_size(px(theme.m(Metric::TypeCaption)))
-                    .opacity(0.7)
-                    .child(SharedString::from(chip.to_owned())),
-            )
-            .on_click(click(cmds))
+            .flex_none()
+            .whitespace_nowrap()
+            .font_weight(gpui_kit::FontWeight::MEDIUM)
+            .child(SharedString::from(text))
     };
-    let mut row = div()
-        .flex()
-        .items_center()
-        .gap_3()
-        .child(div().flex_none().child(SharedString::from(text)));
-    if let Some(f) = field.filter(|f| matches!(f.key, Key::Draft(_))) {
-        row = row.child(div().flex_1().min_w_0().child(Input::new(&f.input)));
-        if d.cmd == "ops.mkdir" {
-            row = row.child(
-                div()
-                    .text_size(px(theme.m(Metric::TypeCaption)))
-                    .text_color(theme.c(Role::TextSecondary))
-                    .child(SharedString::from(i18n.get("ui-draft-mkdir-hint"))),
-            );
-        }
-    } else {
-        row = row.child(div().flex_1());
-    }
-    if delete {
-        let confirm = |perm: bool| {
-            let mut c = Command::new("ops.delete").arg("confirmed", true);
-            if perm {
-                c = c.arg("permanent", true);
-            }
-            vec![c, Command::new("ui.cancel")]
+    let commit = |extra: Option<(&str, &str)>| {
+        let mut c = match Command::parse(&d.cmd) {
+            Ok(c) => c.arg(&d.arg, field_text),
+            Err(_) => Command::new("ui.cancel"),
         };
-        row = row.child(button(
-            i18n.get("ui-button-delete"),
-            "Enter",
-            true,
-            confirm(permanent),
-        ));
-        if !permanent {
-            row = row.child(button(
-                i18n.get("ui-button-permanent"),
-                "⇧Enter",
-                false,
-                confirm(true),
-            ));
+        if matches!(d.cmd.as_str(), "ops.copy" | "ops.move") {
+            c = opts.apply(c);
+        }
+        if let Some((k, v)) = extra {
+            c = c.arg(k, v);
+        }
+        vec![c, Command::new("ui.cancel")]
+    };
+    match d.cmd.as_str() {
+        "ops.copy" | "ops.move" => {
+            let copy = d.cmd == "ops.copy";
+            let (text, go) = if copy {
+                (i18n.fmt("ui-draft-copy", &a), i18n.get("ui-button-copy"))
+            } else {
+                (i18n.fmt("ui-draft-move", &a), i18n.get("ui-button-move"))
+            };
+            let mut top = div().flex().items_center().gap(px(12.0)).child(title(text));
+            if let Some(i) = input {
+                top = top.child(i);
+            }
+            let (_, label) = CONFLICT[opts.conflict % CONFLICT.len()];
+            let row = div()
+                .flex()
+                .items_center()
+                .gap(px(20.0))
+                .child(
+                    div()
+                        .id("strip-ifexists")
+                        .flex()
+                        .items_center()
+                        .gap(px(8.0))
+                        .text_size(px(12.5))
+                        .child(SharedString::from(i18n.get("ui-strip-ifexists")))
+                        .child(
+                            div()
+                                .h(px(26.0))
+                                .px(px(10.0))
+                                .flex()
+                                .items_center()
+                                .gap(px(6.0))
+                                .rounded(px(4.0))
+                                .border_1()
+                                .border_color(theme.c(Role::StrokeControl))
+                                .bg(theme.c(Role::LayerPanel))
+                                .child(SharedString::from(i18n.get(label)))
+                                .child(
+                                    div()
+                                        .text_size(px(10.0))
+                                        .text_color(theme.c(Role::TextSecondary))
+                                        .child(SharedString::new_static("▾")),
+                                ),
+                        )
+                        .on_click(toggle(0)),
+                )
+                // Перенос даты сохраняет всегда — флажок только у копирования.
+                .when(copy, |d| {
+                    d.child(check(
+                        theme,
+                        "strip-dates".into(),
+                        true,
+                        i18n.get("ui-strip-keep-dates"),
+                        false,
+                    ))
+                })
+                .child(
+                    check(
+                        theme,
+                        "strip-verify".into(),
+                        opts.verify,
+                        i18n.get(if copy {
+                            "ui-strip-verify"
+                        } else {
+                            "ui-strip-verify-move"
+                        }),
+                        true,
+                    )
+                    .on_click(toggle(1)),
+                )
+                .child(
+                    div()
+                        .ml(px(8.0))
+                        .flex()
+                        .gap(px(8.0))
+                        .child(
+                            button(theme, "draft-go".into(), go, "Enter", Btn::Primary)
+                                .on_click(click(commit(None))),
+                        )
+                        .child(
+                            button(
+                                theme,
+                                "draft-bg".into(),
+                                i18n.get("ui-strip-background"),
+                                "Shift+Enter",
+                                Btn::Normal,
+                            )
+                            .on_click(click(commit(Some(("queue", "bg"))))),
+                        )
+                        .child(cancel()),
+                );
+            Some(
+                container(theme, Tone::Plain, 16.0, 12.0)
+                    .child(top)
+                    .child(row),
+            )
+        }
+        "ops.delete" => {
+            let confirm = |perm: bool| {
+                let mut c = Command::new("ops.delete").arg("confirmed", true);
+                if perm {
+                    c = c.arg("permanent", true);
+                }
+                vec![c, Command::new("ui.cancel")]
+            };
+            let text = if permanent {
+                i18n.fmt("ui-draft-delete-permanent", &a)
+            } else {
+                i18n.fmt("ui-draft-delete", &a)
+            };
+            let mut row = div()
+                .flex()
+                .items_center()
+                .gap(px(10.0))
+                .child(
+                    div()
+                        .font_family("Segoe Fluent Icons")
+                        .text_color(theme.c(Role::Modified))
+                        .child(SharedString::new_static("\u{E74D}")),
+                )
+                .child(title(text))
+                .child(div().flex_1())
+                .child(
+                    button(
+                        theme,
+                        "draft-delete".into(),
+                        i18n.get("ui-button-delete"),
+                        "Enter",
+                        Btn::Danger,
+                    )
+                    .on_click(click(confirm(permanent))),
+                );
+            if !permanent {
+                row = row.child(
+                    button(
+                        theme,
+                        "draft-permanent".into(),
+                        i18n.get("ui-button-permanent"),
+                        "Shift+Enter",
+                        Btn::Normal,
+                    )
+                    .on_click(click(confirm(true))),
+                );
+            }
+            Some(container(theme, Tone::Danger, 14.0, 10.0).child(row.child(cancel())))
+        }
+        "ops.mkdir" => {
+            let row = div()
+                .flex()
+                .items_center()
+                .gap(px(10.0))
+                .child(icon(theme, "\u{E8F4}"))
+                .child(title(i18n.get("ui-strip-mkdir")))
+                .children(input)
+                .child(
+                    button(
+                        theme,
+                        "draft-go".into(),
+                        i18n.get("ui-button-create"),
+                        "Enter",
+                        Btn::Primary,
+                    )
+                    .on_click(click(mkdir_commands(opts.many, field_text))),
+                )
+                .child(cancel());
+            let more = div()
+                .flex()
+                .items_center()
+                .gap(px(16.0))
+                .child(
+                    check(
+                        theme,
+                        "strip-many".into(),
+                        opts.many,
+                        i18n.get("ui-strip-mkdir-many"),
+                        true,
+                    )
+                    .on_click(toggle(2)),
+                )
+                .child(note(theme, i18n.get("ui-strip-mkdir-nested")));
+            Some(
+                container(theme, Tone::Plain, 12.0, 12.0)
+                    .child(row)
+                    .child(more),
+            )
+        }
+        "panel.filter" => {
+            let count = filter_matches(s.active_tab(), field_text).map(|(n, all)| {
+                let mut m = FluentArgs::new();
+                m.set("count", n as u64);
+                m.set("total", all as u64);
+                i18n.fmt("ui-strip-filter-matches", &m)
+            });
+            let row = div()
+                .flex()
+                .items_center()
+                .gap(px(10.0))
+                .child(icon(theme, "\u{E71C}"))
+                .child(title(i18n.get("ui-strip-filter")))
+                .children(input)
+                .children(count.map(|c| note(theme, c)));
+            let buttons = div()
+                .flex()
+                .items_center()
+                .gap(px(8.0))
+                .child(
+                    button(
+                        theme,
+                        "draft-go".into(),
+                        i18n.get("ui-button-apply"),
+                        "Enter",
+                        Btn::Primary,
+                    )
+                    .on_click(click(commit(None))),
+                )
+                .child(
+                    button(
+                        theme,
+                        "draft-reset".into(),
+                        i18n.get("ui-button-reset"),
+                        "",
+                        Btn::Normal,
+                    )
+                    .on_click(click(vec![
+                        Command::new("panel.filter").arg("mask", ""),
+                        Command::new("ui.cancel"),
+                    ])),
+                )
+                .child(cancel());
+            Some(
+                container(theme, Tone::Plain, 12.0, 12.0)
+                    .child(row)
+                    .child(buttons),
+            )
+        }
+        "ops.attrs" => {
+            let mut a = FluentArgs::new();
+            a.set("count", count);
+            let mut flags = div()
+                .flex()
+                .items_center()
+                .gap(px(16.0))
+                .child(icon(theme, "\u{E8EC}"))
+                .child(title(i18n.fmt("ui-strip-attrs", &a)));
+            for (k, (_, _, label)) in ATTRS.iter().enumerate() {
+                #[allow(clippy::cast_possible_truncation, reason = "четыре флажка")]
+                let id = 10 + k as u8;
+                flags = flags.child(
+                    check3(
+                        theme,
+                        format!("strip-attr-{k}"),
+                        opts.attrs[k],
+                        i18n.get(label),
+                    )
+                    .on_click(toggle(id)),
+                );
+            }
+            let time = div()
+                .flex()
+                .items_center()
+                .gap(px(10.0))
+                .child(note(theme, i18n.get("ui-strip-attrs-mtime")))
+                .child(div().w(px(200.0)).flex_none().children(input))
+                .child(
+                    button(
+                        theme,
+                        "strip-now".into(),
+                        i18n.get("ui-strip-attrs-now"),
+                        "",
+                        Btn::Normal,
+                    )
+                    .on_click(toggle(20)),
+                );
+            let buttons = div()
+                .flex()
+                .items_center()
+                .gap(px(8.0))
+                .child(
+                    button(
+                        theme,
+                        "draft-go".into(),
+                        i18n.get("ui-button-apply"),
+                        "Enter",
+                        Btn::Primary,
+                    )
+                    .on_click(click(attrs_commands(opts, field_text))),
+                )
+                .child(cancel());
+            Some(
+                container(theme, Tone::Plain, 12.0, 12.0)
+                    .child(flags)
+                    .child(time)
+                    .child(buttons),
+            )
+        }
+        cmd => {
+            let multi = cmd == MULTI_RENAME;
+            let select = matches!(cmd, "sel.add" | "sel.remove");
+            let mut row = div()
+                .flex()
+                .items_center()
+                .gap(px(10.0))
+                .child(title(fallback()));
+            if let Some(i) = input {
+                row = row.child(i);
+            }
+            let hint = if select {
+                mask_matches(s.active_tab(), field_text).map(|(_, n)| {
+                    let mut m = FluentArgs::new();
+                    m.set("count", n as u64);
+                    i18n.fmt("ui-strip-matches", &m)
+                })
+            } else if multi {
+                preview.map(|p| {
+                    let mut m = FluentArgs::new();
+                    m.set("changed", p.changed);
+                    m.set("problems", p.problems);
+                    i18n.fmt("ui-strip-mr-summary", &m)
+                })
+            } else {
+                None
+            };
+            if let Some(n) = hint {
+                row = row.child(note(theme, n));
+            }
+            let ok = if select {
+                i18n.get(if cmd == "sel.add" {
+                    "ui-button-mark"
+                } else {
+                    "ui-button-unmark"
+                })
+            } else if multi {
+                i18n.get("ui-button-rename")
+            } else {
+                i18n.get("ui-button-ok")
+            };
+            let go = if multi {
+                vec![mr_command(field_text, true), Command::new("ui.cancel")]
+            } else {
+                commit(None)
+            };
+            row = row
+                .child(
+                    button(theme, "draft-go".into(), ok, "Enter", Btn::Primary).on_click(click(go)),
+                )
+                .child(cancel());
+            let mut bar = container(theme, Tone::Plain, 12.0, 10.0).child(row);
+            if multi && let Some(p) = preview {
+                bar = bar.child(mr_preview(p, theme));
+            }
+            Some(bar)
         }
     }
-    let multi = d.cmd == MULTI_RENAME;
-    row = row.child(button(
-        i18n.get("ui-button-cancel"),
-        "Esc",
-        false,
-        vec![Command::new("ui.cancel")],
-    ));
-    let mut bar = div()
+}
+
+/// Значок строки (Segoe Fluent Icons) цветом `secondary`.
+fn icon(theme: &Theme, glyph: &'static str) -> Div {
+    div()
         .flex_none()
-        .flex()
-        .flex_col()
-        .gap_2()
-        .mx(px(theme.m(Metric::GapPanels)))
-        .mt(px(theme.m(Metric::GapPanels)))
-        .p_3()
-        .rounded(px(theme.m(Metric::RadiusOverlay)))
-        .border_1()
-        .border_color(theme.c(tone))
-        .bg(theme.c(Role::LayerPanel))
-        .child(row);
-    if multi && let Some(p) = preview {
-        bar = bar.child(mr_preview(p, theme));
-    }
-    Some(bar)
+        .font_family("Segoe Fluent Icons")
+        .text_color(theme.c(Role::TextSecondary))
+        .child(SharedString::new_static(glyph))
+}
+
+/// Пояснение в строке: мелко, `secondary`, в одну строку.
+fn note(theme: &Theme, text: String) -> Div {
+    div()
+        .flex_none()
+        .whitespace_nowrap()
+        .text_size(px(12.0))
+        .text_color(theme.c(Role::TextSecondary))
+        .child(SharedString::from(text))
 }
 
 /// Превью группового переименования: «было → станет», проблемные — красным,
@@ -430,5 +986,59 @@ pub(super) fn path_input(field: Option<&Field>, side: urfin_core::Side) -> Optio
     match &f.key {
         Key::Path(s) if *s == side => Some(Input::new(&f.input)),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn attr_click_cycles() {
+        // Было «разные»: да → нет → снова «разные».
+        assert_eq!(next_attr(None, None), Some(true));
+        assert_eq!(next_attr(None, Some(true)), Some(false));
+        assert_eq!(next_attr(None, Some(false)), None);
+        // Было одно значение: да ↔ нет.
+        assert_eq!(next_attr(Some(false), Some(false)), Some(true));
+        assert_eq!(next_attr(Some(false), Some(true)), Some(false));
+    }
+
+    #[test]
+    fn attrs_only_changed_flags_and_time() {
+        let o = StripOpts {
+            attrs_now: [Some(false), None, Some(true), Some(true)],
+            attrs: [Some(true), None, Some(false), Some(true)],
+            mtime_init: "2026-10-21 18:05".into(),
+            ..StripOpts::default()
+        };
+        let c = attrs_commands(&o, "2026-10-21 18:05");
+        assert_eq!(c.len(), 2, "{c:?}");
+        assert_eq!(c[0].id.as_str(), "ops.attrs");
+        assert_eq!(c[0].args.str("set"), Some("r"));
+        assert_eq!(c[0].args.str("clear"), Some("s"));
+        assert_eq!(c[1].id.as_str(), "ui.cancel");
+        let c = attrs_commands(&StripOpts::default(), " 2026-01-02 ");
+        assert_eq!(c[0].id.as_str(), "ops.touch");
+        assert_eq!(c[0].args.str("mtime"), Some("2026-01-02"));
+    }
+
+    #[test]
+    fn mkdir_many_splits_by_semicolon() {
+        let c = mkdir_commands(true, "a; b\\c ;;");
+        let names: Vec<_> = c.iter().filter_map(|c| c.args.str("name")).collect();
+        assert_eq!(names, ["a", "b\\c"]);
+        assert_eq!(
+            mkdir_commands(false, "a;b")[0].args.str("name"),
+            Some("a;b")
+        );
+    }
+
+    #[test]
+    fn rename_selects_stem() {
+        assert_eq!(stem_range("CHANGELOG.md", false), 0..9);
+        assert_eq!(stem_range(".gitignore", false), 0..10);
+        assert_eq!(stem_range("v1.2", true), 0..4);
+        assert_eq!(stem_range("noext", false), 0..5);
     }
 }

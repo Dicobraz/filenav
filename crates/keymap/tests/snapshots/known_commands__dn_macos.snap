@@ -51,6 +51,7 @@ expression: "effective(&km).join(\"\\n\")"
 [panel] Shift+F8 = ops.delete current=true (Base)
 [panel] Shift+Delete = ops.delete permanent=true (Base)
 [panel] Ctrl+A = ops.attrs (Base)
+[panel] Ctrl+I = panel.filter (Base)
 [panel] Shift+F1 = arc.add (Base)
 [panel] Shift+F2 = arc.extract (Base)
 [panel] Alt+F7 = search.files (Base)

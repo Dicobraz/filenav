@@ -22,10 +22,12 @@ fn six_builtin_themes_in_order() {
     assert!(!builtin_by_id("sepia").unwrap().dark);
 }
 
-/// Разбор всех встроенных при старте — ≤ 1 мс суммарно (лучший из пяти).
+/// Разбор всех встроенных при старте — ≤ 1 мс суммарно в release (лучший из 20;
+/// отладочная сборка без оптимизаций и под нагрузкой соседних тестов — до 5 мс).
 #[test]
 fn builtin_parse_under_1ms() {
-    let best = (0..5)
+    let budget = Duration::from_millis(if cfg!(debug_assertions) { 5 } else { 1 });
+    let best = (0..20)
         .map(|_| {
             let t0 = Instant::now();
             for (id, text) in BUILTIN {
@@ -35,7 +37,7 @@ fn builtin_parse_under_1ms() {
         })
         .min()
         .unwrap();
-    assert!(best < Duration::from_millis(1), "{best:?}");
+    assert!(best < budget, "{best:?}");
 }
 
 #[test]

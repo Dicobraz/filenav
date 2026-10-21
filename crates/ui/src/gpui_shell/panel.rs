@@ -157,11 +157,33 @@ impl Render for PanelView {
                 s.ext
                     .get::<crate::UiState>()
                     .map_or(IconMode::Mono, |u| u.icons),
+                &Highlight {
+                    prefix: s
+                        .ext
+                        .get::<urfin_keymap::KeymapView>()
+                        .and_then(|k| k.qs.as_ref())
+                        .filter(|q| q.side == side)
+                        .map(|q| q.mask.to_string()),
+                    mask: h
+                        .mask_preview
+                        .as_deref()
+                        .filter(|_| s.active == side)
+                        .and_then(|m| urfin_core::Mask::parse(m.trim()).ok()),
+                },
                 &l,
             )),
-            Piece::Foot => body.child(footer(s, t, side, s.active == side, theme)),
+            Piece::Foot => body,
         }
     }
+}
+
+/// Что подсветить в именах списка (D-04).
+#[derive(Clone, Debug, Default)]
+pub(super) struct Highlight {
+    /// Набранное в быстром поиске этой панели.
+    pub prefix: Option<String>,
+    /// Маска открытой строки отметки группы.
+    pub mask: Option<urfin_core::Mask>,
 }
 
 /// Отпечаток всего, что рисует часть панели: изменился — часть рисуется заново, иначе
@@ -187,7 +209,11 @@ pub(super) fn fingerprint(
         format!("{:?}{}", f.key, f.input.entity_id()).hash(&mut h);
     }
     match piece {
-        Piece::Head => format!("{:?}", t.loc).hash(&mut h),
+        Piece::Head => {
+            format!("{:?}", t.loc).hash(&mut h);
+            t.filter.as_ref().map(urfin_core::Mask::as_str).hash(&mut h);
+            (t.listing.order.len(), t.listing.entries.len()).hash(&mut h);
+        }
         Piece::List => {
             (
                 active,
@@ -200,6 +226,15 @@ pub(super) fn fingerprint(
             )
                 .hash(&mut h);
             (t.selection.len(), t.selection.bytes()).hash(&mut h);
+            // Подсветка префикса быстрого поиска (D-04).
+            if let Some(q) = s
+                .ext
+                .get::<urfin_keymap::KeymapView>()
+                .and_then(|k| k.qs.as_ref())
+                .filter(|q| q.side == side)
+            {
+                q.mask.hash(&mut h);
+            }
             if t.mode != urfin_core::PanelMode::Files {
                 // Дерево, «Сведения», просмотр смотрят и на другую панель.
                 s.rev.hash(&mut h);
@@ -551,16 +586,66 @@ fn path_bar(
     if !t.loc.is_local() {
         segs = segs.child(SharedString::from(t.loc.to_uri()));
     }
+    let i18n = urfin_i18n::current();
     let mut args = FluentArgs::new();
     let st = &t.listing.stats;
     args.set("count", u64::from(st.files + st.dirs));
     // У состояния папки (ошибка, пусто) счётчика нет — путь и вид состояния (D-03).
+    // С фильтром — «видно N из M» (D-04, `screen-filtered`).
     let count = if state_of(t).is_some() {
         String::new()
+    } else if t.filter.is_some() {
+        args.set("count", t.listing.order.len() as u64);
+        args.set("total", t.listing.entries.len() as u64);
+        i18n.fmt("ui-panel-count-filtered", &args)
     } else {
-        urfin_i18n::current().fmt("ui-panel-count", &args)
+        i18n.fmt("ui-panel-count", &args)
     };
+    let chip = t.filter.as_ref().map(|m| {
+        let mut a = FluentArgs::new();
+        a.set("mask", m.as_str().to_owned());
+        let run = move |cmd: urfin_core::Command| {
+            cx.listener(move |h, _: &ClickEvent, w, cx| {
+                h.run(
+                    urfin_core::Command::new("panel.focus").arg("side", name),
+                    w,
+                    cx,
+                );
+                h.run(cmd.clone(), w, cx);
+            })
+        };
+        div()
+            .id(SharedString::from(format!("filter-chip-{name}")))
+            .flex_none()
+            .ml(px(8.0))
+            .h(px(20.0))
+            .px(px(6.0))
+            .flex()
+            .items_center()
+            .gap(px(6.0))
+            .rounded(px(4.0))
+            .border_1()
+            .border_color(theme.c(Role::AccentFill))
+            .bg(theme.c(Role::FillCursor))
+            .text_size(px(11.5))
+            .text_color(theme.c(Role::TextPrimary))
+            .child(
+                div()
+                    .font_family(ICON_FONT)
+                    .child(SharedString::new_static("\u{E71C}")),
+            )
+            .child(SharedString::from(i18n.fmt("ui-filter-chip", &a)))
+            .child(
+                div()
+                    .id(SharedString::from(format!("filter-clear-{name}")))
+                    .text_color(theme.c(Role::TextSecondary))
+                    .child(SharedString::new_static("×"))
+                    .on_click(run(urfin_core::Command::new("panel.filter").arg("mask", ""))),
+            )
+            .on_click(run(urfin_core::Command::new("panel.filter")))
+    });
     bar.child(segs)
+        .children(chip)
         .child(
             div()
                 .id(SharedString::from(format!("crumb-edit-{name}")))
@@ -581,6 +666,9 @@ fn path_bar(
                 .child(SharedString::from(count)),
         )
 }
+
+/// Отступ текста в поле gpui-kit (малое): поле сдвинуто влево, имя не прыгает.
+const RENAME_INSET: f32 = 8.0;
 
 /// Текст пути и шапки колонок (D-02), px.
 const PATH_TEXT: f32 = 12.5;
@@ -667,6 +755,8 @@ struct Line {
     mtime: Option<SharedString>,
     /// Полужирное имя: каталог, `..` или отмеченный.
     strong: bool,
+    /// Байты имени на фоне `highlight` (быстрый поиск, отметка по маске).
+    hl: Option<(usize, usize)>,
     /// Курсор: `Some(true)` — активной панели (заливка `cursor`), `Some(false)` —
     /// неактивной (та же заливка блёклее, №66).
     cursor: Option<bool>,
@@ -764,6 +854,11 @@ struct Pal {
     cursor: Hsla,
     cursor_passive: Hsla,
     divider: Hsla,
+    highlight: Hsla,
+    text: Hsla,
+    /// Рамка строки переименования и черта под ней (D-04).
+    stroke: Hsla,
+    accent: Hsla,
     icons: bool,
 }
 
@@ -782,6 +877,7 @@ fn list(
     field: Option<&super::field::Field>,
     glide: Option<f32>,
     icon_mode: IconMode,
+    hl: &Highlight,
     cx: &Listen,
 ) -> Stateful<Div> {
     let total = t.rows();
@@ -849,9 +945,21 @@ fn list(
             None
         };
         // Курсор активной панели — текст `cursor_text` (№66); отмеченные — `accent`.
-        let on_cursor = cursor && active;
+        // Строка переименования — без заливки курсора: поле на фоне панели (D-04).
+        let renaming = cursor && rename.is_some();
+        let on_cursor = cursor && active && !renaming;
         let kind_color = color.map_or_else(|| theme.c(Role::TextPrimary), super::theme::hsla);
+        // Подсветка `highlight`: совпавший префикс быстрого поиска или всё имя по маске.
+        let hl_range = entry.and_then(|e| {
+            if let Some(m) = &hl.mask {
+                return (!dir && m.matches(&e.name)).then_some((0, e.name.len()));
+            }
+            let p = hl.prefix.as_deref().filter(|p| !p.is_empty())?;
+            let head = e.name.get(..p.len())?;
+            head.eq_ignore_ascii_case(p).then_some((0, p.len()))
+        });
         lines.push(Line {
+            hl: hl_range,
             target: entry.map(|_| name.clone()),
             glyph: SharedString::from(glyph.to_string()),
             size: bytes,
@@ -876,7 +984,7 @@ fn list(
                     _ => theme.c(Role::TextSecondary),
                 }
             },
-            renaming: cursor && rename.is_some(),
+            renaming,
         });
     }
     let lines = Rc::new(lines);
@@ -887,6 +995,10 @@ fn list(
         cursor: theme.c(Role::FillCursor),
         cursor_passive: theme.c(Role::FillCursorPassive),
         divider: theme.c(Role::StrokeDivider),
+        highlight: theme.c(Role::Highlight),
+        text: theme.c(Role::TextPrimary),
+        stroke: theme.c(Role::StrokeControl),
+        accent: theme.c(Role::AccentFill),
         icons: icons != IconMode::None,
     };
     let paint_lines = lines.clone();
@@ -996,7 +1108,7 @@ fn list(
                 .h(px(geo.row_h))
                 .left(gpui_kit::relative(col / n_cols))
                 .w(gpui_kit::relative(1.0 / n_cols))
-                .pl(px(geo.name_x()))
+                .pl(px(geo.name_x() - RENAME_INSET))
                 .pr(px(ROW_MX + geo.pad + geo.size_w + geo.mtime_w))
                 .flex()
                 .items_center()
@@ -1074,15 +1186,26 @@ fn paint(
                     Some(f) => b.origin.y + row_h * f,
                     None => y,
                 };
+                let row = Bounds::new(point(x0, y), size2(px(col_w), row_h));
+                if l.renaming {
+                    // Вся строка — поле: рамка `border`, снизу черта 2 `accent`.
+                    window.paint_quad(gpui_kit::outline(
+                        row,
+                        pal.stroke,
+                        gpui_kit::BorderStyle::Solid,
+                    ));
+                    window.paint_quad(gpui_kit::fill(
+                        Bounds::new(point(x0, y + row_h - px(2.0)), size2(px(col_w), px(2.0))),
+                        pal.accent,
+                    ));
+                    continue;
+                }
                 let fill = if active {
                     pal.cursor
                 } else {
                     pal.cursor_passive
                 };
-                window.paint_quad(gpui_kit::fill(
-                    Bounds::new(point(x0, y), size2(px(col_w), row_h)),
-                    fill,
-                ));
+                window.paint_quad(gpui_kit::fill(row, fill));
             }
         }
         // Колонки Brief/Medium разделены линиями `border` (D-03).
@@ -1114,9 +1237,26 @@ fn paint(
             }
             if !l.renaming {
                 let f = if l.strong { &strong } else { &font };
-                let mut line = shape(window, &l.name, f, l.color, size);
+                // Имя одним или тремя кусками: до подсветки, подсвеченное, после.
+                let runs: Vec<TextRun> = match l.hl {
+                    Some((from, to)) if to <= l.name.len() && from < to => {
+                        let mut mid = run(to - from, f, pal.text);
+                        mid.background_color = Some(pal.highlight);
+                        [
+                            (from > 0).then(|| run(from, f, l.color)),
+                            Some(mid),
+                            (to < l.name.len()).then(|| run(l.name.len() - to, f, l.color)),
+                        ]
+                        .into_iter()
+                        .flatten()
+                        .collect()
+                    }
+                    _ => vec![run(l.name.len(), f, l.color)],
+                };
+                let mut line = window
+                    .text_system()
+                    .shape_line(l.name.clone(), size, &runs, None);
                 if line.width > name_w {
-                    let runs = [run(l.name.len(), f, l.color)];
                     let (cut, runs) = cx
                         .text_system()
                         .line_wrapper(f.clone(), size)
@@ -1153,80 +1293,4 @@ fn paint(
             }
         }
     });
-}
-
-/// Подвал: итоги или выделение; при быстром поиске — маска и число совпадений,
-/// при незаконченном аккорде — его начало.
-fn footer(s: &AppState, t: &Tab, side: Side, active: bool, theme: &Theme) -> Div {
-    let i18n = urfin_i18n::current();
-    let mut args = FluentArgs::new();
-    let keys = s.ext.get::<urfin_keymap::KeymapView>();
-    if let Some(q) = keys.and_then(|k| k.qs.as_ref()).filter(|q| q.side == side) {
-        args.set("count", u64::from(q.matches));
-        let miss = q.miss_at.is_some();
-        return div()
-            .h(px(theme.m(Metric::HPanelFooter)))
-            .flex_none()
-            .flex()
-            .items_center()
-            .gap_2()
-            .px(px(theme.m(Metric::PadRowX)))
-            .bg(theme.c(Role::FillControlInput))
-            .border_b_2()
-            .border_color(theme.c(if miss {
-                Role::CriticalFg
-            } else {
-                Role::AccentFill
-            }))
-            .child(
-                div()
-                    .font_family("Segoe Fluent Icons")
-                    .text_color(theme.c(Role::TextSecondary))
-                    .child(SharedString::from("\u{E721}")),
-            )
-            .child(div().flex_1().child(SharedString::from(q.mask.to_string())))
-            .child(
-                div()
-                    .text_size(px(theme.m(Metric::TypeCaption)))
-                    .text_color(theme.c(Role::TextSecondary))
-                    .child(SharedString::from(i18n.fmt("ui-qs-matches", &args))),
-            );
-    }
-    if active && let Some(chord) = keys.and_then(|k| k.pending.as_deref()) {
-        args.set("chord", chord.to_owned());
-        return div()
-            .h(px(theme.m(Metric::HPanelFooter)))
-            .flex_none()
-            .flex()
-            .items_center()
-            .px(px(theme.m(Metric::PadRowX)))
-            .border_t_1()
-            .border_color(theme.c(Role::StrokeDivider))
-            .text_size(px(theme.m(Metric::TypeCaption)))
-            .child(SharedString::from(i18n.fmt("ui-chord-pending", &args)));
-    }
-    let text = if t.selection.is_empty() {
-        let st = &t.listing.stats;
-        args.set("count", u64::from(st.files + st.dirs));
-        args.set("bytes", urfin_i18n::fmt::bytes_with(&i18n, st.bytes));
-        i18n.fmt("ui-footer-items", &args)
-    } else {
-        args.set("count", u64::from(t.selection.len()));
-        args.set(
-            "bytes",
-            urfin_i18n::fmt::bytes_with(&i18n, t.selection.bytes()),
-        );
-        i18n.fmt("ui-footer-selected", &args)
-    };
-    div()
-        .h(px(theme.m(Metric::HPanelFooter)))
-        .flex_none()
-        .flex()
-        .items_center()
-        .px(px(theme.m(Metric::PadRowX)))
-        .border_t_1()
-        .border_color(theme.c(Role::StrokeDivider))
-        .text_size(px(theme.m(Metric::TypeCaption)))
-        .text_color(theme.c(Role::TextSecondary))
-        .child(SharedString::from(text))
 }

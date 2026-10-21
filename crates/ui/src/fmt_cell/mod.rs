@@ -196,6 +196,16 @@ impl FmtCfg {
     }
 
     /// Дата по шаблону в поясе ОС; `i64::MIN` и вне диапазона — ничего.
+    /// Время в ISO (`2026-10-21 18:05`) — в поле, которое разбирает `ops.touch`.
+    pub fn write_iso(&self, out: &mut Cell, mtime: i64) {
+        if mtime == i64::MIN {
+            return;
+        }
+        if let Some(t) = self.zone.local(mtime) {
+            let _ = write_pattern(out, ISO, &t);
+        }
+    }
+
     pub fn write_datetime(&self, out: &mut Cell, mtime: i64) {
         if mtime == i64::MIN {
             return;

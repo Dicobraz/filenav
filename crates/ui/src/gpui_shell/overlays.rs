@@ -51,7 +51,7 @@ impl Toast {
 }
 
 /// Тосты справа сверху: не забирают фокус и ввод.
-pub(super) fn toasts(list: &[Toast], theme: &Theme) -> Option<Div> {
+pub(super) fn toasts(list: &[Toast], theme: &Theme, raise: f32) -> Option<Div> {
     if list.is_empty() {
         return None;
     }
@@ -59,7 +59,7 @@ pub(super) fn toasts(list: &[Toast], theme: &Theme) -> Option<Div> {
     // стопка вверх (№63). Только сообщение, без кнопок.
     let mut col = div()
         .absolute()
-        .bottom(px(TOAST_GAP))
+        .bottom(px(TOAST_GAP + raise))
         .right(px(TOAST_RIGHT))
         .w(px(W_TOAST))
         .flex()
@@ -320,9 +320,10 @@ pub(super) fn cancel(p: &Prompt) -> Command {
     Command::new("prompt.cancel").arg("id", prompt_id(p))
 }
 
-/// Inline-вопрос над cmdline: заголовок, текст, для конфликта — новый и
-/// существующий файл (размер, дата), варианты с клавишей (выбранный — акцентом)
-/// и флажок «для всех» (Пробел; Shift+клавиша — ответ для всех).
+/// Вопрос (D-04): встроенная строка внизу. Конфликт — фон ожидания и черта
+/// `context_remote`, сравнение «Копируемый / Существующий» с меткой «новее»; кнопки с
+/// клавишами (первая — основная), справа «Так же для остальных», в конце «Отмена».
+#[allow(clippy::too_many_lines, reason = "строка вопроса сверху вниз")]
 pub(super) fn prompt_bar(
     p: &Prompt,
     s: PromptSel,
@@ -330,159 +331,179 @@ pub(super) fn prompt_bar(
     click: Click<'_>,
     toggle_all: Handler,
 ) -> Div {
+    use super::strip::{Btn, Tone, button, check, container};
     let i18n = urfin_i18n::current();
-    let mut choices = div().flex().flex_row().flex_wrap().gap_2();
-    for (i, ch) in p.spec.choices.iter().enumerate() {
-        let on = i == s.sel;
-        let key = ch.key.to_uppercase().to_string();
-        choices = choices.child(
+    let detail = match &p.spec.detail {
+        Some(PromptDetail::Conflict {
+            src,
+            dst,
+            index,
+            total,
+        }) => Some((src, dst, *index, *total)),
+        _ => None,
+    };
+    let tone = if detail.is_some() {
+        Tone::Waiting
+    } else {
+        Tone::Plain
+    };
+    let mut head = div().flex().items_center().gap(px(10.0));
+    if detail.is_some() {
+        head = head.child(
             div()
-                .id(SharedString::from(format!("choice-{i}")))
-                .h(px(theme.m(Metric::HControl) + 8.0))
-                .px_3()
-                .flex()
-                .items_center()
-                .gap_2()
-                .rounded(px(theme.m(Metric::RadiusControl)))
-                .border_1()
-                .border_color(theme.c(Role::StrokeControl))
-                .bg(theme.c(if on {
-                    Role::AccentFill
-                } else {
-                    Role::FillControl
-                }))
-                .text_color(theme.c(if on {
-                    Role::AccentOn
-                } else {
-                    Role::TextPrimary
-                }))
-                .child(SharedString::from(ch.label.to_string()))
-                .when(ch.key.is_alphanumeric(), |d| {
-                    d.child(
-                        div()
-                            .text_size(px(theme.m(Metric::TypeCaption)))
-                            .text_color(theme.c(if on {
-                                Role::AccentOn
-                            } else {
-                                Role::TextTertiary
-                            }))
-                            .child(SharedString::from(key)),
-                    )
-                })
-                .when_some(reply(p, i, s.all), |d, c| d.on_click(click(c))),
+                .font_family("Segoe Fluent Icons")
+                .text_color(theme.c(Role::ContextRemote))
+                .child(SharedString::new_static("\u{E7BA}")),
         );
     }
-    let mut bar = div()
-        .flex_none()
-        .flex()
-        .flex_col()
-        .gap_2()
-        .mx(px(theme.m(Metric::GapPanels)))
-        .mt(px(theme.m(Metric::GapPanels)))
-        .p_3()
-        .rounded(px(theme.m(Metric::RadiusOverlay)))
-        .border_1()
-        .border_color(theme.c(Role::AccentFill))
-        .bg(theme.c(Role::LayerPanel))
-        .child(
+    head = head.child(
+        div()
+            .font_weight(gpui_kit::FontWeight::MEDIUM)
+            .child(SharedString::from(p.spec.title.clone())),
+    );
+    if let Some((src, _, index, total)) = detail {
+        let mut a = urfin_i18n::FluentArgs::new();
+        a.set("index", index);
+        a.set("total", total);
+        a.set("name", src.name.to_string());
+        head = head.child(
             div()
-                .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                .child(SharedString::from(p.spec.title.clone())),
-        )
-        .when(!p.spec.body.is_empty(), |d| {
-            d.child(
-                div()
-                    .text_color(theme.c(Role::TextSecondary))
-                    .child(SharedString::from(p.spec.body.clone())),
-            )
-        });
-    if let Some(PromptDetail::Conflict { src, dst, .. }) = &p.spec.detail {
-        bar = bar.child(conflict(src, dst, theme));
+                .text_color(theme.c(Role::TextSecondary))
+                .child(SharedString::from(i18n.fmt("ui-strip-conflict-of", &a))),
+        );
     }
-    bar = bar.child(choices);
-    if p.spec.allow_all {
-        let glyph = if s.all { "\u{E73A}" } else { "\u{E739}" };
+    let mut bar = container(theme, tone, 16.0, 12.0).child(head);
+    // У конфликта пояснение повторяет заголовок и сравнение — не показываем.
+    if !p.spec.body.is_empty() && detail.is_none() {
         bar = bar.child(
             div()
-                .id("prompt-all")
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap_2()
-                .child(
-                    div()
-                        .font_family("Segoe Fluent Icons")
-                        .text_color(theme.c(if s.all {
-                            Role::AccentText
-                        } else {
-                            Role::TextSecondary
-                        }))
-                        .child(SharedString::from(glyph)),
-                )
-                .child(SharedString::from(i18n.get("ui-prompt-all")))
-                .child(
-                    div()
-                        .text_size(px(theme.m(Metric::TypeCaption)))
-                        .text_color(theme.c(Role::TextTertiary))
-                        .child(SharedString::from(i18n.get("ui-prompt-all-hint"))),
-                )
-                .on_click(toggle_all),
+                .text_color(theme.c(Role::TextSecondary))
+                .child(SharedString::from(p.spec.body.clone())),
         );
     }
-    bar
+    if let Some((src, dst, _, _)) = detail {
+        bar = bar.child(conflict(src, dst, theme));
+    }
+    let mut row = div().flex().flex_wrap().items_center().gap(px(8.0));
+    let cancel_at = p.spec.choices.iter().position(|c| c.id == "cancel");
+    for (i, ch) in p.spec.choices.iter().enumerate() {
+        if Some(i) == cancel_at {
+            continue;
+        }
+        let key = if i == s.sel {
+            "Enter".to_owned()
+        } else if ch.key.is_alphanumeric() {
+            ch.key.to_uppercase().to_string()
+        } else {
+            String::new()
+        };
+        let kind = if i == s.sel {
+            Btn::Primary
+        } else {
+            Btn::Normal
+        };
+        row = row.child(
+            button(
+                theme,
+                format!("choice-{i}"),
+                ch.label.to_string(),
+                &key,
+                kind,
+            )
+            .when_some(reply(p, i, s.all), |d, c| d.on_click(click(c))),
+        );
+    }
+    row = row.child(div().flex_1());
+    if p.spec.allow_all {
+        row = row.child(
+            check(
+                theme,
+                "prompt-all".into(),
+                s.all,
+                i18n.get("ui-prompt-all"),
+                true,
+            )
+            .on_click(toggle_all),
+        );
+    }
+    if let Some(i) = cancel_at {
+        let ch = &p.spec.choices[i];
+        row = row.child(
+            button(
+                theme,
+                format!("choice-{i}"),
+                ch.label.to_string(),
+                "Esc",
+                Btn::Normal,
+            )
+            .when_some(reply(p, i, s.all), |d, c| d.on_click(click(c))),
+        );
+    }
+    bar.child(row)
 }
 
-/// Новый и существующий файл: размер и дата; что новее и больше — акцентом.
+/// Сравнение (D-04): колонки 90 / копируемый / существующий; размер и дата; у более
+/// нового — метка «новее» акцентом.
 fn conflict(src: &Entry, dst: &Entry, theme: &Theme) -> Div {
     let i18n = urfin_i18n::current();
-    let row = |label: String, e: &Entry, newer: bool, larger: bool| {
-        let mut size = String::new();
-        theme.fmt.write_size(&mut size, e.size);
-        let mut date = crate::fmt_cell::Cell::default();
-        theme.fmt.write_datetime(&mut date, e.mtime);
-        let hi = |on: bool| {
-            theme.c(if on {
-                Role::AccentText
-            } else {
-                Role::TextPrimary
-            })
-        };
-        div()
-            .flex()
-            .flex_row()
-            .gap_3()
-            .child(
-                div()
-                    .w(px(120.0))
-                    .text_color(theme.c(Role::TextSecondary))
-                    .child(SharedString::from(label)),
-            )
-            .child(
-                div()
-                    .w(px(100.0))
-                    .text_color(hi(larger))
-                    .child(SharedString::from(size)),
-            )
-            .child(
-                div()
-                    .text_color(hi(newer))
-                    .child(SharedString::from(date.as_str().to_owned())),
-            )
+    let size = |e: &Entry| {
+        let mut out = String::new();
+        theme.fmt.write_size(&mut out, e.size);
+        out
     };
+    let date = |e: &Entry| {
+        let mut c = crate::fmt_cell::Cell::default();
+        theme.fmt.write_datetime(&mut c, e.mtime);
+        c.as_str().trim().to_owned()
+    };
+    let secondary = theme.c(Role::TextSecondary);
+    let cell = |t: String| div().flex_1().min_w_0().child(SharedString::from(t));
+    let label = |key: &str| {
+        div()
+            .w(px(90.0))
+            .flex_none()
+            .text_color(secondary)
+            .child(SharedString::from(i18n.get(key)))
+    };
+    let newer = |e: &Entry, other: &Entry| {
+        let d = cell(date(e)).flex().items_center().gap(px(6.0));
+        if e.mtime > other.mtime {
+            d.child(
+                div()
+                    .px(px(6.0))
+                    .rounded(px(4.0))
+                    .border_1()
+                    .border_color(theme.c(Role::AccentFill))
+                    .text_color(theme.c(Role::AccentText))
+                    .text_size(px(11.0))
+                    .child(SharedString::from(i18n.get("ui-strip-newer"))),
+            )
+        } else {
+            d
+        }
+    };
+    let line = || div().flex().gap(px(16.0));
     div()
         .flex()
         .flex_col()
-        .gap_1()
-        .child(row(
-            i18n.get("ui-conflict-new"),
-            src,
-            src.mtime > dst.mtime,
-            src.size > dst.size,
-        ))
-        .child(row(
-            i18n.get("ui-conflict-old"),
-            dst,
-            dst.mtime > src.mtime,
-            dst.size > src.size,
-        ))
+        .gap(px(4.0))
+        .text_size(px(12.5))
+        .child(
+            line()
+                .child(div().w(px(90.0)).flex_none())
+                .child(cell(i18n.get("ui-conflict-new")).text_color(secondary))
+                .child(cell(i18n.get("ui-conflict-old")).text_color(secondary)),
+        )
+        .child(
+            line()
+                .child(label("ui-conflict-size"))
+                .child(cell(size(src)))
+                .child(cell(size(dst))),
+        )
+        .child(
+            line()
+                .child(label("ui-conflict-mtime"))
+                .child(newer(src, dst))
+                .child(newer(dst, src)),
+        )
 }

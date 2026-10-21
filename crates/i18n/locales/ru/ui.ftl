@@ -144,13 +144,12 @@ ui-draft-copy = Копировать { $count } { $count ->
     [few] объекта
    *[many] объектов
 } ({ $size }) в
-ui-draft-move = Переместить { $count } { $count ->
+ui-draft-move = Перенести { $count } { $count ->
     [one] объект
     [few] объекта
    *[many] объектов
 } ({ $size }) в
 ui-draft-ops-mkdir = Новая папка
-ui-draft-mkdir-hint = можно a\b\c
 ui-draft-sel-add = Пометить по маске
 ui-draft-sel-remove = Снять пометку по маске
 ui-draft-panel-filter = Фильтр
@@ -264,3 +263,50 @@ ui-tree-label = дерево
 ui-qv-title = Быстрый просмотр
 ui-info-summary = Папка { $path }: файлов { $files }, папок { $dirs } · { $bytes }
 ui-info-free-of = { $free } свободно из { $total }
+
+## Встроенные строки (D-04)
+ui-strip-ifexists = Если файл есть
+ui-strip-ifexists-ask = Спросить
+ui-strip-ifexists-overwrite = Заменить
+ui-strip-ifexists-skip = Пропустить
+ui-strip-ifexists-newer = Заменить, если новее
+ui-strip-keep-dates = Сохранять даты
+ui-strip-verify = Проверить хэш после копирования
+ui-strip-verify-move = Проверить хэш перед удалением исходных
+ui-strip-background = В фоне
+ui-strip-matches = совпадает { $count }
+ui-strip-mr-summary = изменится { $changed } · проблем { $problems }
+ui-strip-conflict-of = { $name } · конфликт { $index } из { $total }
+ui-strip-newer = новее
+ui-strip-mkdir = Новая папка
+ui-strip-mkdir-many = Несколько через ;
+ui-strip-mkdir-nested = вложенные — через \
+ui-strip-filter = Показывать
+ui-strip-filter-matches = совпадает { $count } из { $total }
+ui-strip-attrs = { $count ->
+    [one] Атрибуты { $count } объекта
+   *[other] Атрибуты { $count } объектов
+}
+ui-strip-attrs-mtime = Изменён
+ui-strip-attrs-now = сейчас
+ui-strip-attrs-varies = разные
+ui-attr-readonly = Только чтение
+ui-attr-hidden = Скрытый
+ui-attr-system = Системный
+ui-attr-archive = Архивный
+ui-filter-chip = фильтр { $mask }
+ui-panel-count-filtered = { $count } из { $total }
+ui-button-create = Создать
+ui-button-reset = Сбросить
+ui-keys-apply = Применить
+ui-keys-cancel = Отмена
+ui-keys-name-ext = Имя ↔ расширение
+ui-button-copy = Копировать
+ui-button-move = Перенести
+ui-button-mark = Отметить
+ui-button-unmark = Снять отметку
+ui-button-rename = Переименовать
+ui-button-ok = ОК
+ui-keys-qs-next = Следующее
+ui-keys-qs-prev = Предыдущее
+ui-keys-close = Закрыть

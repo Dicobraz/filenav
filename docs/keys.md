@@ -62,6 +62,7 @@ URFIN_UPDATE_DOCS=1 cargo nextest run -p urfin-keymap keys_doc -->
 | `Shift+F8` | `ops.delete current=true` | W M L |
 | `Shift+Delete` | `ops.delete permanent=true` | W M L |
 | `Ctrl+A` | `ops.attrs` | W M L |
+| `Ctrl+I` | `panel.filter` | W M L |
 | `Shift+F1` | `arc.add` | W M L |
 | `Shift+F2` | `arc.extract` | W M L |
 | `Alt+F7` | `search.files` | W M |
@@ -81,7 +82,6 @@ URFIN_UPDATE_DOCS=1 cargo nextest run -p urfin-keymap keys_doc -->
 | `Ctrl+F6` | `panel.sort key=size` | W L |
 | `Ctrl+F7` | `panel.sort key=unsorted` | W L |
 | `Ctrl+F12` | `ui.menu.sort` | W M L |
-| `Ctrl+I` | `ui.draft command=panel.filter arg=mask` | W M L |
 | `Ctrl+Shift+0` | `panel.bookmark.set n=0` | W M L |
 | `Ctrl+Shift+1` | `panel.bookmark.set n=1` | W M L |
 | `Ctrl+Shift+2` | `panel.bookmark.set n=2` | W M L |
@@ -467,6 +467,7 @@ URFIN_UPDATE_DOCS=1 cargo nextest run -p urfin-keymap keys_doc -->
 | `Shift+F8` | `ops.delete current=true` | W M L |
 | `Shift+Delete` | `ops.delete permanent=true` | W M L |
 | `Ctrl+A` | `ops.attrs` | W M L |
+| `Ctrl+I` | `panel.filter` | W M L |
 | `Shift+F1` | `arc.add` | W M L |
 | `Shift+F2` | `arc.extract` | W M L |
 | `Alt+F7` | `search.files` | W M |

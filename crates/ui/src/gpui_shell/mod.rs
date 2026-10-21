@@ -10,6 +10,7 @@ mod menu;
 mod overlays;
 mod panel;
 mod screens;
+mod strip;
 mod theme;
 mod views;
 
@@ -167,6 +168,10 @@ pub struct CoreHost {
     context: Option<crate::sys::Context>,
     /// Выбор в списке дисков (стрелки); `None` — предложенный при открытии.
     drive_sel: Option<usize>,
+    /// Опции строки копирования (F5/F6, D-04).
+    strip_opts: field::StripOpts,
+    /// Маска отметки группы, пока строка открыта: совпавшие имена подсвечены (D-04).
+    mask_preview: Option<String>,
 }
 
 impl std::fmt::Debug for CoreHost {
@@ -243,6 +248,8 @@ impl CoreHost {
             looks,
             context,
             drive_sel: None,
+            strip_opts: field::StripOpts::default(),
+            mask_preview: None,
         }
     }
 
@@ -290,13 +297,19 @@ impl CoreHost {
             - self.theme.m(Metric::HCmdline)
             - self.theme.m(Metric::HStatus)
             - self.theme.m(Metric::HKeybar);
+        let mr_rows = self.mr_preview.as_ref().map_or(0, |p| p.rows.len());
+        let cover = strip::cover(core.state(), mr_rows);
         for (i, side) in [Side::Left, Side::Right].into_iter().enumerate() {
             let mode = core.state().panel(side).tab().view_mode;
             let Some(w) = widths[i] else {
                 continue;
             };
             self.panel_w[i] = w;
-            let g = panel::grid(&self.theme, mode, w, h);
+            // Встроенная строка накрывает низ панели: курсор держится над ней (D-04).
+            let under = cover
+                .filter(|(scope, _)| scope.covers(side))
+                .map_or(0.0, |(_, h)| h);
+            let g = panel::grid(&self.theme, mode, w, h - under);
             if g == self.grid[i] {
                 continue;
             }
@@ -354,6 +367,12 @@ impl CoreHost {
         };
         let now = std::time::Instant::now();
         let mut drafts = Vec::new();
+        let filter_now = core
+            .state()
+            .active_tab()
+            .filter
+            .as_ref()
+            .map(|m| m.as_str().to_owned());
         for ev in core.take_ui_events() {
             match ev {
                 urfin_core::UiEvent::Toast { level, text } => {
@@ -366,6 +385,16 @@ impl CoreHost {
                 {
                     self.mr_preview = Some(field::MrPreview::from_args(&args));
                     cx.notify();
+                }
+                // Ctrl+I: строка фильтра с текущей маской таба.
+                urfin_core::UiEvent::Ext { id, .. } if id.as_str() == "panel.ask_filter" => {
+                    let mut c = Command::new("ui.draft")
+                        .arg("command", "panel.filter")
+                        .arg("arg", "mask");
+                    if let Some(m) = &filter_now {
+                        c = c.arg("init", m.as_str());
+                    }
+                    drafts.push(c);
                 }
                 urfin_core::UiEvent::Ext { id, args } if id.as_str() == "ops.draft" => {
                     let command = args.str("command").unwrap_or_default().to_owned();
@@ -658,6 +687,8 @@ impl CoreHost {
                 if let Some(screens::SetContext(c)) = context {
                     self.context = c;
                 }
+                // Тосты прошлой сцены ещё живы (сцены идут быстрее их срока) — снимок без них.
+                self.toasts.clear();
                 // Через `run_all`, как клик: `pump` окна — сетка панелей, черновики, тосты.
                 self.run_all(cmds, window, cx);
                 window.request_animation_frame();
@@ -768,6 +799,7 @@ impl CoreHost {
             let cmds = match ks.key.as_str() {
                 "escape" => vec![Command::new("ui.cancel")],
                 "enter" => self.field_commit(ks.modifiers.shift, cx),
+                "tab" if self.field_tab(cx) => return true,
                 _ => return false,
             };
             self.out
@@ -1082,6 +1114,14 @@ impl Render for CoreHost {
                 h.run_all(cmds.clone(), w, cx);
             }))
         };
+        // Маска открытой строки отметки группы: совпавшие имена подсвечены в списке (D-04).
+        self.mask_preview = s
+            .ext
+            .get::<crate::UiState>()
+            .and_then(|u| u.draft.as_ref())
+            .filter(|d| matches!(d.cmd.as_str(), "sel.add" | "sel.remove"))
+            .and(self.field.as_ref())
+            .map(|f| f.input.read(cx).value().to_string());
         let drives_open = s
             .ext
             .get::<crate::UiState>()
@@ -1136,7 +1176,6 @@ impl Render for CoreHost {
             .flex()
             .flex_row()
             .bg(self.theme.c(Role::StrokeDivider));
-        let keys = s.ext.get::<urfin_keymap::KeymapView>();
         for (i, side) in [Side::Left, Side::Right].into_iter().enumerate() {
             let Some(w) = widths[i] else {
                 continue;
@@ -1170,14 +1209,8 @@ impl Render for CoreHost {
             // Изменилась — рисуется заново (без кэша в этом кадре), иначе кадр из кэша.
             let t = s.panel(side).tab();
             let files = t.mode == urfin_core::PanelMode::Files;
-            // Подвал — только быстрый поиск и набранный аккорд (до D-04, где они станут
-            // строкой внизу); сводка панели — в статус-строке (№61).
-            let foot = keys.is_some_and(|k| {
-                k.qs.as_ref().is_some_and(|q| q.side == side)
-                    || (s.active == side && k.pending.is_some())
-            });
             let mut card = panel::card(&self.theme);
-            for (k, piece) in [panel::Piece::Head, panel::Piece::List, panel::Piece::Foot]
+            for (k, piece) in [panel::Piece::Head, panel::Piece::List]
                 .into_iter()
                 .enumerate()
             {
@@ -1187,9 +1220,6 @@ impl Render for CoreHost {
                         t.view_mode,
                         panel::state_of(t).is_some(),
                     ))),
-                    panel::Piece::Foot if files && foot => {
-                        div().flex_none().h(px(self.theme.m(Metric::HPanelFooter)))
-                    }
                     panel::Piece::List => div().flex_1().min_h_0(),
                     _ => continue,
                 };
@@ -1201,7 +1231,7 @@ impl Render for CoreHost {
                     self.grid[i],
                     dark,
                     self.field.as_ref(),
-                    anim,
+                    anim ^ self.mask_preview.as_ref().map_or(0, |m| fxhash(m)),
                 );
                 card = card.child(slot.flex().child(cached(
                     &self.panels[i][k],
@@ -1211,31 +1241,86 @@ impl Render for CoreHost {
             }
             panels = panels.child(div().w(px(w)).flex_none().h_full().flex().child(card));
         }
-        let prompt = s.prompts.active().map(|p| {
+        // Встроенная строка (D-04): вопрос, черновик или быстрый поиск — поверх низа
+        // панелей, на ширину активной панели или на всю ширину.
+        let field_text = self
+            .field
+            .as_ref()
+            .filter(|f| matches!(f.key, field::Key::Draft(_)))
+            .map(|f| f.input.read(cx).value().to_string())
+            .unwrap_or_default();
+        // Опции строк: 0 — «Если файл есть», 1 — хэш, 2 — несколько папок, 10…13 —
+        // атрибуты, 20 — «сейчас» в поле времени.
+        let toggle = |what: u8| -> overlays::Handler {
+            Box::new(
+                cx.listener(move |h: &mut CoreHost, _: &ClickEvent, window, cx| {
+                    let o = &mut h.strip_opts;
+                    match what {
+                        0 => o.conflict = (o.conflict + 1) % field::CONFLICT.len(),
+                        1 => o.verify = !o.verify,
+                        2 => o.many = !o.many,
+                        10..=13 => {
+                            let k = usize::from(what - 10);
+                            o.attrs[k] = field::next_attr(o.attrs_now[k], o.attrs[k]);
+                        }
+                        _ => {
+                            let now = h.now_iso();
+                            if let Some(f) = h.field.as_ref() {
+                                f.input.update(cx, |s, cx| s.set_value(now, window, cx));
+                            }
+                        }
+                    }
+                    cx.notify();
+                }),
+            )
+        };
+        let strip_el = if let Some(p) = s.prompts.active() {
             let sel = self.choice.of(p);
-            let toggle: overlays::Handler =
+            let toggle_all: overlays::Handler =
                 Box::new(cx.listener(move |h: &mut CoreHost, _: &ClickEvent, _, cx| {
                     h.choice = sel;
                     h.choice.all = !sel.all;
                     cx.notify();
                 }));
-            overlays::prompt_bar(p, sel, &self.theme, &click, toggle)
-        });
+            Some(overlays::prompt_bar(
+                p,
+                sel,
+                &self.theme,
+                &click,
+                toggle_all,
+            ))
+        } else {
+            field::draft_bar(
+                s,
+                self.field.as_ref(),
+                &field_text,
+                self.ops_permanent,
+                &self.strip_opts,
+                self.mr_preview.as_ref(),
+                &self.theme,
+                &click_all,
+                &toggle,
+            )
+            .or_else(|| strip::quick(s, &self.theme))
+        };
+        let mr_rows = self.mr_preview.as_ref().map_or(0, |p| p.rows.len());
+        let cover = strip::cover(s, mr_rows);
+        // Тосты справа — над встроенной строкой, если она накрывает правую сторону.
+        let toast_lift = cover
+            .filter(|(scope, _)| scope.covers(Side::Right))
+            .map_or(0.0, |(_, h)| h);
+        if let (Some(el), Some((scope, _))) = (strip_el, cover) {
+            let (x, w) = scope.bounds(widths, self.theme.m(Metric::WDivider));
+            panels = panels
+                .relative()
+                .child(div().absolute().bottom_0().left(px(x)).w(px(w)).child(el));
+        }
         // Зона событий внизу (№63), снизу вверх: keybar, статус, командная строка, job-бар,
         // строка-вопрос или баннер; тосты — справа над ней.
         let root = root
             .child(panels)
-            .children(overlays::toasts(&self.toasts, &self.theme))
+            .children(overlays::toasts(&self.toasts, &self.theme, toast_lift))
             .children(overlays::banner(s, &self.theme, &click))
-            .children(field::draft_bar(
-                s,
-                self.field.as_ref(),
-                self.ops_permanent,
-                self.mr_preview.as_ref(),
-                &self.theme,
-                &click_all,
-            ))
-            .children(prompt)
             .children(overlays::job_bar(s, &self.theme, &click))
             .child(
                 div()
@@ -1300,6 +1385,14 @@ impl Render for CoreHost {
         }
         root
     }
+}
+
+/// Хэш строки для отпечатка видов (маска отметки группы).
+fn fxhash(s: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::hash::DefaultHasher::new();
+    s.hash(&mut h);
+    h.finish()
 }
 
 /// Полоса контекста сверху окна (T-01-5), px.

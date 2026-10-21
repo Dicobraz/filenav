@@ -94,23 +94,68 @@ const SCENES: &[Scene] = &[
         steps: &["panel.view_mode mode=full", "ui.menu"],
     },
     Scene {
-        name: "draft-copy",
+        name: "screen-copy",
         steps: &["ui.cancel", "ops.copy"],
     },
     Scene {
-        name: "draft-delete",
+        name: "screen-move",
+        steps: &["ui.cancel", "ops.move"],
+    },
+    Scene {
+        name: "screen-delete",
         steps: &["ui.cancel", "ops.delete"],
     },
     Scene {
-        name: "draft-mkdir",
-        steps: &["ui.cancel", "ops.mkdir"],
+        name: "screen-mkdir",
+        steps: &[
+            "ui.cancel",
+            "ui.draft command=ops.mkdir arg=name init=release-notes",
+        ],
+    },
+    // Отметка группы по маске (D-04): совпавшие имена подсвечены.
+    Scene {
+        name: "screen-select",
+        steps: &[
+            "ui.cancel",
+            "ui.draft command=sel.add arg=mask init=\"*.toml;*.json\"",
+        ],
+    },
+    // Атрибуты (Ctrl+A) двух файлов.
+    Scene {
+        name: "screen-attrs",
+        steps: &[
+            "ui.cancel",
+            "sel.none",
+            "sel.add mask=\"Cargo.toml;data.json\"",
+            "ops.attrs",
+        ],
+    },
+    // Фильтр (Ctrl+I): строка, затем панель с фильтром и чипом у пути.
+    Scene {
+        name: "screen-filter",
+        steps: &[
+            "ui.cancel",
+            "sel.none",
+            "ui.draft command=panel.filter arg=mask init=\"*.rs;*.toml\"",
+        ],
     },
     Scene {
-        name: "rename",
-        steps: &["ui.cancel", "sel.none", "ui.rename"],
+        name: "screen-filtered",
+        steps: &["ui.cancel", "panel.filter mask=\"*.rs;*.toml\""],
     },
     Scene {
-        name: "quick-search",
+        name: "screen-rename",
+        steps: &[
+            "ui.cancel",
+            // Снять фильтр прошлой сцены (Cargo.toml виден и с ним, и без).
+            "panel.filter mask=\"\"",
+            "sel.none",
+            "panel.cursor.to name=Cargo.toml",
+            "ui.rename",
+        ],
+    },
+    Scene {
+        name: "screen-quick",
         steps: &["ui.cancel", "keymap.qs.start text=re"],
     },
     Scene {
@@ -166,12 +211,14 @@ const SCENES: &[Scene] = &[
     },
     // Последней: вопрос о конфликте остаётся открытым (S5-07).
     Scene {
-        name: "conflict",
+        name: "screen-conflict",
         steps: &[
             "ui.cancel",
             "sel.none",
             "panel.focus side=left",
             "panel.cursor.to name=Cargo.toml",
+            // Размер как у прочих сцен (до `narrow`), чтобы сверять с макетом.
+            "resize 1200x760",
             // Назначение относительно левой панели (корень демо-дерева).
             "ops.copy current=true dest=Projects",
             WAIT_PROMPT,
