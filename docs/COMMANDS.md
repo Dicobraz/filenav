@@ -107,7 +107,7 @@
 | `prompt.reply` | `id:int`, `choice:str`, `input?:str`, `all?:bool` | Answer | Ответить | — | — |
 | `prompt.cancel` | `id:int` | Dismiss | Закрыть | — | — |
 
-## `ui` (31)
+## `ui` (32)
 
 | Команда | Аргументы | EN | RU | Клавиши (Far) | Меню F9 |
 |---|---|---|---|---|---|
@@ -120,6 +120,7 @@
 | `ui.prompt.hide` | `id?:int` | Hide question | Свернуть вопрос | — | — |
 | `ui.prompt.show` | `id?:int` | Show question | Развернуть вопрос | — | — |
 | `ui.jobs.toggle` | — | Expand tasks | Развернуть задачи | — | — |
+| `ui.drives` | `side?:str` | Drives | Диски | Alt+F1 (side=left), Alt+F2 (side=right) | — |
 | `ui.theme.set` | `id:str` | Theme | Тема | — | options |
 | `ui.theme.next` | — | Next theme | Следующая тема | — | options |
 | `ui.theme.follow_os` | — | Theme as in Windows | Тема как в Windows | — | options |

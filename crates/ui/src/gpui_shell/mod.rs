@@ -3,6 +3,7 @@
 //! опроса; в простое кадров нет. Клавиатура — конвейер keymap S3 ([`input`]).
 
 mod chrome;
+mod drives;
 mod field;
 pub(crate) mod input;
 mod menu;
@@ -164,6 +165,8 @@ pub struct CoreHost {
     /// Акцент и контрастность ОС на лету (`sys::watch`, T-01-2).
     looks: std::sync::mpsc::Receiver<crate::sys::Look>,
     context: Option<crate::sys::Context>,
+    /// Выбор в списке дисков (стрелки); `None` — предложенный при открытии.
+    drive_sel: Option<usize>,
 }
 
 impl std::fmt::Debug for CoreHost {
@@ -239,6 +242,7 @@ impl CoreHost {
             bottom_print: 0,
             looks,
             context,
+            drive_sel: None,
         }
     }
 
@@ -771,6 +775,23 @@ impl CoreHost {
             self.after_input(None, window, cx);
             return true;
         }
+        // Список дисков (Alt+F1/F2, D-03) разбирает клавиши сам.
+        if let Some(d) = core
+            .state()
+            .ext
+            .get::<crate::UiState>()
+            .and_then(|u| u.drives.as_ref())
+        {
+            self.input.skip();
+            let sel = drives::selected(self.drive_sel, d);
+            let (cmds, next) = drives::key(d, sel, ks);
+            self.drive_sel = Some(next);
+            self.out
+                .extend(cmds.into_iter().map(|c| c.from(urfin_core::Origin::Key)));
+            self.after_input(None, window, cx);
+            cx.notify();
+            return true;
+        }
         // Открытое меню F9 разбирает клавиши само (S2 §2.6).
         if let Some(open) = core
             .state()
@@ -1061,10 +1082,19 @@ impl Render for CoreHost {
                 h.run_all(cmds.clone(), w, cx);
             }))
         };
+        let drives_open = s
+            .ext
+            .get::<crate::UiState>()
+            .and_then(|u| u.drives.as_ref());
+        if drives_open.is_none() {
+            self.drive_sel = None;
+        }
+        // Меню F9; список дисков — свой (не строка меню в заголовке).
         let open = s
             .ext
             .get::<crate::UiState>()
             .and_then(crate::menu::open_id)
+            .filter(|id| *id != "drives")
             .map(str::to_owned);
         let dark = self.theme.generation();
         let widths = Self::layout(&self.theme, s, f32::from(window.viewport_size().width));
@@ -1152,9 +1182,11 @@ impl Render for CoreHost {
                 .enumerate()
             {
                 let slot = match piece {
-                    panel::Piece::Head if files => div()
-                        .flex_none()
-                        .h(px(panel::head_h(&self.theme, t.view_mode))),
+                    panel::Piece::Head if files => div().flex_none().h(px(panel::head_h(
+                        &self.theme,
+                        t.view_mode,
+                        panel::state_of(t).is_some(),
+                    ))),
                     panel::Piece::Foot if files && foot => {
                         div().flex_none().h(px(self.theme.m(Metric::HPanelFooter)))
                     }
@@ -1239,6 +1271,29 @@ impl Render for CoreHost {
             .children(open.as_ref().and_then(|id| {
                 self.menu
                     .flyout(id, &crate::keybar::FarStub, &self.theme, &click_all)
+            }))
+            .children(drives_open.map(|d| {
+                let x = if d.side == Side::Right {
+                    widths[0].map_or(0.0, |w| w + self.theme.m(Metric::WDivider))
+                } else {
+                    0.0
+                };
+                div()
+                    .id("drives-shield")
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .size_full()
+                    .on_click(cx.listener(|h, _: &ClickEvent, w, cx| {
+                        h.run(Command::new("ui.cancel"), w, cx);
+                    }))
+                    .child(drives::flyout(
+                        d,
+                        drives::selected(self.drive_sel, d),
+                        x,
+                        &self.theme,
+                        &click_all,
+                    ))
             }));
         if let Some(b) = self.bench.as_mut() {
             b.built(t0.elapsed());

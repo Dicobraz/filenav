@@ -103,7 +103,10 @@ pub fn zones(s: &urfin_core::AppState, fmt: &FmtCfg) -> [String; 3] {
     let total = t.listing.stats.files + t.listing.stats.dirs;
     args.set("count", u64::from(t.selection.len()));
     args.set("total", u64::from(total));
-    let sel = if t.selection.is_empty() {
+    let failed = matches!(t.listing.status, urfin_core::ListingStatus::Failed(_));
+    let sel = if failed {
+        String::new()
+    } else if t.selection.is_empty() {
         i18n.fmt("ui-status-selected", &args)
     } else {
         args.set(

@@ -71,6 +71,7 @@ cmd-ui-cancel = Закрыть
 cmd-ui-prompt-hide = Свернуть вопрос
 cmd-ui-prompt-show = Развернуть вопрос
 cmd-ui-jobs-toggle = Развернуть задачи
+cmd-ui-drives = Диски
 cmd-ui-theme-set = Тема
 cmd-ui-theme-next = Следующая тема
 cmd-ui-theme-follow_os = Тема как в Windows

@@ -81,6 +81,8 @@ pub struct UiState {
     pub themes_dir: Option<std::path::PathBuf>,
     /// Свободное место тома активной панели — статус-строка (D-02).
     pub free: Option<crate::status::FreeSpace>,
+    /// Открытый список дисков (`ui.drives`, D-03).
+    pub drives: Option<crate::drives::Drives>,
     /// Масштаб в процентах (`ui.zoom`), 100 — без масштаба.
     pub zoom: u16,
     /// Доля левой панели (`ui.split`), 0,5 — поровну.
@@ -124,6 +126,7 @@ impl UiState {
             policy: ThemePolicy::default(),
             themes_dir: None,
             free: None,
+            drives: None,
             columns: None,
             panels_hidden: false,
             tree: [None, None],
@@ -138,6 +141,7 @@ impl UiState {
         self.menu = None;
         self.menu_side = None;
         self.subdirs = None;
+        self.drives = None;
         self.draft = None;
         self.rename = None;
         self.path_edit = None;

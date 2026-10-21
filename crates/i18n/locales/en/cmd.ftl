@@ -71,6 +71,7 @@ cmd-ui-cancel = Close
 cmd-ui-prompt-hide = Hide question
 cmd-ui-prompt-show = Show question
 cmd-ui-jobs-toggle = Expand tasks
+cmd-ui-drives = Drives
 cmd-ui-theme-set = Theme
 cmd-ui-theme-next = Next theme
 cmd-ui-theme-follow_os = Theme as in Windows

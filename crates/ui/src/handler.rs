@@ -77,6 +77,8 @@ static COMMANDS: &[CommandMeta] = &[
     meta("ui.prompt.show", "Show question", &[ID]),
     meta("ui.jobs.toggle", "Expand tasks", &[]),
     // Темы (T-01-4, №59): id — встроенная, своя или `auto`.
+    // Диски, сеть и места (Alt+F1/F2, D-03).
+    meta("ui.drives", "Drives", &[SIDE]),
     meta("ui.theme.set", "Theme", &[arg("id", ValueKind::Str, true)]),
     meta("ui.theme.next", "Next theme", &[]),
     meta("ui.theme.follow_os", "Theme as in Windows", &[]),
@@ -265,6 +267,11 @@ impl Handler for UiHandler {
                 open(cx, OverlayKind::InlineEdit, |st| st.rename = Some(target));
             }
             "ui.path_edit" => self.path_edit(cx, a),
+            "ui.drives" => {
+                self.cancel_task();
+                let side = side_arg(cx, a);
+                crate::drives::open(cx, side);
+            }
             "ui.draft" => {
                 let draft = Draft {
                     cmd: a.str("command").unwrap_or_default().into(),

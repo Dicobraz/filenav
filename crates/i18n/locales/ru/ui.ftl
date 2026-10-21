@@ -237,3 +237,30 @@ ui-status-dir = { $name } · { $count } { $count ->
     [few] объекта
    *[many] объектов
 }
+
+## Диски (D-03)
+ui-drives-section-drives = Диски
+ui-drives-section-network = Сеть
+ui-drives-section-places = Места
+ui-drives-free = свободно { $bytes }
+ui-drives-offline = нет связи
+ui-place-home = Домашняя папка
+ui-place-desktop = Рабочий стол
+ui-place-documents = Документы
+ui-place-downloads = Загрузки
+ui-size-dir = <DIR>
+
+## Состояния папки (D-03)
+ui-state-empty = Папка пуста
+ui-state-denied = Нет доступа к папке
+ui-state-denied-text = Читать эту папку могут только администраторы.
+ui-state-offline = Нет связи с { $path }
+ui-state-offline-text = Сетевой ресурс не отвечает. Остальная работа не ждёт.
+ui-state-failed = Не удалось прочитать папку
+ui-state-back = Назад
+ui-state-retry = Повторить сейчас
+
+ui-tree-label = дерево
+ui-qv-title = Быстрый просмотр
+ui-info-summary = Папка { $path }: файлов { $files }, папок { $dirs } · { $bytes }
+ui-info-free-of = { $free } свободно из { $total }

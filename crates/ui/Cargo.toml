@@ -23,6 +23,7 @@ serde.workspace = true
 smallvec.workspace = true
 # Меню F9: `menu.toml` (S2-14).
 toml.workspace = true
+dirs.workspace = true
 tracing.workspace = true
 
 # Даты: на Windows — API ОС (S0-decisions 2026-10-17), иначе jiff по zoneinfo.
