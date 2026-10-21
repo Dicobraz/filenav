@@ -113,9 +113,7 @@ body{margin:0}
 </span>
 </sc-if>
 <sc-if value="{{pn.umBag}}" hint-placeholder-val="{{ false }}">
-<span style="position: relative; display: flex; {{popShadow}}">
-<button type="button" style="{{umAnchor}}"><span style="display: inline-flex; color: {{t.a}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.1"></rect><path d="M4.5 6l2 2-2 2 M8 10.5h3.5" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></span>Меню<span style="color: {{t.s}}; font-size: 10px">▾</span></button>
-<svg width="9" height="9" viewBox="0 0 9 9" aria-hidden="true" style="position: absolute; right: -8px; top: calc(100% - 8px); z-index: 3; transform: scaleX(-1)"><path d="M0 9V8.5A8.5 8.5 0 0 0 8.5 0H9V9Z" fill="{{t.p}}"></path><path d="M0 8.5A8.5 8.5 0 0 0 8.5 0" fill="none" stroke="{{t.b}}"></path></svg>
+<span style="{{umWrap}}">
 <div style="{{umList}}">
 <sc-for list="{{umItems}}" as="um" hint-placeholder-count="11">
 <sc-if value="{{um.sep}}" hint-placeholder-val="{{ false }}"><div style="height: 1px; margin: 4px 6px; background: {{t.b}}"></div></sc-if>
@@ -1135,7 +1133,8 @@ tagStyle: "padding: 0 6px; border-radius: 4px; border: 1px solid " + (isC ? t.a 
 subStyle: "width: 8px; flex: none; text-align: right; font-size: 11px; color: " + (isC ? t.ct : t.s) }; });
 const umVals = { umOn, umItems, umEdit: screen === "usermenuedit",
 umAnchor: "position: relative; z-index: 2; height: 25px; margin-bottom: -1px; padding: 0 10px 1px; display: flex; align-items: center; gap: 6px; border: 1px solid " + t.b + "; border-bottom: 0; border-radius: 8px 8px 0 0; background: " + t.p + "; color: " + t.t + "; font: inherit; font-weight: 500",
-umList: "position: absolute; left: 0; top: 100%; width: 500px; padding: 6px 4px 4px; box-sizing: border-box; background: " + t.p + "; border: 1px solid " + t.b + "; border-radius: 0 8px 8px 8px; display: flex; flex-direction: column; z-index: 1; font-size: 13px; font-weight: 400",
+umWrap: "position: absolute; left: 34px; top: " + (33 + 25 + (6 + 1) * rowH + 2) + "px; display: flex; z-index: 6; " + popShadow,
+umList: "position: relative; width: 500px; padding: 6px 4px 4px; box-sizing: border-box; background: " + t.p + "; border: 1px solid " + t.b + "; border-radius: 8px; display: flex; flex-direction: column; z-index: 1; font-size: 13px; font-weight: 400",
 umLab: "width: 64px; flex: none; font-weight: 500; white-space: nowrap",
 umSubs: [["!.!","имя"],["!@!","список отмеченных"],["!\\","папка"]].map(([k, v]) => ({ k, v })) };
 const STATUS = {
