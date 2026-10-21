@@ -310,3 +310,25 @@ ui-button-ok = ОК
 ui-keys-qs-next = Следующее
 ui-keys-qs-prev = Предыдущее
 ui-keys-close = Закрыть
+
+## «Мешочки» и меню (D-05)
+ui-sort-name = Имя
+ui-sort-ext = Расширение
+ui-sort-size = Размер
+ui-sort-mtime = Дата изменения
+ui-sort-unsorted = Без сортировки
+ui-sort-desc = По убыванию
+menu-copy-path = Копировать путь
+menu-copy-name = Копировать имя
+ui-places-current = текущая папка
+ui-places-find-bookmark = Найти закладку
+ui-places-find-folder = Найти папку
+ui-places-empty = Пусто
+ui-places-add = Добавить текущую
+ui-places-root = корень
+ui-keys-menu = Меню
+ui-keys-item = Пункт
+ui-keys-choose = Выбрать
+ui-keys-toggle = Переключить
+ui-keys-go = Перейти
+ui-keys-other-panel = Открыть в другой панели

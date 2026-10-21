@@ -89,9 +89,38 @@ const SCENES: &[Scene] = &[
         name: "wide",
         steps: &["panel.view_mode mode=wide"],
     },
+    // Меню и «мешочки» (D-05): имена — как у снимков дизайна.
     Scene {
-        name: "menu",
-        steps: &["panel.view_mode mode=full", "ui.menu"],
+        name: "screen-menu",
+        steps: &["panel.view_mode mode=full", "ui.menu menu=files"],
+    },
+    Scene {
+        name: "screen-sort",
+        steps: &["ui.cancel", "ui.menu.sort"],
+    },
+    Scene {
+        name: "screen-bookmarks",
+        steps: &[
+            "ui.cancel",
+            "panel.bookmark.set n=1",
+            "panel.cursor.to name=Projects",
+            "panel.enter",
+            "panel.bookmark.set n=2",
+            "panel.back",
+            "ui.menu menu=bookmarks",
+        ],
+    },
+    Scene {
+        name: "screen-history",
+        steps: &["ui.cancel", "ui.history.dirs"],
+    },
+    Scene {
+        name: "screen-context",
+        steps: &[
+            "ui.cancel",
+            "panel.cursor.to name=Cargo.toml",
+            "ui.menu menu=context",
+        ],
     },
     Scene {
         name: "screen-copy",

@@ -62,6 +62,8 @@ expression: "effective(&km).join(\"\\n\")"
 [panel] Ctrl+Shift+Tab = tab.prev (Base)
 [panel] Ctrl+Shift+P = ui.palette (Base)
 [panel && cmdline_empty] Enter = panel.enter (Base)
+[panel && cmdline_empty] Ctrl+D = ui.menu menu=bookmarks (Base)
+[panel && cmdline_empty] Shift+F10 = ui.menu menu=context (Base)
 [panel && cmdline_empty] Backspace = panel.up (Base)
 [panel && cmdline_empty] Space = sel.toggle advance=true (Base)
 [panel && cmdline_empty] Ctrl+Insert = ui.copy_names full=false (Base)

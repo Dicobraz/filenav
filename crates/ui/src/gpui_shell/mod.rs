@@ -9,6 +9,7 @@ pub(crate) mod input;
 mod menu;
 mod overlays;
 mod panel;
+mod pouch;
 mod screens;
 mod strip;
 mod theme;
@@ -256,6 +257,16 @@ impl CoreHost {
     /// Какие панели видны и их ширины: Ctrl+O — ни одной; узкое окно (< 720) — только
     /// активная; иначе — по `ui.split` (S2-07). Панели — во всю ширину окна, между
     /// ними линия 1 px (D-02).
+    /// Левый край и ширина панелей по их ширинам (линия между ними — `WDivider`).
+    fn panel_spans(theme: &Theme, widths: [Option<f32>; 2]) -> [Option<(f32, f32)>; 2] {
+        let left = widths[0].map(|w| (0.0, w));
+        let right = widths[1].map(|w| {
+            let x = widths[0].map_or(0.0, |l| l + theme.m(Metric::WDivider));
+            (x, w)
+        });
+        [left, right]
+    }
+
     fn layout(theme: &Theme, s: &urfin_core::AppState, width: f32) -> [Option<f32>; 2] {
         let st = s.ext.get::<crate::UiState>();
         if st.is_some_and(|u| u.panels_hidden) {
@@ -833,7 +844,7 @@ impl CoreHost {
             .map(str::to_owned)
         {
             self.input.skip();
-            let cmds = self.menu.key(&open, ks);
+            let cmds = self.menu.key(&open, core.state(), ks);
             self.out
                 .extend(cmds.into_iter().map(|c| c.from(urfin_core::Origin::Key)));
             self.after_input(None, window, cx);
@@ -1138,12 +1149,33 @@ impl Render for CoreHost {
             .map(str::to_owned);
         let dark = self.theme.generation();
         let widths = Self::layout(&self.theme, s, f32::from(window.viewport_size().width));
-        let content = match &open {
-            Some(id) => self.menu.bar(id, &self.theme, &click),
-            // Табы — без кэша: в их пустом месте зона перетаскивания окна, а кэш gpui
-            // `WindowControlArea` не повторяет.
-            None => chrome::panel_tabs(s, &self.theme, &click, widths),
+        // Ширина текста для корешков меню (D-05).
+        let font = window.text_style().font();
+        let text_system = window.text_system().clone();
+        let measure = move |text: &str, size: f32| -> f32 {
+            let run = gpui_kit::TextRun {
+                len: text.len(),
+                font: font.clone(),
+                color: gpui_kit::Hsla::default(),
+                background_color: None,
+                underline: None,
+                strikethrough: None,
+            };
+            f32::from(
+                text_system
+                    .shape_line(SharedString::from(text.to_owned()), px(size), &[run], None)
+                    .width,
+            )
         };
+        // Строка меню F9 — поверх путей панелей; табы остаются (D-05).
+        let bar = open
+            .as_deref()
+            .filter(|id| menu::Kind::of(id, s.active) == menu::Kind::Bar)
+            .map(|id| self.menu.bar(id, &self.theme, &click, &measure));
+        let (bar_row, bar_at) = bar.map_or((None, Vec::new()), |(r, at)| (Some(r), at));
+        // Табы — без кэша: в их пустом месте зона перетаскивания окна, а кэш gpui
+        // `WindowControlArea` не повторяет.
+        let content = chrome::panel_tabs(s, &self.theme, &click, widths);
         // Контекст (T-01-5): полоса 3 px поверх верха окна и метка у кнопок; не отключается.
         let badge = self.context.map(|ctx| {
             let (role, key) = match ctx {
@@ -1353,9 +1385,27 @@ impl Render for CoreHost {
                         h.run(Command::new("ui.cancel"), w, cx);
                     }))
             }))
+            .children(bar_row)
             .children(open.as_ref().and_then(|id| {
-                self.menu
-                    .flyout(id, &crate::keybar::FarStub, &self.theme, &click_all)
+                let geo = menu::Geo {
+                    win_w: f32::from(window.viewport_size().width),
+                    win_h: f32::from(window.viewport_size().height),
+                    top: self.theme.m(Metric::HTitlebar),
+                    path_h: self.theme.m(Metric::HBreadcrumb),
+                    head_h: self.theme.m(Metric::HColHeader),
+                    row_h: self.theme.m(Metric::HRow),
+                    panels: Self::panel_spans(&self.theme, widths),
+                };
+                self.menu.flyout(
+                    id,
+                    s,
+                    &crate::keybar::FarStub,
+                    &self.theme,
+                    &click_all,
+                    &geo,
+                    &bar_at,
+                    &measure,
+                )
             }))
             .children(drives_open.map(|d| {
                 let x = if d.side == Side::Right {

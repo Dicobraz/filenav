@@ -72,6 +72,9 @@ name = "base"
 
 [context."panel && cmdline_empty"]
 "Enter" = "panel.enter"
+# «Мешочки» D-05: закладки (при наборе в cmdline Ctrl+D — его клавиша) и контекстное меню.
+"Ctrl+D" = { cmd = "ui.menu", menu = "bookmarks" }
+"Shift+F10" = { cmd = "ui.menu", menu = "context" }
 # Urfin: Backspace — вверх и в Far (так проверено в S1-13; в DN — по таблице).
 "Backspace" = "panel.up"
 # Для клавиатур без Insert (как Space в колонке macOS).

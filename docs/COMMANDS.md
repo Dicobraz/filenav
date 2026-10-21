@@ -107,10 +107,12 @@
 | `prompt.reply` | `id:int`, `choice:str`, `input?:str`, `all?:bool` | Answer | Ответить | — | — |
 | `prompt.cancel` | `id:int` | Dismiss | Закрыть | — | — |
 
-## `ui` (32)
+## `ui` (34)
 
 | Команда | Аргументы | EN | RU | Клавиши (Far) | Меню F9 |
 |---|---|---|---|---|---|
+| `ui.menu.sort` | `side?:str` | Sort menu | Меню сортировки | Ctrl+F12 | — |
+| `ui.history.dirs` | — | Folder history | История папок | Alt+F12 | — |
 | `ui.menu` | `menu?:str`, `side?:str`, `path?:loc` | Menu | Меню | F9 | — |
 | `ui.qsearch` | `text?:str` | Quick search | Быстрый поиск | — | — |
 | `ui.rename` | — | Rename in place | Переименовать на месте | — | files |
@@ -154,16 +156,16 @@
 
 | Команда | Аргументы | EN | RU | Клавиши (Far) | Меню F9 |
 |---|---|---|---|---|---|
-| `ops.copy` | `dest?:str`, `current?:bool`, `confirmed?:bool`, `conflict?:str`, `verify?:str`, `filter?:str`, `queue?:str` | Copy | Копировать | F5, Shift+F5 (current=true) | — |
-| `ops.move` | `dest?:str`, `current?:bool`, `confirmed?:bool`, `conflict?:str`, `verify?:str`, `filter?:str`, `queue?:str` | Move or rename | Перенести или переименовать | F6 | — |
-| `ops.delete` | `permanent?:bool`, `current?:bool`, `confirmed?:bool` | Delete | Удалить | F8, Shift+F8 (current=true) | — |
-| `ops.mkdir` | `name?:str`, `current?:bool` | Make folder | Создать папку | F7 | — |
+| `ops.copy` | `dest?:str`, `current?:bool`, `confirmed?:bool`, `conflict?:str`, `verify?:str`, `filter?:str`, `queue?:str` | Copy | Копировать | F5, Shift+F5 (current=true) | files |
+| `ops.move` | `dest?:str`, `current?:bool`, `confirmed?:bool`, `conflict?:str`, `verify?:str`, `filter?:str`, `queue?:str` | Move or rename | Перенести или переименовать | F6 | files |
+| `ops.delete` | `permanent?:bool`, `current?:bool`, `confirmed?:bool` | Delete | Удалить | F8, Shift+F8 (current=true) | files |
+| `ops.mkdir` | `name?:str`, `current?:bool` | Make folder | Создать папку | F7 | files |
 | `ops.rename` | `to?:str` | Rename | Переименовать | Shift+F6 | — |
 | `ops.multi_rename` | `pattern?:str`, `regex?:bool`, `apply?:bool` | Multi-rename | Групповое переименование | — | files |
-| `ops.attrs` | `set?:str`, `clear?:str` | Attributes | Атрибуты | — | — |
+| `ops.attrs` | `set?:str`, `clear?:str` | Attributes | Атрибуты | — | files |
 | `ops.touch` | `mtime?:str` | Set time | Изменить время | — | — |
 | `ops.link` | `kind?:str`, `dest?:str` | Make link | Создать ссылку | Alt+F6 | — |
-| `ops.compare` | `mode?:str` | Compare folders | Сравнить папки | — | commands |
+| `ops.compare` | `mode?:str` | Compare folders | Сравнить папки | — | files, commands |
 | `ops.sync` | `dir?:str` | Synchronize folders | Синхронизировать папки | — | commands |
 | `ops.retry` | `id:int` | Retry failed | Повторить неудавшиеся | — | — |
 | `ops.priority` | `id:int`, `prio?:str` | Operation priority | Приоритет операции | — | — |

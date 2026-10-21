@@ -31,7 +31,12 @@ items = [
 [[menu]]
 id = "files"
 title = "menu-files"
+# Порядок — как в `screen-menu.png` (D-05); F3/F4 — с S7 (viewer.open, editor.open).
 items = [
+    { cmd = "ops.copy" },
+    { cmd = "ops.move" },
+    { cmd = "ops.mkdir" },
+    { cmd = "ops.delete" },
     { cmd = "ui.rename" },
     { cmd = "ops.multi_rename" },
     { sep = true },
@@ -41,6 +46,9 @@ items = [
     { cmd = "sel.all" },
     { cmd = "sel.none" },
     { cmd = "sel.restore" },
+    { sep = true },
+    { cmd = "ops.attrs" },
+    { cmd = "ops.compare" },
 ]
 
 [[menu]]

@@ -41,6 +41,9 @@ const SIDE: ArgSpec = arg("side", ValueKind::Str, false);
 const ID: ArgSpec = arg("id", ValueKind::Int, false);
 
 static COMMANDS: &[CommandMeta] = &[
+    // «Мешочки» D-05: сортировка от заголовка колонки, история папок от пути.
+    meta("ui.menu.sort", "Sort menu", &[SIDE]),
+    meta("ui.history.dirs", "Folder history", &[]),
     // `menu=subdirs side path` и `menu=crumbs side` — меню breadcrumb (ADR-0014).
     meta(
         "ui.menu",
@@ -246,7 +249,7 @@ impl Handler for UiHandler {
         }
         let a = &cmd.args;
         match cmd.id.as_str() {
-            "ui.menu" => self.menu(cx, a),
+            "ui.menu" | "ui.menu.sort" | "ui.history.dirs" => self.menu(cx, cmd.id.as_str(), a),
             // Быстрый поиск ведёт keymap (ADR-0016); здесь — синоним для меню.
             "ui.qsearch" => {
                 let mut c = Command::new("keymap.qs.start");
@@ -347,9 +350,15 @@ impl Handler for UiHandler {
 impl UiHandler {
     /// `ui.menu`: F9 (S2-14) или меню breadcrumb — подкаталоги (`›`) и свёрнутые
     /// сегменты (`…`).
-    fn menu(&mut self, cx: &mut Cx<'_>, a: &Args) {
-        let menu = a.str("menu").unwrap_or_default();
+    fn menu(&mut self, cx: &mut Cx<'_>, id: &str, a: &Args) {
         let side = side_arg(cx, a);
+        // «Мешочки» D-05: сортировка от заголовка колонки панели, история папок.
+        let menu = match id {
+            "ui.menu.sort" if side == Side::Right => "sort-right",
+            "ui.menu.sort" => "sort-left",
+            "ui.history.dirs" => "history",
+            _ => a.str("menu").unwrap_or_default(),
+        };
         if menu == "subdirs" {
             let loc = a
                 .loc("path")
