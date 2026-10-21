@@ -114,3 +114,4 @@ ops-rename-bad = A name cannot contain \ or / — use Move (F6) to put it elsewh
 ops-job-trash = Moving to Recycle Bin
 ops-job-delete = Deleting
 ops-delete-failed = Not deleted: { $error }
+term-not-yet = Terminal: { $what } is not done yet (S6)

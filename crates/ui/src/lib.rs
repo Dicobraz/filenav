@@ -79,6 +79,7 @@ pub(crate) mod tests {
             urfin_vfs::VfsCfg::default(),
         );
         urfin_ops::register(&mut core, urfin_ops::OpsConfig::default());
+        urfin_term::register(&mut core, urfin_term::TermConfig::default());
         let dir = tempfile::Builder::new()
             .prefix("urfin-ui-keymap-")
             .tempdir()

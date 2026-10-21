@@ -20,6 +20,7 @@ urfin-core = { workspace = true, features = ["fake"] }
 urfin-i18n.workspace = true
 urfin-keymap.workspace = true
 urfin-ops.workspace = true
+urfin-term.workspace = true
 urfin-ui.workspace = true
 urfin-vfs.workspace = true
 serde.workspace = true
