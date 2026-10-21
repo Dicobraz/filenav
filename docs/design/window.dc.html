@@ -2191,7 +2191,7 @@ if (cbOn) {
 const cbR = R.slice(0, 3).concat([["target","d","","20.10.26 13:55"]], R.slice(3));
 panels[0] = full("C:\\Dev\\urfin", "16 объектов", L, cbPaste ? -1 : 15, !cbPaste);
 panels[1] = full("\\\\fs01\\share\\presale", cbPaste ? "13 объектов" : "12 объектов", cbPaste ? cbR : R, cbPaste ? 3 : -1, cbPaste);
-cbCutIdx.forEach((i) => { const r = panels[0].rows[i]; r.rowStyle += "; color: " + t.s; r.dateColor = t.s; r.iconColor = t.s + "; opacity: 0.45"; });
+cbCutIdx.forEach((i) => { const r = panels[0].rows[i]; r.rowStyle += "; color: " + t.s + "; outline: 1px dashed " + t.a + "; outline-offset: -3px"; r.dateColor = t.s; r.iconColor = t.s + "; opacity: 0.45"; });
 }
 const cbVals = cbOn ? {
 showJobs: cbPaste,
