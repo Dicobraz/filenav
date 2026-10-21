@@ -363,7 +363,7 @@ body{margin:0}
 </label>
 <label style="display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" checked="{{ true }}" readOnly="{{ true }}">Сохранять даты</label>
 <label style="display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" readOnly="{{ true }}">Проверить хэш после копирования</label>
-<div style="margin-left: auto; display: flex; gap: 8px">
+<div style="margin-left: 8px; display: flex; gap: 8px">
 <button type="button" style="{{btnPrimary}}">Копировать <span style="opacity: 0.8; font-size: 11px">Enter</span></button>
 <button type="button" style="{{btn}}">В фоне <span style="color: {{t.s}}; font-size: 11px">Shift+Enter</span></button>
 <button type="button" style="{{btn}}">Отмена <span style="color: {{t.s}}; font-size: 11px">Esc</span></button>
@@ -408,7 +408,7 @@ body{margin:0}
 <div style="display: flex; align-items: center; gap: 16px">
 <label style="display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" readOnly="{{ true }}">Регистр</label>
 <label style="display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" readOnly="{{ true }}">И папки</label>
-<div style="margin-left: auto; display: flex; gap: 8px">
+<div style="margin-left: 0; display: flex; gap: 8px">
 <button type="button" style="{{btnPrimary}}">Отметить <span style="opacity: 0.8; font-size: 11px">Enter</span></button>
 <button type="button" style="{{btn}}">Отмена <span style="color: {{t.s}}; font-size: 11px">Esc</span></button>
 </div>
@@ -425,7 +425,7 @@ body{margin:0}
 </div>
 <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap">
 <sc-for list="{{tplChips}}" as="tc" hint-placeholder-count="5"><button type="button" style="{{chipOff}}"><span style="font-family: 'Cascadia Mono', Consolas, monospace">{{tc.k}}</span> <span style="color: {{t.s}}">{{tc.v}}</span></button></sc-for>
-<div style="margin-left: auto; display: flex; gap: 8px">
+<div style="margin-left: 8px; display: flex; gap: 8px">
 <button type="button" style="{{btnPrimary}}">Переименовать <span style="opacity: 0.8; font-size: 11px">Enter</span></button>
 <button type="button" style="{{btn}}">Отмена <span style="color: {{t.s}}; font-size: 11px">Esc</span></button>
 </div>
@@ -438,7 +438,7 @@ body{margin:0}
 <span style="font-weight: 500; white-space: nowrap">Сравнение папок:</span>
 <span style="white-space: nowrap">только слева 2 · только справа 1 · новее слева 1</span>
 <span style="color: {{t.s}}; white-space: nowrap">· одинаковых 1</span>
-<div style="margin-left: auto; display: flex; gap: 8px">
+<div style="margin-left: 8px; display: flex; gap: 8px">
 <button type="button" style="{{btnPrimary}}">Синхронизировать → <span style="opacity: 0.8; font-size: 11px">Enter</span></button>
 <button type="button" style="{{btn}}">Синхронизировать ← <span style="color: {{t.s}}; font-size: 11px">Shift+Enter</span></button>
 <button type="button" style="{{btn}}">Закрыть <span style="color: {{t.s}}; font-size: 11px">Esc</span></button>
@@ -453,10 +453,10 @@ body{margin:0}
 </div>
 </sc-if>
 <sc-if value="{{isDelete}}" hint-placeholder-val="{{ false }}">
-<div style="position: absolute; left: 0; right: calc(50% + 0.5px); bottom: 0; padding: 10px 14px; display: flex; align-items: center; gap: 10px; background: {{t.h}}; border-top: 2px solid {{t.k}}">
+<div style="position: absolute; left: 0; right: calc(50% + 0.5px); bottom: 0; padding: 10px 14px; display: flex; align-items: center; gap: 10px; background: {{t.dbg}}; border-top: 2px solid {{t.k}}">
 <span style="display: inline-flex; color: {{t.k}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11 M6 4V2.5h4V4 M4 4l.7 9.5h6.6L12 4 M6.5 6.5v5 M9.5 6.5v5" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></span>
 <span style="white-space: nowrap"><span style="font-weight: 500">Удалить 2 объекта</span><span style="color: {{t.s}}"> · 67,7 КБ · в Корзину</span></span>
-<div style="margin-left: auto; display: flex; gap: 8px">
+<div style="margin-left: 8px; display: flex; gap: 8px">
 <button type="button" style="{{btnDanger}}">Удалить <span style="opacity: 0.8; font-size: 11px">Enter</span></button>
 <button type="button" style="{{btn}}">Безвозвратно <span style="color: {{t.s}}; font-size: 11px">Shift+Enter</span></button>
 <button type="button" style="{{btn}}">Отмена <span style="color: {{t.s}}; font-size: 11px">Esc</span></button>
@@ -464,7 +464,7 @@ body{margin:0}
 </div>
 </sc-if>
 <sc-if value="{{isConflict}}" hint-placeholder-val="{{ false }}">
-<div style="position: absolute; left: 0; right: 0; bottom: 0; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; background: {{t.h}}; border-top: 2px solid {{t.rem}}">
+<div style="position: absolute; left: 0; right: 0; bottom: 0; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; background: {{t.wbg}}; border-top: 2px solid {{t.rem}}">
 <div style="display: flex; align-items: center; gap: 10px">
 <span style="display: inline-flex; color: {{t.rem}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2l6.5 11.5h-13z M8 6.5v3.5 M8 11.5v.5" fill="none" stroke="currentColor" stroke-width="1.2"></path></svg></span>
 <span style="font-weight: 500">Файл уже есть в папке назначения</span>
@@ -487,13 +487,13 @@ body{margin:0}
 </sc-if>
 </div>
 <sc-if value="{{showBanner}}" hint-placeholder-val="{{ false }}">
-<div style="height: 40px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 12px; background: {{t.h}}; border-top: 2px solid {{t.rem}}">
+<div style="height: 40px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 12px; background: {{t.wbg}}; border-top: 2px solid {{t.rem}}">
 <span style="display: inline-flex; color: {{t.rem}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.1"></circle><path d="M8 4.5V8l2.5 1.5" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></span>
 <span style="font-weight: 500">Прервано при выходе:</span>
 <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">Копировать big.bin → D:\backup\b</span>
 <span style="color: {{t.s}}; white-space: nowrap">выполнено ≈ 62 %</span>
 <span style="color: {{t.s}}; font-size: 12px; white-space: nowrap">· ещё 1</span>
-<div style="margin-left: auto; display: flex; gap: 8px">
+<div style="margin-left: 8px; display: flex; gap: 8px">
 <button type="button" style="{{btnPrimary}}">Продолжить</button>
 <button type="button" style="{{btn}}">Очистить</button>
 </div>
@@ -542,12 +542,12 @@ body{margin:0}
 class Component extends DCLogic {
 renderVals() {
 const TH = {
-light: {f:"#E9E9E9",p:"#F4F4F4",h:"#EEEEEE",t:"#1B1B1B",s:"#5F5F5F",a:"#0067C0",c:"#D3E3F1",ct:"#1B1B1B",b:"#DCDCDC",k:"#B5402F",ex:"#2E7D32",ar:"#7B4FB0",cl:"#ECECEC",hl:"#F2E3A0",kw:"#1F5FA8",str:"#8A4B12",num:"#6A3FA0",com:"#5F6B76",adm:"#B5402F",rem:"#A86A12"},
-dark: {f:"#1C1C1C",p:"#262626",h:"#2B2B2B",t:"#F2F2F2",s:"#B8B8B8",a:"#6CC4F2",c:"#24557A",ct:"#FFFFFF",b:"#3C3C3C",k:"#FFB86C",ex:"#8FD98A",ar:"#C9B4FF",cl:"#2E2E2E",hl:"#5C4A1C",kw:"#7FB8F0",str:"#E3B07A",num:"#C9B4FF",com:"#949494",adm:"#FF8A7A",rem:"#FFC46B"},
-blue: {f:"#E1E9F1",p:"#EEF3F8",h:"#E8EEF4",t:"#1E2A36",s:"#5E6B78",a:"#3A6EA5",c:"#D4E3F2",ct:"#1E2A36",b:"#D3DDE8",k:"#B0452F",ex:"#2E7D4A",ar:"#7A4FA8",cl:"#E6EDF4",hl:"#F0E2A6",kw:"#2F5F96",str:"#8A4B12",num:"#6A3FA0",com:"#5E6B78",adm:"#B0452F",rem:"#A86A12"},
-turquoise: {f:"#DFEDEB",p:"#EDF5F4",h:"#E6F1EF",t:"#1D2E2D",s:"#5A7270",a:"#2C8C86",c:"#CFE9E6",ct:"#1D2E2D",b:"#CFE1DE",k:"#B0502F",ex:"#3A7D2E",ar:"#7A4FA8",cl:"#E4F0EE",hl:"#F0E2A6",kw:"#1F6F6A",str:"#8A4B12",num:"#6A3FA0",com:"#5A7270",adm:"#B0502F",rem:"#A86A12"},
-grass: {f:"#E3ECDD",p:"#EEF4EA",h:"#E8F0E3",t:"#222D1C",s:"#5F6D57",a:"#4E8A3A",c:"#DCEBCF",ct:"#222D1C",b:"#D5E0CC",k:"#A84A2C",ex:"#2C6E8F",ar:"#7A4FA8",cl:"#E6EEE1",hl:"#F0E2A6",kw:"#3E6E2E",str:"#8A4B12",num:"#2C5F8F",com:"#5F6D57",adm:"#A84A2C",rem:"#A86A12"},
-sepia: {f:"#E7DECF",p:"#F2ECE1",h:"#ECE4D7",t:"#3A3128",s:"#7A6C5C",a:"#9A6A3A",c:"#E8DCC6",ct:"#3A3128",b:"#DACFBC",k:"#A8432F",ex:"#4F7A2E",ar:"#7A4F8F",cl:"#EBE3D6",hl:"#EAD49A",kw:"#7A4A1F",str:"#5E6A2E",num:"#6A3F7A",com:"#7A6C5C",adm:"#A8432F",rem:"#9A6212"}
+light: {f:"#E9E9E9",p:"#F4F4F4",h:"#EEEEEE",t:"#1B1B1B",s:"#5F5F5F",a:"#0067C0",c:"#D3E3F1",ct:"#1B1B1B",b:"#DCDCDC",k:"#B5402F",ex:"#2E7D32",ar:"#7B4FB0",cl:"#ECECEC",hl:"#F2E3A0",kw:"#1F5FA8",str:"#8A4B12",num:"#6A3FA0",com:"#5F6B76",adm:"#B5402F",rem:"#A86A12",wbg:"#F8EBD3",dbg:"#F7E2DD"},
+dark: {f:"#1C1C1C",p:"#262626",h:"#2B2B2B",t:"#F2F2F2",s:"#B8B8B8",a:"#6CC4F2",c:"#24557A",ct:"#FFFFFF",b:"#3C3C3C",k:"#FFB86C",ex:"#8FD98A",ar:"#C9B4FF",cl:"#2E2E2E",hl:"#5C4A1C",kw:"#7FB8F0",str:"#E3B07A",num:"#C9B4FF",com:"#949494",adm:"#FF8A7A",rem:"#FFC46B",wbg:"#3D3220",dbg:"#402622"},
+blue: {f:"#E1E9F1",p:"#EEF3F8",h:"#E8EEF4",t:"#1E2A36",s:"#5E6B78",a:"#3A6EA5",c:"#D4E3F2",ct:"#1E2A36",b:"#D3DDE8",k:"#B0452F",ex:"#2E7D4A",ar:"#7A4FA8",cl:"#E6EDF4",hl:"#F0E2A6",kw:"#2F5F96",str:"#8A4B12",num:"#6A3FA0",com:"#5E6B78",adm:"#B0452F",rem:"#A86A12",wbg:"#F5EAD6",dbg:"#F4E2DE"},
+turquoise: {f:"#DFEDEB",p:"#EDF5F4",h:"#E6F1EF",t:"#1D2E2D",s:"#5A7270",a:"#2C8C86",c:"#CFE9E6",ct:"#1D2E2D",b:"#CFE1DE",k:"#B0502F",ex:"#3A7D2E",ar:"#7A4FA8",cl:"#E4F0EE",hl:"#F0E2A6",kw:"#1F6F6A",str:"#8A4B12",num:"#6A3FA0",com:"#5A7270",adm:"#B0502F",rem:"#A86A12",wbg:"#F4EAD6",dbg:"#F4E2DC"},
+grass: {f:"#E3ECDD",p:"#EEF4EA",h:"#E8F0E3",t:"#222D1C",s:"#5F6D57",a:"#4E8A3A",c:"#DCEBCF",ct:"#222D1C",b:"#D5E0CC",k:"#A84A2C",ex:"#2C6E8F",ar:"#7A4FA8",cl:"#E6EEE1",hl:"#F0E2A6",kw:"#3E6E2E",str:"#8A4B12",num:"#2C5F8F",com:"#5F6D57",adm:"#A84A2C",rem:"#A86A12",wbg:"#F3E9D4",dbg:"#F3E1DA"},
+sepia: {f:"#E7DECF",p:"#F2ECE1",h:"#ECE4D7",t:"#3A3128",s:"#7A6C5C",a:"#9A6A3A",c:"#E8DCC6",ct:"#3A3128",b:"#DACFBC",k:"#A8432F",ex:"#4F7A2E",ar:"#7A4F8F",cl:"#EBE3D6",hl:"#EAD49A",kw:"#7A4A1F",str:"#5E6A2E",num:"#6A3F7A",com:"#7A6C5C",adm:"#A8432F",rem:"#9A6212",wbg:"#EFDDBE",dbg:"#EED5CB"}
 };
 const NAMES = [["light","Системная светлая"],["dark","Системная тёмная"],["blue","Голубая"],["turquoise","Бирюза"],["grass","Травяная"],["sepia","Сепия"]];
 const st = this.state || {};
