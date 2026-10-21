@@ -130,7 +130,7 @@ URFIN_UPDATE_DOCS=1 cargo nextest run -p urfin-keymap keys_doc -->
 | `Ctrl+Shift+D` | `tab.dup` | W M L |
 | `F9` | `ui.menu` | W M L |
 | `F10` | `app.quit` | W M L |
-| `F11` | `ui.palette` | W M L |
+| `F11` | `ui.jobs.toggle` | W M L |
 | `F12` | `ui.screens` | W M L |
 | `Alt+Shift+F9` | `ui.settings` | W M L |
 | `Ctrl+B` | `ui.keybar.toggle` | W M L |
