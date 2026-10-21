@@ -150,7 +150,8 @@ body{margin:0}
 </sc-if>
 <sc-if value="{{pn.coBag}}" hint-placeholder-val="{{ false }}">
 <span style="{{coAnchorWrap}}">
-<svg width="9" height="9" viewBox="0 0 9 9" aria-hidden="true" style="display: none"><path d="M0 9V8.5A8.5 8.5 0 0 0 8.5 0H9V9Z" fill="{{t.p}}"></path><path d="M0 8.5A8.5 8.5 0 0 0 8.5 0" fill="none" stroke="{{t.b}}"></path></svg>
+<button type="button" style="{{coAnchor}}">Размер</button>
+<svg width="9" height="9" viewBox="0 0 9 9" aria-hidden="true" style="position: absolute; left: -8px; top: calc(100% - 8px); z-index: 3"><path d="M0 9V8.5A8.5 8.5 0 0 0 8.5 0H9V9Z" fill="{{t.p}}"></path><path d="M0 8.5A8.5 8.5 0 0 0 8.5 0" fill="none" stroke="{{t.b}}"></path></svg>
 <div style="{{coList}}">
 <sc-for list="{{coItems}}" as="ci" hint-placeholder-count="10">
 <sc-if value="{{ci.sep}}" hint-placeholder-val="{{ false }}"><div style="height: 1px; margin: 4px 6px; background: {{t.b}}"></div></sc-if>
@@ -1224,9 +1225,9 @@ fs: "flex: 1; min-width: 0; height: 28px; box-sizing: border-box; display: flex;
 now: "flex: none; height: 22px; padding: 0 5px; border: 0; border-radius: 3px; background: " + t.h + "; color: " + t.s + "; font: inherit; font-size: 10.5px" }));
 const coCur = 4;
 const coVals = {
-coAnchorWrap: "position: absolute; right: 150px; top: 58px; display: flex; z-index: 4; " + popShadow,
+coAnchorWrap: "position: absolute; right: 124px; top: 33px; display: flex; z-index: 4; " + popShadow,
 coAnchor: "position: relative; z-index: 2; height: 23px; margin-bottom: -1px; padding: 0 8px 1px; display: flex; align-items: center; border: 1px solid " + t.b + "; border-bottom: 0; border-radius: 8px 8px 0 0; background: " + t.p + "; color: " + t.t + "; font: inherit; font-size: 11.5px; font-weight: 500",
-coList: "position: relative; width: 270px; padding: 6px 4px 4px; box-sizing: border-box; background: " + t.p + "; border: 1px solid " + t.b + "; border-radius: 8px; display: flex; flex-direction: column; z-index: 1; font-size: 13px; font-weight: 400; color: " + t.t,
+coList: "position: absolute; right: 0; top: 100%; width: 270px; padding: 6px 4px 4px; box-sizing: border-box; background: " + t.p + "; border: 1px solid " + t.b + "; border-radius: 8px 0 8px 8px; display: flex; flex-direction: column; z-index: 1; font-size: 13px; font-weight: 400; color: " + t.t,
 coItems: [["Имя",1,1,"всегда"],["Размер",1],["Изменён",1],null,["Создан",0],["Доступ",0],["Атрибуты",0],["Тип",0],["Расширение",0],["Владелец",0,0,"медленнее в сети"],["Сжатый размер",0]].map((m, i) => {
 if (!m) return { item: false, sep: true };
 const on = !!m[1], dis = !!m[2], isC = i === coCur;
