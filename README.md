@@ -1,5 +1,7 @@
 # Urfin
 
+<img src="assets/icon/urfin-256.png" width="96" alt="Иконка Urfin">
+
 Быстрый двухпанельный файловый менеджер: функции и раскладка DN/Far, визуальный язык Windows Fluent.
 Rust, egui/eframe (wgpu, ADR-0012). Активная платформа — Windows; код кроссплатформенный, macOS и Linux собираются в CI.
 
