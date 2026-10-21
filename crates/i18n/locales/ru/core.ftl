@@ -118,3 +118,4 @@ ops-rename-bad = В имени не может быть \ и / — перене�
 ops-job-trash = В корзину
 ops-job-delete = Удаление
 ops-delete-failed = Не удалено: { $error }
+term-not-yet = Терминал: { $what } — ещё не сделано (S6)

@@ -299,6 +299,12 @@ pub(crate) fn register_handlers(core: &mut Core, config: &Config, paths: Option<
     }
     // Журналы job (S5-12): прерванные — баннер «Продолжить / Очистить» при старте.
     urfin_ops::register_with(core, ops, paths.map(|p| p.state_dir.join("jobs")));
+    // Терминал и строка ввода (S6): каркас, команды наполняются по TASKS-M3.
+    let (term, warning) = config.section::<urfin_term::TermConfig>("term");
+    if let Some(w) = warning {
+        tracing::warn!(warning = ?w, "[term] config section ignored");
+    }
+    urfin_term::register(core, term);
 }
 
 /// Корень демо-дерева `FakeListing` для `--smoke`: детерминированный прогон без ФС.

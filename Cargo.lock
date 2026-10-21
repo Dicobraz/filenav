@@ -7346,6 +7346,7 @@ dependencies = [
  "urfin-i18n",
  "urfin-keymap",
  "urfin-ops",
+ "urfin-term",
  "urfin-ui",
  "urfin-vfs",
  "windows-sys 0.61.2",
@@ -7450,6 +7451,15 @@ version = "0.1.0"
 [[package]]
 name = "urfin-term"
 version = "0.1.0"
+dependencies = [
+ "compact_str",
+ "insta",
+ "serde",
+ "toml 1.1.8+spec-1.1.0",
+ "tracing",
+ "urfin-core",
+ "urfin-i18n",
+]
 
 [[package]]
 name = "urfin-testdata"
@@ -7482,6 +7492,7 @@ dependencies = [
  "urfin-i18n",
  "urfin-keymap",
  "urfin-ops",
+ "urfin-term",
  "urfin-vfs",
  "windows-sys 0.61.2",
 ]
