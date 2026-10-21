@@ -53,9 +53,15 @@ const SCENES: &[Scene] = &[
         name: "theme-sepia",
         steps: &["ui.theme.set id=sepia"],
     },
+    // Полоса контекста (D-02, T-01-5): как при запуске от администратора.
+    Scene {
+        name: "context-admin",
+        steps: &["ui.theme.set id=system-light", "context admin"],
+    },
     Scene {
         name: "marked",
         steps: &[
+            "context none",
             "ui.theme.follow_os",
             "sel.add mask=\"*.md;*.pdf;*.jpg\"",
             "panel.cursor.down n=3",
@@ -160,9 +166,14 @@ pub struct Screens {
 }
 
 /// Что окну сделать в этом кадре.
+/// Шаг `context …`: какой контекст окна показать (`None` — обычный).
+#[derive(Clone, Copy, Debug)]
+pub(super) struct SetContext(pub Option<crate::sys::Context>);
+
 pub(super) enum Step {
-    /// Команды Core (уже разобранные) и, может быть, размер окна.
-    Enter(Vec<Command>, Option<(f32, f32)>),
+    /// Команды Core (уже разобранные), может быть, размер окна и контекст окна
+    /// (`context admin|remote|none` — сцена полосы контекста без запуска от админа).
+    Enter(Vec<Command>, Option<(f32, f32)>, Option<SetContext>),
     /// Ждать следующего кадра.
     Next,
     /// Снять сцену в этот файл.
@@ -195,7 +206,16 @@ impl Screens {
                 self.since = Instant::now();
                 let mut cmds = Vec::new();
                 let mut size = None;
+                let mut context = None;
                 for s in SCENES[self.scene].steps {
+                    if let Some(c) = s.strip_prefix("context ") {
+                        context = Some(SetContext(match c {
+                            "admin" => Some(crate::sys::Context::Admin),
+                            "remote" => Some(crate::sys::Context::Remote),
+                            _ => None,
+                        }));
+                        continue;
+                    }
                     if *s == WAIT_PROMPT {
                         continue;
                     }
@@ -208,7 +228,7 @@ impl Screens {
                         Err(e) => fail(self.name(), &format!("bad step {s}: {e}")),
                     }
                 }
-                Step::Enter(cmds, size)
+                Step::Enter(cmds, size, context)
             }
             Phase::Wait => {
                 if self.since.elapsed() > SCENE_TIMEOUT {
@@ -314,6 +334,8 @@ mod tests {
                 }
                 if let Some(wh) = s.strip_prefix("resize ") {
                     assert!(parse_size(wh).is_some(), "{}: {s}", sc.name);
+                } else if let Some(c) = s.strip_prefix("context ") {
+                    assert!(["admin", "remote", "none"].contains(&c), "{}: {s}", sc.name);
                 } else {
                     Command::parse(s).unwrap_or_else(|e| panic!("{}: {s}: {e}", sc.name));
                 }

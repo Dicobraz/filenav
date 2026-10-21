@@ -235,6 +235,7 @@ impl Handler for UiHandler {
             self.cancel_task();
         }
         crate::views::sync(cx, &self.vfs, &mut self.views);
+        crate::status::sync(cx);
     }
 
     fn handle(&mut self, cmd: &Command, cx: &mut Cx<'_>) -> Result<(), CmdError> {

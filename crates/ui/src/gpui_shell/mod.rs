@@ -243,14 +243,15 @@ impl CoreHost {
     }
 
     /// Какие панели видны и их ширины: Ctrl+O — ни одной; узкое окно (< 720) — только
-    /// активная; иначе — по `ui.split` (S2-07).
+    /// активная; иначе — по `ui.split` (S2-07). Панели — во всю ширину окна, между
+    /// ними линия 1 px (D-02).
     fn layout(theme: &Theme, s: &urfin_core::AppState, width: f32) -> [Option<f32>; 2] {
         let st = s.ext.get::<crate::UiState>();
         if st.is_some_and(|u| u.panels_hidden) {
             return [None, None];
         }
-        let gap = theme.m(Metric::GapPanels);
-        let avail = width - 2.0 * gap;
+        let gap = theme.m(Metric::WDivider);
+        let avail = width;
         let shown = [s.panel(Side::Left).visible, s.panel(Side::Right).visible];
         let narrow = width < crate::layout::SINGLE_PANEL_BELOW;
         match (shown, narrow) {
@@ -283,6 +284,7 @@ impl CoreHost {
         let h = f32::from(size.height)
             - self.theme.m(Metric::HTitlebar)
             - self.theme.m(Metric::HCmdline)
+            - self.theme.m(Metric::HStatus)
             - self.theme.m(Metric::HKeybar);
         for (i, side) in [Side::Left, Side::Right].into_iter().enumerate() {
             let mode = core.state().panel(side).tab().view_mode;
@@ -645,9 +647,12 @@ impl CoreHost {
         };
         let ready = self.core.as_ref().is_some_and(|c| sc.ready(c.state()));
         match sc.frame(ready) {
-            screens::Step::Enter(cmds, to) => {
+            screens::Step::Enter(cmds, to, context) => {
                 if let Some((w, h)) = to {
                     window.resize(size(px(w), px(h)));
+                }
+                if let Some(screens::SetContext(c)) = context {
+                    self.context = c;
                 }
                 // Через `run_all`, как клик: `pump` окна — сетка панелей, черновики, тосты.
                 self.run_all(cmds, window, cx);
@@ -1025,7 +1030,6 @@ impl Render for CoreHost {
                 }
             });
         }
-        let gap = px(self.theme.m(Metric::GapPanels));
         let i18n = urfin_i18n::current();
         self.keybar.refresh(
             &i18n,
@@ -1063,62 +1067,86 @@ impl Render for CoreHost {
             .and_then(crate::menu::open_id)
             .map(str::to_owned);
         let dark = self.theme.generation();
+        let widths = Self::layout(&self.theme, s, f32::from(window.viewport_size().width));
         let content = match &open {
             Some(id) => self.menu.bar(id, &self.theme, &click),
             // Табы — без кэша: в их пустом месте зона перетаскивания окна, а кэш gpui
             // `WindowControlArea` не повторяет.
-            None => chrome::panel_tabs(s, &self.theme, &click),
+            None => chrome::panel_tabs(s, &self.theme, &click, widths),
         };
-        // Контекст (T-01-5): полоса 3 px сверху окна и метка в заголовке; не отключается.
-        let content = match self.context {
-            Some(ctx) => {
-                let (role, key) = match ctx {
-                    crate::sys::Context::Admin => (Role::ContextAdmin, "ui-context-admin"),
-                    crate::sys::Context::Remote => (Role::ContextRemote, "ui-context-remote"),
-                };
-                root = root.child(div().h(px(3.0)).flex_none().bg(self.theme.c(role)));
-                content.child(
-                    div()
-                        .flex_none()
-                        .px(px(8.0))
-                        .text_size(px(self.theme.m(Metric::TypeCaption)))
-                        .text_color(self.theme.c(role))
-                        .child(i18n.get(key)),
-                )
-            }
-            None => content,
-        };
+        // Контекст (T-01-5): полоса 3 px поверх верха окна и метка у кнопок; не отключается.
+        let badge = self.context.map(|ctx| {
+            let (role, key) = match ctx {
+                crate::sys::Context::Admin => (Role::ContextAdmin, "ui-context-admin"),
+                crate::sys::Context::Remote => (Role::ContextRemote, "ui-context-remote"),
+            };
+            (self.theme.c(role), i18n.get(key))
+        });
         root = root.child(chrome::titlebar(
             content,
             &self.theme,
             window.is_maximized(),
+            badge.clone(),
         ));
-        let widths = Self::layout(&self.theme, s, f32::from(window.viewport_size().width));
-        let mut panels = div().flex_1().min_h_0().flex().flex_row().px(gap);
+        if let Some((color, _)) = &badge {
+            root = root.child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .right_0()
+                    .h(px(CONTEXT_BAR))
+                    .bg(*color),
+            );
+        }
+        // Панели во всю ширину; фон — цвет линии, поэтому между панелями видна линия 1 px.
+        let mut panels = div()
+            .flex_1()
+            .min_h_0()
+            .flex()
+            .flex_row()
+            .bg(self.theme.c(Role::StrokeDivider));
+        let keys = s.ext.get::<urfin_keymap::KeymapView>();
         for (i, side) in [Side::Left, Side::Right].into_iter().enumerate() {
             let Some(w) = widths[i] else {
                 continue;
             };
             if i == 1 && widths[0].is_some() {
-                // Зазор между карточками: курсор ↔, двойной клик — 50/50 (S2-07).
+                // Линия между панелями; ухватиться — за полосу поверх неё: курсор ↔,
+                // двойной клик — 50/50 (S2-07).
                 panels = panels.child(
                     div()
-                        .id("splitter")
-                        .w(gap)
+                        .w(px(self.theme.m(Metric::WDivider)))
                         .flex_none()
                         .h_full()
-                        .cursor(gpui_kit::CursorStyle::ResizeLeftRight)
-                        .on_click(cx.listener(|h, ev: &ClickEvent, w, cx| {
-                            if ev.click_count() >= 2 {
-                                h.run(Command::new("ui.split").arg("reset", true), w, cx);
-                            }
-                        })),
+                        .relative()
+                        .child(
+                            div()
+                                .id("splitter")
+                                .absolute()
+                                .top_0()
+                                .left(px(-SPLITTER_GRAB))
+                                .w(px(2.0 * SPLITTER_GRAB + 1.0))
+                                .h_full()
+                                .cursor(gpui_kit::CursorStyle::ResizeLeftRight)
+                                .on_click(cx.listener(|h, ev: &ClickEvent, w, cx| {
+                                    if ev.click_count() >= 2 {
+                                        h.run(Command::new("ui.split").arg("reset", true), w, cx);
+                                    }
+                                })),
+                        ),
                 );
             }
             // Изменилась — рисуется заново (без кэша в этом кадре), иначе кадр из кэша.
             let t = s.panel(side).tab();
             let files = t.mode == urfin_core::PanelMode::Files;
-            let mut card = panel::card(s.active == side, &self.theme);
+            // Подвал — только быстрый поиск и набранный аккорд (до D-04, где они станут
+            // строкой внизу); сводка панели — в статус-строке (№61).
+            let foot = keys.is_some_and(|k| {
+                k.qs.as_ref().is_some_and(|q| q.side == side)
+                    || (s.active == side && k.pending.is_some())
+            });
+            let mut card = panel::card(&self.theme);
             for (k, piece) in [panel::Piece::Head, panel::Piece::List, panel::Piece::Foot]
                 .into_iter()
                 .enumerate()
@@ -1127,7 +1155,7 @@ impl Render for CoreHost {
                     panel::Piece::Head if files => div()
                         .flex_none()
                         .h(px(panel::head_h(&self.theme, t.view_mode))),
-                    panel::Piece::Foot if files => {
+                    panel::Piece::Foot if files && foot => {
                         div().flex_none().h(px(self.theme.m(Metric::HPanelFooter)))
                     }
                     panel::Piece::List => div().flex_1().min_h_0(),
@@ -1161,9 +1189,12 @@ impl Render for CoreHost {
                 }));
             overlays::prompt_bar(p, sel, &self.theme, &click, toggle)
         });
+        // Зона событий внизу (№63), снизу вверх: keybar, статус, командная строка, job-бар,
+        // строка-вопрос или баннер; тосты — справа над ней.
         let root = root
             .child(panels)
-            .children(overlays::job_bar(s, &self.theme, &click))
+            .children(overlays::toasts(&self.toasts, &self.theme))
+            .children(overlays::banner(s, &self.theme, &click))
             .children(field::draft_bar(
                 s,
                 self.field.as_ref(),
@@ -1173,16 +1204,23 @@ impl Render for CoreHost {
                 &click_all,
             ))
             .children(prompt)
+            .children(overlays::job_bar(s, &self.theme, &click))
             .child(
                 div()
                     .flex_none()
-                    .h(px(
-                        self.theme.m(Metric::HCmdline) + self.theme.m(Metric::HKeybar)
-                    ))
+                    .h(px(self.theme.m(Metric::HCmdline)
+                        + self.theme.m(Metric::HStatus)
+                        + self.theme.m(Metric::HKeybar)))
                     .flex()
                     .child(cached(
                         &self.bottom,
-                        chrome::bottom_print(s, self.keybar.items(self.mods), self.mods, dark),
+                        chrome::bottom_print(
+                            s,
+                            &crate::status::zones(s, &self.theme.fmt),
+                            self.keybar.items(self.mods),
+                            self.mods,
+                            dark,
+                        ),
                         &mut self.bottom_print,
                     )),
             )
@@ -1201,14 +1239,19 @@ impl Render for CoreHost {
             .children(open.as_ref().and_then(|id| {
                 self.menu
                     .flyout(id, &crate::keybar::FarStub, &self.theme, &click_all)
-            }))
-            .children(overlays::toasts(&self.toasts, &self.theme));
+            }));
         if let Some(b) = self.bench.as_mut() {
             b.built(t0.elapsed());
         }
         root
     }
 }
+
+/// Полоса контекста сверху окна (T-01-5), px.
+const CONTEXT_BAR: f32 = 3.0;
+
+/// Полоса захвата сплиттера по обе стороны линии, px.
+const SPLITTER_GRAB: f32 = 3.0;
 
 /// Окно GPUI с Core; возвращается после выхода из цикла (сессия уже сохранена).
 pub fn run(launch: Launch, geom: Option<WindowGeom>) {

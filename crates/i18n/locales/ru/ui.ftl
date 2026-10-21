@@ -222,3 +222,18 @@ ui-theme-unknown = Неизвестная тема «{ $id }»
 ui-theme-error = Тема не загружена: { $error }
 ui-context-admin = Администратор
 ui-context-remote = Удалённый сеанс
+
+## Каркас окна (D-02, №61)
+ui-panel-count = { $count } { $count ->
+    [one] объект
+    [few] объекта
+   *[many] объектов
+}
+ui-status-selected = Выделено { $count } из { $total }
+ui-status-selected-bytes = Выделено { $count } из { $total } · { $bytes }
+ui-status-free = { $root } { $bytes } свободно
+ui-status-dir = { $name } · { $count } { $count ->
+    [one] объект
+    [few] объекта
+   *[many] объектов
+}

@@ -166,7 +166,7 @@ fn density_and_font_sizes() {
     let (t, _) = Tokens::build(&SysProbe::default(), &cfg);
     assert_eq!(t.m(Metric::HRow), 28.0);
     assert_eq!(t.m(Metric::TypeBody), 16.0);
-    assert_eq!(t.m(Metric::TypeCaption), 14.0);
+    assert_eq!(t.m(Metric::TypeCaption), 15.0);
     assert_eq!(Tokens::default().m(Metric::HRow), 24.0);
 }
 

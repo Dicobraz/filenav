@@ -160,7 +160,7 @@ impl Default for UiCfg {
             accent: "system".into(),
             renderer: "auto".into(),
             font_ui: "system".into(),
-            font_ui_size: 14.0,
+            font_ui_size: 13.0,
             font_mono: "system".into(),
             font_mono_size: 13.0,
             fallback_fonts: Vec::new(),
@@ -206,6 +206,6 @@ fg = "@accent.text"
         assert!(toml::from_str::<UiCfg>("icons = \"neon\"").is_err());
         assert_eq!(cfg.tokens.light["accent.fill"], "#0067C0");
         assert_eq!(cfg.colors.len(), 1, "`highlight` — синоним `colors`");
-        assert_eq!(cfg.font_ui_size, 14.0);
+        assert_eq!(cfg.font_ui_size, 13.0);
     }
 }

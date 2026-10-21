@@ -126,14 +126,18 @@ metrics! {
     FocusInner = "focus.inner": 1.0,
     HTitlebar = "h.titlebar": 40.0,
     HTab = "h.tab": 32.0,
-    HBreadcrumb = "h.breadcrumb": 32.0,
-    HColHeader = "h.col_header": 28.0,
+    // Метрики окна — docs/design/DESIGN.md (D-02).
+    HBreadcrumb = "h.breadcrumb": 30.0,
+    HColHeader = "h.col_header": 24.0,
     HRow = "h.row": 24.0,
     HPanelFooter = "h.panel_footer": 28.0,
     HJobRow = "h.job_row": 32.0,
     HBanner = "h.banner": 48.0,
-    HCmdline = "h.cmdline": 32.0,
-    HKeybar = "h.keybar": 24.0,
+    HCmdline = "h.cmdline": 30.0,
+    HKeybar = "h.keybar": 26.0,
+    HStatus = "h.status": 26.0,
+    // Разделитель панелей (линия `border`).
+    WDivider = "w.divider": 1.0,
     HControl = "h.control": 24.0,
     HMenuItem = "h.menu_item": 28.0,
     WIcon = "w.icon": 16.0,
@@ -235,7 +239,7 @@ impl Tokens {
         metrics[Metric::HRow as usize] = f32::from(cfg.density.px());
         let body = cfg.font_ui_size.clamp(8.0, 32.0);
         metrics[Metric::TypeBody as usize] = body;
-        metrics[Metric::TypeCaption as usize] = body - 2.0;
+        metrics[Metric::TypeCaption as usize] = body - 1.0;
         metrics[Metric::TypeSubtitle as usize] = body + 6.0;
         metrics[Metric::TypeMono as usize] = cfg.font_mono_size.clamp(8.0, 32.0);
         let tokens = Tokens {

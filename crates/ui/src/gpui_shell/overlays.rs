@@ -1,4 +1,5 @@
-//! Тосты (№51), job-бар и inline-вопрос (S2 §2.7–2.9) на GPUI (G-05).
+//! Тосты (№51, №63), баннер, job-бар и inline-вопрос (S2 §2.7–2.9) на GPUI (G-05).
+//! Всё событийное — внизу одной зоной (№63); тосты — справа над ней.
 
 use std::time::{Duration, Instant};
 
@@ -11,7 +12,15 @@ use crate::tokens::{Metric, Role};
 
 /// Стек тостов: не больше трёх, лишние — «+N» (№51).
 const TOASTS_MAX: usize = 3;
-const W_TOAST: f32 = 360.0;
+/// Скругление тоста (D-02).
+const TOAST_RADIUS: f32 = 6.0;
+/// Ширина тоста (№63).
+const W_TOAST: f32 = 340.0;
+/// Тосты — над зоной событий, отступ от её верха и от правого края.
+const TOAST_GAP: f32 = 12.0;
+const TOAST_RIGHT: f32 = 16.0;
+/// Строка баннера (№63).
+const H_BANNER: f32 = 40.0;
 
 /// Обработчик клика (команда в Core).
 pub(super) type Handler = Box<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
@@ -46,32 +55,16 @@ pub(super) fn toasts(list: &[Toast], theme: &Theme) -> Option<Div> {
     if list.is_empty() {
         return None;
     }
+    // Якорь — верх зоны событий (нулевая высота): тосты над ним справа, новые снизу,
+    // стопка вверх (№63). Только сообщение, без кнопок.
     let mut col = div()
         .absolute()
-        .top(px(theme.m(Metric::HTitlebar) + 8.0))
-        .right(px(16.0))
+        .bottom(px(TOAST_GAP))
+        .right(px(TOAST_RIGHT))
         .w(px(W_TOAST))
         .flex()
         .flex_col()
         .gap_2();
-    for t in list.iter().rev().take(TOASTS_MAX) {
-        let (bg, fg) = match t.level {
-            Level::Info => (Role::InfoBg, Role::TextPrimary),
-            Level::Warn => (Role::CautionBg, Role::CautionFg),
-            Level::Error => (Role::CriticalBg, Role::CriticalFg),
-        };
-        col = col.child(
-            div()
-                .p_3()
-                .rounded(px(theme.m(Metric::RadiusOverlay)))
-                .border_1()
-                .border_color(theme.c(Role::StrokeCard))
-                .bg(theme.c(bg))
-                .text_color(theme.c(fg))
-                .shadow_md()
-                .child(SharedString::from(t.text.clone())),
-        );
-    }
     if list.len() > TOASTS_MAX {
         col = col.child(
             div()
@@ -80,7 +73,96 @@ pub(super) fn toasts(list: &[Toast], theme: &Theme) -> Option<Div> {
                 .child(SharedString::from(format!("+{}", list.len() - TOASTS_MAX))),
         );
     }
-    Some(col)
+    let skip = list.len().saturating_sub(TOASTS_MAX);
+    for t in list.iter().skip(skip) {
+        let fg = match t.level {
+            Level::Info => Role::TextPrimary,
+            Level::Warn => Role::CautionFg,
+            Level::Error => Role::CriticalFg,
+        };
+        col = col.child(
+            div()
+                .px(px(12.0))
+                .py(px(10.0))
+                .rounded(px(TOAST_RADIUS))
+                .border_1()
+                .border_color(theme.c(Role::StrokeCard))
+                .bg(theme.c(Role::LayerPanel))
+                .text_size(px(12.5))
+                .text_color(theme.c(fg))
+                .child(SharedString::from(t.text.clone())),
+        );
+    }
+    Some(div().relative().h(px(0.0)).w_full().child(col))
+}
+
+/// Баннер core (№63): строка 40 в зоне событий над job-баром, сдвигает панели, живёт до
+/// ответа. Черта сверху цвета уровня, значок, текст и сразу за ним кнопки (первая —
+/// основная).
+pub(super) fn banner(s: &AppState, theme: &Theme, click: Click<'_>) -> Option<Div> {
+    let b = s.banner.as_ref()?;
+    let (bg, line, glyph) = match b.level {
+        Level::Info => (Role::InfoBg, Role::AccentFill, '\u{E946}'),
+        Level::Warn => (Role::CautionBg, Role::ContextRemote, '\u{E823}'),
+        Level::Error => (Role::CriticalBg, Role::CriticalFg, '\u{E783}'),
+    };
+    let mut row = div()
+        .h(px(H_BANNER))
+        .flex_none()
+        .flex()
+        .items_center()
+        .gap(px(10.0))
+        .px(px(theme.m(Metric::PadRowX)))
+        .bg(theme.c(bg))
+        .border_t_2()
+        .border_color(theme.c(line))
+        .text_size(px(12.5))
+        .child(
+            div()
+                .font_family("Segoe Fluent Icons")
+                .text_color(theme.c(line))
+                .child(SharedString::from(glyph.to_string())),
+        )
+        .child(
+            div()
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis()
+                .child(SharedString::from(b.text.clone())),
+        );
+    for (i, (label, cmd)) in b.actions.iter().enumerate() {
+        let primary = i == 0;
+        row = row.child(
+            div()
+                .id(SharedString::from(format!("banner-{i}")))
+                .flex_none()
+                .h(px(28.0))
+                .px(px(14.0))
+                .flex()
+                .items_center()
+                .rounded(px(4.0))
+                .border_1()
+                .border_color(theme.c(if primary {
+                    Role::AccentFill
+                } else {
+                    Role::StrokeControl
+                }))
+                .bg(theme.c(if primary {
+                    Role::AccentFill
+                } else {
+                    Role::LayerPanel
+                }))
+                .text_color(theme.c(if primary {
+                    Role::AccentOn
+                } else {
+                    Role::TextPrimary
+                }))
+                .child(SharedString::from(label.to_string()))
+                .on_click(click(cmd.clone())),
+        );
+    }
+    Some(row)
 }
 
 /// Идут ли задачи (job-бар виден, перерисовка ≤ 30 раз/с).
