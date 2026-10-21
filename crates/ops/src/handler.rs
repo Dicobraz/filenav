@@ -393,6 +393,7 @@ impl Handler for OpsHandler {
                 mkdir(cx, name)
             }
             "ops.priority" | "job.priority" | "ops.run_now" => self.job_control(cmd),
+            "ops.multi_rename" => self.multi_rename(cx, cmd),
             "ops.recover" => {
                 let path = std::path::PathBuf::from(a.str("journal").unwrap_or_default());
                 let go = a.str("action") == Some("continue");
@@ -612,6 +613,9 @@ fn draft(cx: &mut Cx<'_>, cmd: &Command, permanent: bool) {
     });
 }
 
+/// Строк в превью группового переименования.
+const MR_PREVIEW_ROWS: usize = 12;
+
 /// Прерванные job, ещё не разобранные баннером (S5-12).
 #[derive(Debug, Default)]
 struct Interrupted(Vec<crate::journal::Interrupted>);
@@ -674,6 +678,91 @@ fn next_banner(cx: &mut Cx<'_>) {
 }
 
 impl OpsHandler {
+    /// `ops.multi_rename` (S5-23): без шаблона — черновик с полем; с шаблоном —
+    /// превью (`UiEvent::Ext ops.multi_rename.preview`, без I/O — по листингу
+    /// таба) или, с `apply`, job. Цели — выделение или строка курсора.
+    fn multi_rename(&self, cx: &mut Cx<'_>, cmd: &Command) -> Result<(), CmdError> {
+        use crate::ops::multi_rename::{Problem, Target, plan};
+        let a = &cmd.args;
+        let Some(pattern) = a.str("pattern") else {
+            draft(cx, cmd, false);
+            return Ok(());
+        };
+        let t = cx.state.panel(cx.state.active).tab();
+        if !t.loc.is_local() {
+            return Err(CmdError::Rejected(
+                text("ops-not-yet", &[("what", "vfs")]).into(),
+            ));
+        }
+        let Some(tg) = t.targets() else {
+            return Err(CmdError::Rejected(text("ops-nothing", &[]).into()));
+        };
+        let targets: Vec<Target> = tg
+            .items
+            .iter()
+            .map(|e| Target {
+                name: e.name.clone(),
+                mtime: e.mtime,
+                dir: e.kind.is_dir_like(),
+            })
+            .collect();
+        let names: std::collections::HashSet<CompactString> = t
+            .listing
+            .entries
+            .iter()
+            .map(|e| crate::names::name_key(&e.name))
+            .collect();
+        let existing = |n: &str| names.contains(&crate::names::name_key(n));
+        let spec = crate::api::RenameSpec {
+            pattern: pattern.into(),
+            // В имени файла `/` не бывает: шаблон с `/` — regex «найти/заменить».
+            regex: a.bool("regex").unwrap_or_else(|| pattern.contains('/')),
+        };
+        let result = plan(&targets, &spec, &existing, &crate::sys::fs::local_ymd);
+        if a.bool("apply").unwrap_or(false) {
+            let p = result.map_err(|e| CmdError::Rejected(e.0.into()))?;
+            if p.rows.is_empty() {
+                return Err(CmdError::Rejected(text("ops-mr-nothing", &[]).into()));
+            }
+            if p.problems > 0 {
+                let n = p.problems.to_string();
+                cx.toast(Level::Warn, text("ops-mr-skipped", &[("n", &n)]));
+            }
+            crate::ops::multi_rename::start(&self.engine, cx, tg.base, &p);
+            return Ok(());
+        }
+        // Превью: первые строки и счётчики.
+        let mut args = Args::default();
+        match result {
+            Err(e) => args = args.with("error", e.0.as_str()),
+            Ok(p) => {
+                let rows: Vec<urfin_core::Value> = p
+                    .rows
+                    .iter()
+                    .take(MR_PREVIEW_ROWS)
+                    .map(|r| {
+                        let mark = match r.problem {
+                            None => "",
+                            Some(Problem::Invalid) => "invalid",
+                            Some(Problem::Duplicate) => "duplicate",
+                            Some(Problem::Exists) => "exists",
+                        };
+                        urfin_core::Value::from(format!("{}\t{}\t{mark}", r.from, r.to))
+                    })
+                    .collect();
+                args = args
+                    .with("rows", rows)
+                    .with("changed", i64::try_from(p.rows.len()).unwrap_or(i64::MAX))
+                    .with("problems", i64::try_from(p.problems).unwrap_or(i64::MAX));
+            }
+        }
+        cx.ui(UiEvent::Ext {
+            id: CommandId::from_static("ops.multi_rename.preview"),
+            args,
+        });
+        Ok(())
+    }
+
     /// `ops.priority {id, prio}`, `job.priority {id, p}`, `ops.run_now {id}` (S5-19).
     fn job_control(&self, cmd: &Command) -> Result<(), CmdError> {
         let a = &cmd.args;

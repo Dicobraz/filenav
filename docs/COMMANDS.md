@@ -153,7 +153,7 @@
 | `ops.delete` | `permanent?:bool`, `current?:bool`, `confirmed?:bool` | Delete | Удалить | F8, Shift+F8 (current=true) | — |
 | `ops.mkdir` | `name?:str`, `current?:bool` | Make folder | Создать папку | F7 | — |
 | `ops.rename` | `to?:str` | Rename | Переименовать | Shift+F6 | — |
-| `ops.multi_rename` | `pattern?:str`, `regex?:bool`, `apply?:bool` | Multi-rename | Групповое переименование | — | — |
+| `ops.multi_rename` | `pattern?:str`, `regex?:bool`, `apply?:bool` | Multi-rename | Групповое переименование | — | files |
 | `ops.attrs` | `set?:str`, `clear?:str` | Attributes | Атрибуты | — | — |
 | `ops.touch` | `mtime?:str` | Set time | Изменить время | — | — |
 | `ops.link` | `kind?:str`, `dest?:str` | Make link | Создать ссылку | Alt+F6 | — |

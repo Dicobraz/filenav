@@ -95,6 +95,12 @@ ui-prompt-more = ещё { $count } { $count ->
     [few] вопроса
    *[many] вопросов
 }
+ui-draft-ops-multi_rename = Новые имена:
+ui-mr-pattern-error = Шаблон: { $error }
+ui-mr-problem-invalid = недопустимое имя
+ui-mr-problem-duplicate = повтор
+ui-mr-problem-exists = имя занято
+ui-mr-summary = Изменится { $changed }, с проблемами { $problems } (их пропустим) · показано { $shown } · [N] имя, [E] расширение, [C:1:1:3] счётчик, [Y][M][D] дата, [U]/[L] регистр, «найти/заменить» — regex
 ui-prompt-all = Для всех
 ui-prompt-all-hint = Пробел; Shift+клавиша — ответ для всех
 ui-prompt-new-name = Новое имя

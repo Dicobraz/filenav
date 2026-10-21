@@ -7425,6 +7425,7 @@ dependencies = [
  "crossbeam-channel",
  "insta",
  "postcard",
+ "regex",
  "remove_dir_all",
  "serde",
  "smallvec",
