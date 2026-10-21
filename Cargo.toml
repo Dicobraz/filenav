@@ -108,6 +108,55 @@ opt-level = "s"
 [profile.release.package.serde_json]
 opt-level = "s"
 
+# Декодеры изображений и SVG, Markdown/HTML из gpui (ADR-0018): в файловом
+# менеджере не на горячем пути — по размеру (бюджет бинаря 25 МБ, №54).
+[profile.release.package.image]
+opt-level = "s"
+[profile.release.package.zune-jpeg]
+opt-level = "s"
+[profile.release.package.image-webp]
+opt-level = "s"
+[profile.release.package.exr]
+opt-level = "s"
+[profile.release.package.tiff]
+opt-level = "s"
+[profile.release.package.gif]
+opt-level = "s"
+[profile.release.package.png]
+opt-level = "s"
+[profile.release.package.qoi]
+opt-level = "s"
+[profile.release.package.usvg]
+opt-level = "s"
+[profile.release.package.resvg]
+opt-level = "s"
+[profile.release.package.tiny-skia]
+opt-level = "s"
+[profile.release.package.tiny-skia-path]
+opt-level = "s"
+[profile.release.package.markdown]
+opt-level = "s"
+[profile.release.package.html5ever]
+opt-level = "s"
+[profile.release.package.markup5ever]
+opt-level = "s"
+[profile.release.package.rustybuzz]
+opt-level = "s"
+[profile.release.package.ttf-parser]
+opt-level = "s"
+[profile.release.package.fontdb]
+opt-level = "s"
+[profile.release.package.zune-inflate]
+opt-level = "s"
+[profile.release.package.lebe]
+opt-level = "s"
+[profile.release.package.half]
+opt-level = "s"
+[profile.release.package.fdeflate]
+opt-level = "s"
+[profile.release.package.weezl]
+opt-level = "s"
+
 # Гигиена диска (H-01): в стектрейсах — файл и строка, PDB в разы меньше.
 [profile.dev]
 debug = "line-tables-only"
