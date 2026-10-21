@@ -94,10 +94,10 @@ jobs:
         run: $PY ci/release_features.py
       - if: github.event_name == 'push'
         run: cargo build --release -p urfin-app --locked
-      # Бюджет 25 МиБ (S0-decisions №54), блокирующий (G-06: egui удалён).
-      - name: Binary size ≤ 25 MB
+      # Бюджет 30 МиБ (S0-decisions №80, растёт вместе с функциями), блокирующий.
+      - name: Binary size ≤ 30 MB
         if: github.event_name == 'push'
-        run: $PY ci/size.py "$BIN" 25
+        run: $PY ci/size.py "$BIN" 30
       - name: Smoke
         if: github.event_name == 'push'
         run: '"$BIN" --smoke'

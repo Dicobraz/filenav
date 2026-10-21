@@ -226,14 +226,32 @@ const SCENES: &[Scene] = &[
             "panel.go side=right path=\"\\\\127.0.0.1\\urfin-missing\"",
         ],
     },
+    // Job-бар и список задач (D-06): демо-задачи `screens.jobs` (только у сцен).
     Scene {
-        name: "narrow",
+        name: "screen-jobs",
         steps: &[
+            "ui.cancel",
+            "sel.none",
+            // Назад из состояний папки (`screen-errors`).
             "panel.focus side=left",
             "panel.back",
             "panel.focus side=right",
             "panel.back",
             "panel.focus side=left",
+            "screens.jobs",
+        ],
+    },
+    Scene {
+        name: "screen-jobslist",
+        steps: &["ui.jobs.toggle"],
+    },
+    Scene {
+        name: "jobs-stopped",
+        steps: &["ui.jobs.toggle", "screens.jobs stop=true"],
+    },
+    Scene {
+        name: "narrow",
+        steps: &[
             "panel.mode mode=files",
             "ui.theme.set id=system-light",
             "resize 720x600",

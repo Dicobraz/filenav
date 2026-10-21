@@ -43,7 +43,15 @@ pub(crate) fn start(
 ) -> JobId {
     let spec = JobSpec {
         kind: "trash",
-        title: tr("ops-job-trash", &[]),
+        title: {
+            let mut a = urfin_i18n::FluentArgs::new();
+            a.set("n", items.len());
+            a.set(
+                "name",
+                items.first().map_or_else(String::new, ToString::to_string),
+            );
+            urfin_i18n::current().fmt("ops-job-trash-what", &a)
+        },
         lane: Lane::Bulk,
         priority: 0,
         owner_ns: "ops",

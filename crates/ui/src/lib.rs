@@ -11,6 +11,7 @@ pub mod bench;
 pub mod color;
 pub mod commands_doc;
 pub mod config;
+mod demo;
 pub mod drives;
 pub mod field_history;
 pub mod fmt_cell;
@@ -32,6 +33,7 @@ pub mod views;
 
 use urfin_core::{Core, Side};
 
+pub use demo::register_demo;
 pub use handler::UiHandler;
 pub use state::{Draft, ThemePolicy, UiState};
 pub use theme_cmd::ThemeEnv;

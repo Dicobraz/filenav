@@ -330,7 +330,7 @@ pub(crate) fn start_retry(
         } else {
             "copy"
         },
-        title: job_title(spec.mode, &names),
+        title: job_title(&names, &shown(first_dst.parent().unwrap_or(&first_dst))),
         lane: Lane::Bulk,
         priority: prio(spec.opts.priority),
         owner_ns: "ops",
@@ -375,7 +375,14 @@ pub(crate) fn start(eng: &JobEngine, cx: &mut Cx<'_>, s: Start) -> JobId {
     } else {
         Mode::Copy
     };
-    let title = job_title(mode, &s.req.items);
+    let dest = s.req.dest.as_ref().map_or_else(String::new, |d| {
+        if d.is_local() {
+            d.path.display().to_string()
+        } else {
+            d.to_uri()
+        }
+    });
+    let title = job_title(&s.req.items, &dest);
     let spec = JobSpec {
         kind: if mode == Mode::Move { "move" } else { "copy" },
         title,
@@ -397,19 +404,16 @@ fn prio(p: crate::api::Priority) -> u8 {
     }
 }
 
-fn job_title(mode: Mode, items: &[CompactString]) -> String {
-    let key = if mode == Mode::Move {
-        "ops-job-move"
-    } else {
-        "ops-job-copy"
-    };
+/// Название задачи для job-бара (D-06): «что → куда»; вид («Копирование») пишет UI.
+fn job_title(items: &[CompactString], dest: &str) -> String {
     let mut a = urfin_i18n::FluentArgs::new();
     a.set("n", items.len());
     a.set(
         "name",
         items.first().map_or_else(String::new, ToString::to_string),
     );
-    urfin_i18n::current().fmt(key, &a)
+    a.set("dest", dest.to_owned());
+    urfin_i18n::current().fmt("ops-job-transfer", &a)
 }
 
 fn tr(key: &str, args: &[(&str, &str)]) -> String {

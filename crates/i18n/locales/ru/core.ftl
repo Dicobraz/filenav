@@ -119,3 +119,20 @@ ops-job-trash = В корзину
 ops-job-delete = Удаление
 ops-delete-failed = Не удалено: { $error }
 term-not-yet = Терминал: { $what } — ещё не сделано (S6)
+
+## Названия задач для job-бара (D-06): «что → куда», вид пишет UI
+ops-job-items = { $n ->
+    [one] { $name }
+    [few] { $n } объекта
+   *[many] { $n } объектов
+}
+ops-job-transfer = { $n ->
+    [one] { $name }
+    [few] { $n } объекта
+   *[many] { $n } объектов
+} → { $dest }
+ops-job-trash-what = { $n ->
+    [one] { $name }
+    [few] { $n } объекта
+   *[many] { $n } объектов
+} → Корзина

@@ -539,7 +539,17 @@ fn delete(cx: &mut Cx<'_>, req: OpRequest) -> Result<(), CmdError> {
     let job = cx.state.jobs.start(
         urfin_core::JobSpec {
             kind: "delete",
-            title: text("ops-job-delete", &[]),
+            title: {
+                let mut a = urfin_i18n::FluentArgs::new();
+                a.set("n", req.items.len());
+                a.set(
+                    "name",
+                    req.items
+                        .first()
+                        .map_or_else(String::new, ToString::to_string),
+                );
+                urfin_i18n::current().fmt("ops-job-items", &a)
+            },
             lane: Lane::Bulk,
             priority: 0,
             owner_ns: "ops",
