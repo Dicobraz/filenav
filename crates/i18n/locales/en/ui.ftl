@@ -211,3 +211,16 @@ ui-theme-unknown = Unknown theme “{ $id }”
 ui-theme-error = Theme not loaded: { $error }
 ui-context-admin = Administrator
 ui-context-remote = Remote session
+
+## Каркас окна (D-02, №61)
+ui-panel-count = { $count } { $count ->
+    [one] item
+   *[other] items
+}
+ui-status-selected = Selected { $count } of { $total }
+ui-status-selected-bytes = Selected { $count } of { $total } · { $bytes }
+ui-status-free = { $root } { $bytes } free
+ui-status-dir = { $name } · { $count } { $count ->
+    [one] item
+   *[other] items
+}

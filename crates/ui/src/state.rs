@@ -79,6 +79,8 @@ pub struct UiState {
     pub policy: ThemePolicy,
     /// Каталог своих тем (`<config_dir>/themes`); `None` — без диска (тесты).
     pub themes_dir: Option<std::path::PathBuf>,
+    /// Свободное место тома активной панели — статус-строка (D-02).
+    pub free: Option<crate::status::FreeSpace>,
     /// Масштаб в процентах (`ui.zoom`), 100 — без масштаба.
     pub zoom: u16,
     /// Доля левой панели (`ui.split`), 0,5 — поровну.
@@ -121,6 +123,7 @@ impl UiState {
             user_themes: UserThemes::default(),
             policy: ThemePolicy::default(),
             themes_dir: None,
+            free: None,
             columns: None,
             panels_hidden: false,
             tree: [None, None],

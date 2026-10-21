@@ -21,6 +21,7 @@ pub mod keybar;
 pub mod layout;
 pub mod menu;
 pub mod state;
+pub mod status;
 pub mod sys;
 pub mod theme;
 mod theme_cmd;

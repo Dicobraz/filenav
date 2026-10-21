@@ -6,10 +6,10 @@ use gpui_kit::prelude::*;
 use std::rc::Rc;
 
 use gpui_kit::{
-    App, Bounds, ClickEvent, ContentMask, Context, Div, Font, FontWeight, Hsla, IntoElement,
-    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render,
-    ScrollWheelEvent, SharedString, Stateful, TextAlign, TextRun, TruncateFrom, WeakEntity, Window,
-    canvas, div, point, px, size as size2,
+    App, Bounds, ClickEvent, ContentMask, Context, Div, Font, Hsla, IntoElement, MouseButton,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, ScrollWheelEvent,
+    SharedString, Stateful, TextAlign, TextRun, TruncateFrom, WeakEntity, Window, canvas, div,
+    point, px, size as size2,
 };
 use urfin_core::{AppState, Row, Side, Tab, ViewMode};
 use urfin_i18n::FluentArgs;
@@ -37,7 +37,7 @@ pub(super) fn grid(theme: &Theme, mode: ViewMode, w: f32, h: f32) -> (u32, u32) 
     } else {
         0.0
     };
-    let list_h = h - theme.m(Metric::HBreadcrumb) - head - theme.m(Metric::HPanelFooter) - 2.0;
+    let list_h = h - theme.m(Metric::HBreadcrumb) - head;
     #[allow(clippy::cast_sign_loss, reason = "не меньше 1.0")]
     let rows = (list_h / theme.m(Metric::HRow)).floor().max(1.0) as u32;
     let cols = match mode {
@@ -126,6 +126,7 @@ impl Render for PanelView {
                 body.child(path_bar(
                     t,
                     side,
+                    s.active == side,
                     theme,
                     h.field.as_ref(),
                     panel_w,
@@ -220,8 +221,9 @@ pub(super) fn cursor_mode() -> (bool, bool) {
     })
 }
 
-/// Карточка панели (рамка активной — акцентом); части кладёт окно.
-pub(super) fn card(active: bool, theme: &Theme) -> Div {
+/// Панель — плоская, фон `panel`, без рамки (D-02): активную видно по подчёркнутому
+/// пути. Части кладёт окно.
+pub(super) fn card(theme: &Theme) -> Div {
     div()
         .flex_1()
         .min_w_0()
@@ -229,13 +231,6 @@ pub(super) fn card(active: bool, theme: &Theme) -> Div {
         .flex()
         .flex_col()
         .overflow_hidden()
-        .rounded(px(theme.m(Metric::RadiusOverlay)))
-        .border_1()
-        .border_color(theme.c(if active {
-            Role::AccentFill
-        } else {
-            Role::StrokeCard
-        }))
         .bg(theme.c(Role::LayerPanel))
 }
 
@@ -265,14 +260,16 @@ fn crumbs(t: &Tab) -> Vec<(String, std::path::PathBuf)> {
     out
 }
 
-/// Breadcrumb (S2-12): сегмент — переход к нему, пустое место — правка пути. Не
-/// влезает в ширину панели — начальные сегменты сворачиваются в «…» (переход к
-/// последнему скрытому), текущая папка видна всегда.
+/// Путь панели (D-02, S2-12): строка пути `C:\Dev\urfin` — у активной панели цвет
+/// `text` и подчёркивание `accent` 2 px, у другой — `secondary`; справа «N объектов».
+/// Сегмент — переход к нему, пустое место — правка пути. Не влезает — начальные
+/// сегменты сворачиваются в «…» (переход к последнему скрытому), текущая папка видна.
 #[allow(clippy::too_many_arguments, reason = "плоский вызов отрисовки")]
 #[allow(clippy::too_many_lines, reason = "сегменты слева направо")]
 fn path_bar(
     t: &Tab,
     side: Side,
+    active: bool,
     theme: &Theme,
     field: Option<&super::field::Field>,
     width: f32,
@@ -285,42 +282,43 @@ fn path_bar(
         .flex()
         .items_center()
         .px(px(theme.m(Metric::PadRowX)))
+        .text_size(px(PATH_TEXT))
         .border_b_1()
         .border_color(theme.c(Role::StrokeDivider));
     if let Some(input) = super::field::path_input(field, side) {
         return bar.child(div().flex_1().child(input));
     }
     let name = super::chrome::side_name(side);
-    let mut segs = div().flex().items_center().min_w_0().overflow_hidden();
+    let color = theme.c(if active {
+        Role::TextPrimary
+    } else {
+        Role::TextSecondary
+    });
+    let mut segs = div()
+        .flex()
+        .items_center()
+        .min_w_0()
+        .overflow_hidden()
+        .whitespace_nowrap()
+        .text_color(color)
+        .when(active, |d| {
+            d.border_b_2()
+                .border_color(theme.c(Role::AccentFill))
+                .pb(px(3.0))
+                .mt(px(5.0))
+        });
     let list = if t.loc.is_local() {
         crumbs(t)
     } else {
         Vec::new()
     };
-    let final_seg = list.len().saturating_sub(1);
     let first = first_shown(&list, width - 2.0 * theme.m(Metric::PadRowX), measure);
-    let chevron = || {
-        div()
-            .px_1()
-            .font_family("Segoe Fluent Icons")
-            .text_size(px(8.0))
-            .text_color(theme.c(Role::TextSecondary))
-            .child(SharedString::from("\u{E76C}"))
-    };
-    let seg = |id: String, label: SharedString, path: std::path::PathBuf, last: bool| {
+    let sep = || div().child(SharedString::new_static("\\"));
+    let seg = |id: String, label: SharedString, path: std::path::PathBuf| {
         let loc = urfin_core::Location::local(path);
         div()
             .id(SharedString::from(id))
-            .px_1()
-            .rounded(px(theme.m(Metric::RadiusControl)))
-            .whitespace_nowrap()
-            .text_color(theme.c(if last {
-                Role::TextPrimary
-            } else {
-                Role::TextSecondary
-            }))
-            .when(last, |d| d.font_weight(FontWeight::SEMIBOLD))
-            .hover(|d| d.bg(theme.c(Role::FillSubtleHover)))
+            .hover(Styled::underline)
             .child(label)
             .on_click(cx.listener(move |h, _: &ClickEvent, w, cx| {
                 h.run(
@@ -340,42 +338,56 @@ fn path_bar(
                 format!("crumb-{name}-more"),
                 SharedString::new_static("…"),
                 path.clone(),
-                false,
             ))
-            .child(chevron());
+            .child(sep());
     }
     for (k, (label, path)) in list.into_iter().enumerate().skip(first) {
+        // У диска разделитель уже в подписи (`C:` + `\`).
         if k > first {
-            segs = segs.child(chevron());
+            segs = segs.child(sep());
         }
         segs = segs.child(seg(
             format!("crumb-{name}-{k}"),
             SharedString::from(label),
             path,
-            k == final_seg,
         ));
     }
     if !t.loc.is_local() {
         segs = segs.child(SharedString::from(t.loc.to_uri()));
     }
-    bar.child(segs).child(
-        div()
-            .id(SharedString::from(format!("crumb-edit-{name}")))
-            .flex_1()
-            .h_full()
-            .on_click(cx.listener(move |h, _: &ClickEvent, w, cx| {
-                h.run(
-                    urfin_core::Command::new("ui.path_edit").arg("side", name),
-                    w,
-                    cx,
-                );
-            })),
-    )
+    let mut args = FluentArgs::new();
+    let st = &t.listing.stats;
+    args.set("count", u64::from(st.files + st.dirs));
+    let count = urfin_i18n::current().fmt("ui-panel-count", &args);
+    bar.child(segs)
+        .child(
+            div()
+                .id(SharedString::from(format!("crumb-edit-{name}")))
+                .flex_1()
+                .h_full()
+                .on_click(cx.listener(move |h, _: &ClickEvent, w, cx| {
+                    h.run(
+                        urfin_core::Command::new("ui.path_edit").arg("side", name),
+                        w,
+                        cx,
+                    );
+                })),
+        )
+        .child(
+            div()
+                .flex_none()
+                .text_color(theme.c(Role::TextSecondary))
+                .child(SharedString::from(count)),
+        )
 }
 
-/// Ширина сегмента пути с полями и разделитель между сегментами.
-const CRUMB_PAD: f32 = 8.0;
-const CRUMB_CHEVRON: f32 = 16.0;
+/// Текст пути и шапки колонок (D-02), px.
+const PATH_TEXT: f32 = 12.5;
+const COL_HEAD_TEXT: f32 = 11.5;
+
+/// Ширина сегмента пути с полями и разделитель `\` между сегментами.
+const CRUMB_PAD: f32 = 0.0;
+const CRUMB_CHEVRON: f32 = 8.0;
 /// Место справа от пути под клик «править путь».
 const CRUMB_EDIT_MIN: f32 = 32.0;
 
@@ -408,7 +420,6 @@ fn col_header(side: Side, theme: &Theme, cols: (f32, f32), cx: &Listen) -> Div {
     let cell = |key: &str, sort: &'static str, w: Option<f32>| {
         let d = div()
             .id(SharedString::from(format!("col-{sort}-{side:?}")))
-            .px_1()
             .child(SharedString::from(i18n.get(key)))
             .on_click(cx.listener(move |h, _: &ClickEvent, w, cx| {
                 h.run_all(
@@ -432,15 +443,10 @@ fn col_header(side: Side, theme: &Theme, cols: (f32, f32), cx: &Listen) -> Div {
         .flex()
         .items_center()
         .px(px(theme.m(Metric::PadRowX)))
-        .text_size(px(theme.m(Metric::TypeCaption)))
+        .text_size(px(COL_HEAD_TEXT))
         .text_color(theme.c(Role::TextSecondary))
         .border_b_1()
         .border_color(theme.c(Role::StrokeDivider))
-        .child(
-            div()
-                .w(px(theme.m(Metric::WIcon) + 8.0 + MARK_W))
-                .flex_none(),
-        )
         .child(cell("ui-col-name", "name", None))
         .when(cols.0 > 0.0, |d| {
             d.child(cell("ui-col-size", "size", Some(cols.0)))
