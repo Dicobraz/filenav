@@ -1999,7 +1999,7 @@ const erVals = erOn || erToastOn ? {
 showJobs: erOn, showToast: false, erOn, erToastOn,
 erTitle: erBusy ? "Файл используется:" : "Нет доступа:",
 erPath: erBusy ? "report_q3.xlsx" : "C:\\Windows\\System32\\config\\SAM",
-erWhy: erBusy ? "открыт другой программой · код 32, повтор 3 раза не помог" : "отказано в доступе · код 5",
+erWhy: erBusy ? "открыт в EXCEL.EXE (PID 8812) · код 32, повтор 3 раза не помог" : "отказано в доступе · код 5",
 erAll: true,
 erLine: "position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; height: 48px; box-sizing: border-box; padding: 0 16px; display: flex; align-items: center; gap: 10px; background: " + t.wbg + "; border-top: 2px solid " + t.rem + "; --bg: " + t.wbg + "; --fl: color-mix(in srgb, " + t.rem + " 22%, " + t.wbg + "); animation: urfinFlash 1.4s ease-in-out 0.3s 1",
 jobs: erOn ? [erBusy
