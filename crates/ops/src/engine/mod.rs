@@ -15,6 +15,7 @@
 //! `ops-wN-i`; все завершаются вместе с job, воркеров всех job не больше
 //! `ops.max_threads` ([`ThreadBudget`]).
 
+pub(crate) mod aimd;
 mod device;
 mod finalize;
 mod job;
@@ -71,7 +72,7 @@ pub(crate) trait OpExec: Send + Sync + Sized + 'static {
     /// Работа осталась без ответа (отмена job): убрать следы (temp).
     fn discard(&self, _item: Self::Item, _issue: &Issue) {}
 
-    /// Раз в секунду из координатора (журнал: сброс, счётчики).
+    /// Раз в 500 мс из координатора (журнал: сброс, счётчики; AIMD воркеров).
     fn tick(&self, _cx: &ExecCx<'_>) {}
 
     /// Как повторить упавшее (`ops.retry`): хранится с отчётом job.

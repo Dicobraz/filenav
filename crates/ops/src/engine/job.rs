@@ -28,6 +28,8 @@ use crate::api::{FailedItem, Issue, Report};
 pub(super) const POLL: Duration = Duration::from_millis(10);
 /// Не чаще — `panel.refresh` затронутых табов (S0 v2 №14).
 const TOUCH_EVERY: Duration = Duration::from_secs(1);
+/// Шаг [`OpExec::tick`]: замер AIMD (S5 §3.3) и сброс журнала.
+const TICK_EVERY: Duration = Duration::from_millis(500);
 /// Раз в столько работ план проверяет паузу и обслуживает Finalizer.
 const PLAN_TICK: u64 = 64;
 /// Окно замера скорости для `Report.peak_bps`.
@@ -450,7 +452,7 @@ impl<E: OpExec> Coord<E> {
         if self.last_touch.is_none_or(|t| now - t >= TOUCH_EVERY) {
             self.flush_touched(now);
         }
-        if now - self.last_tick >= TOUCH_EVERY {
+        if now - self.last_tick >= TICK_EVERY {
             self.last_tick = now;
             self.sh.exec.tick(&self.cx());
         }
