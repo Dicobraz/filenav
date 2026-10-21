@@ -6,6 +6,7 @@
 //! S6-02…S6-22 (`docs/TASKS-M3.md`).
 
 pub mod config;
+pub mod sys;
 
 pub use config::{CompleteConfig, HistoryConfig, ShellConfig, TermConfig};
 
