@@ -67,8 +67,8 @@ const WORKERS: u16 = 16;
 /// Выход с прерыванием задач (вопрос при выходе, S5 §6.4): прерванные job
 /// оставляют журнал для «Продолжить».
 pub(crate) static QUITTING: AtomicBool = AtomicBool::new(false);
-/// Раз в столько секунд — счётчики в журнал.
-const COUNTERS_EVERY: u64 = 5;
+/// Раз в столько тиков (500 мс) — счётчики в журнал (5 с).
+const COUNTERS_EVERY: u64 = 10;
 /// Паузы автоповтора транзиентных ошибок (S5 §2.2, S5-11).
 const RETRY_WAITS: [Duration; 3] = [
     Duration::from_millis(200),
@@ -226,6 +226,8 @@ pub(crate) struct Transfer {
     pairs: Vec<(PathBuf, PathBuf)>,
     /// Метка временных файлов job.
     tag: String,
+    /// AIMD работающих воркеров и прошлый замер (байты, файлы, время).
+    aimd: Mutex<Option<(crate::engine::aimd::Aimd, u64, u64, std::time::Instant)>>,
     /// Каталог журналов (`None` — без журнала: повтор, тесты).
     journal_dir: Option<PathBuf>,
     /// Корни копии «источник → назначение» (план): цели junction внутри дерева
@@ -345,6 +347,7 @@ pub(crate) fn start_retry(
         small: spec.small,
         pairs,
         tag: new_tag(),
+        aimd: Mutex::default(),
         journal_dir: None,
         roots: Mutex::default(),
         strategy: crate::strategy::StrategyTable::default(),
@@ -460,6 +463,7 @@ impl Transfer {
             small: s.small_file,
             pairs: Vec::new(),
             tag: new_tag(),
+            aimd: Mutex::default(),
             journal_dir: s.journal_dir,
             roots: Mutex::default(),
             strategy: s.strategy,
@@ -815,6 +819,34 @@ impl Transfer {
             let rest = strip_prefix_ci(&target, &src)?;
             Some(PathBuf::from(shown(dst)).join(rest))
         })
+    }
+
+    /// Замер AIMD (S5-19): пропускная способность с прошлого тика → число
+    /// работающих воркеров в [`Gate`].
+    fn aimd_step(&self, cx: &ExecCx<'_>) {
+        let mut g = self.aimd.lock().unwrap_or_else(PoisonError::into_inner);
+        let Some((a, bytes0, items0, t0)) = g.as_mut() else {
+            return;
+        };
+        let p = cx.progress();
+        let (bytes, items) = (
+            p.bytes_done.load(Ordering::Relaxed),
+            p.items_done.load(Ordering::Relaxed),
+        );
+        let dt = t0.elapsed().as_secs_f64();
+        if dt <= 0.0 {
+            return;
+        }
+        let work = bytes.saturating_sub(*bytes0)
+            + items.saturating_sub(*items0) * crate::engine::aimd::ITEM_WEIGHT;
+        #[allow(clippy::cast_precision_loss, reason = "скорость")]
+        let rate = work as f64 / dt;
+        (*bytes0, *items0, *t0) = (bytes, items, std::time::Instant::now());
+        let n = a.step(rate);
+        if self.gate.max.swap(n, Ordering::Relaxed) != n {
+            tracing::debug!(workers = n, rate, "aimd");
+            self.gate.cv.notify_all();
+        }
     }
 
     /// Проблема «имя занято» для вопроса.
@@ -1764,6 +1796,7 @@ impl OpExec for Transfer {
     }
 
     fn tick(&self, cx: &ExecCx<'_>) {
+        self.aimd_step(cx);
         let Some(j) = self.journal.get() else {
             return;
         };
@@ -1956,6 +1989,13 @@ impl Transfer {
             .min()
             .unwrap_or(1);
         self.gate.max.store(n, Ordering::Relaxed);
+        let hdd = media.contains(&Media::Hdd);
+        *self.aimd.lock().unwrap_or_else(PoisonError::into_inner) = Some((
+            crate::engine::aimd::Aimd::new(n, usize::from(WORKERS), hdd),
+            0,
+            0,
+            std::time::Instant::now(),
+        ));
         // Устройство: номер диска; нет — номер тома (сеть — по корню).
         let key = |p: &Path, v: &Option<urfin_vfs::volume::VolumeInfo>| {
             sys::device_key(p).unwrap_or_else(|| v.as_ref().map_or(0, |v| v.id))
