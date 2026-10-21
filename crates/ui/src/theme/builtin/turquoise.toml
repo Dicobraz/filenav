@@ -1,0 +1,26 @@
+# Тема «turquoise» — docs/THEMES.md (утверждено 2026-10-20, S0-decisions №59).
+id = "turquoise"
+
+[roles]
+frame = "#DFEDEB"
+panel = "#EDF5F4"
+header = "#E6F1EF"
+text = "#1D2E2D"
+secondary = "#5A7270"
+accent = "#2C8C86"
+cursor = "#CFE9E6"
+cursor_text = "#1D2E2D"
+border = "#CFE1DE"
+current_line = "#E4F0EE"
+highlight = "#F0E2A6"
+modified = "#B0502F"
+exec = "#3A7D2E"
+archive = "#7A4FA8"
+context_admin = "#B0502F"
+context_remote = "#A86A12"
+
+[syntax]
+keyword = "#1F6F6A"
+string = "#8A4B12"
+number = "#6A3FA0"
+comment = "#5A7270"

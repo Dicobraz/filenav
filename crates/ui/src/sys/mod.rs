@@ -1,4 +1,4 @@
-//! Системный probe (S2 §1.5): тема, акцент, прозрачность, высокая контрастность, файлы
+//! Системный probe (S2 §1.5): тема, акцент, высокая контрастность, файлы
 //! шрифтов. Все чтения — до окна, в `app::boot` (поток `font-probe`); в кадре I/O нет.
 //! Изменения темы и акцента приходят из [`watch`] (поток `sys-watch`).
 //! `unsafe` разрешён только в платформенных модулях (S0 v4 №1).
@@ -56,14 +56,12 @@ mod other;
 #[cfg(not(windows))]
 use other as os;
 
-/// То, что меняется на лету: тема, акцент, прозрачность, контрастность.
+/// То, что меняется на лету: тема, акцент, контрастность.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct Look {
     /// `None` — ОС не сказала, тему ведёт winit (`ctx.system_theme()`).
     pub theme: Option<crate::color::Theme>,
     pub accent: AccentPalette,
-    /// Прозрачность окон включена (Mica — S2-06).
-    pub transparency: bool,
     pub high_contrast: bool,
     /// Системные цвета при высокой контрастности (Windows, `GetSysColor`).
     pub hc: Option<HcColors>,
@@ -80,11 +78,20 @@ pub struct HcColors {
     pub hotlight: crate::color::Color32,
 }
 
-/// Возможности материала окна (S2 §1.4).
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
-pub struct BackdropCaps {
-    /// Mica: Windows 11 22H2+ (сборка ≥ 22621).
-    pub mica: bool,
+/// Политика тем организации, как прочитана (T-01-5).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ThemePolicyRaw {
+    pub theme: Option<String>,
+    pub locked: bool,
+}
+
+/// Особый контекст окна (T-01-5): полоса 3 px сверху и метка в заголовке.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Context {
+    /// Повышенные права (`TokenElevation`) — `context_admin`.
+    Admin,
+    /// Удалённый сеанс (`SM_REMOTESESSION`) — `context_remote`.
+    Remote,
 }
 
 /// Файлы шрифтов ОС по цепочкам S2 §1.5. Пустая цепочка — встроенные шрифты.
@@ -106,8 +113,9 @@ pub struct FontFiles {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SysProbe {
     pub look: Look,
-    pub backdrop: BackdropCaps,
     pub fonts: FontFiles,
+    pub policy: ThemePolicyRaw,
+    pub context: Option<Context>,
     /// Например, «нет ни одного шрифта интерфейса» — тогда встроенные шрифты egui.
     pub warnings: Vec<ConfigWarning>,
 }
@@ -121,8 +129,9 @@ pub fn probe_system() -> SysProbe {
     let _ = Zone::system();
     let mut probe = SysProbe {
         look: os::look(),
-        backdrop: os::backdrop(),
         fonts: os::fonts(),
+        policy: os::theme_policy(),
+        context: os::context(),
         warnings: Vec::new(),
     };
     if cfg!(windows) {
@@ -139,17 +148,6 @@ fn font_warning(fonts: &FontFiles) -> Option<ConfigWarning> {
         key: "ui.fonts".to_owned(),
         msg: urfin_i18n::current().get("ui-warn-no-system-font"),
     })
-}
-
-/// Mica сейчас: Win11 22H2+, не высокая контрастность и `[ui] backdrop` — `auto` при
-/// включённой прозрачности или `mica` (принудительно). Нужна до окна (прозрачный swapchain).
-pub fn mica_wanted(backdrop_cfg: &str) -> bool {
-    let cfg = backdrop_cfg.trim().to_ascii_lowercase();
-    if cfg == "solid" {
-        return false;
-    }
-    let look = os::look();
-    os::backdrop().mica && !look.high_contrast && (look.transparency || cfg == "mica")
 }
 
 /// Следит за темой и акцентом ОС: новый [`Look`] уходит в `sink`, окно будит `wake`.

@@ -1,22 +1,22 @@
-//! Токены Fluent (S2 §1.2–1.3): цвета ролей для светлой и тёмной темы, метрики,
-//! переопределения `[ui.tokens.*]`, режим высокой контрастности. Стиль egui из токенов —
-//! [`style`].
+//! Токены интерфейса (S2 §1.2–1.3): цвета ролей и метрики, которыми рисуют виды.
+//! Цвета выводятся из темы оформления ([`crate::theme`], T-01, №59): роли дизайна
+//! (frame, panel, header, …) → роли S2 по таблице в [`palette_of`]; поверх —
+//! переопределения `[ui.tokens.light|dark]`.
 
 #![allow(
     clippy::many_single_char_names,
     reason = "цветовые формулы: r, g, b, a"
 )]
 
-mod fluent;
-
 use std::fmt::Write as _;
 
-use crate::color::{Color32, Theme};
+use crate::color::Color32;
 use urfin_core::ConfigWarning;
 
 use crate::accent::AccentPalette;
-use crate::config::{Density, UiCfg};
+use crate::config::UiCfg;
 use crate::sys::SysProbe;
+use crate::theme::{self, OsLook, Theme, Themes};
 
 macro_rules! roles {
     ($($role:ident = $name:literal,)+) => {
@@ -78,6 +78,14 @@ roles! {
     TypeExec = "type.exec",
     TypeTemp = "type.temp",
     TypeMuted = "type.muted",
+    // Роли дизайна без пары в S2 (docs/THEMES.md).
+    Header = "header",
+    CursorText = "cursor.text",
+    CurrentLine = "current_line",
+    Highlight = "highlight",
+    Modified = "modified",
+    ContextAdmin = "context.admin",
+    ContextRemote = "context.remote",
 }
 
 macro_rules! metrics {
@@ -163,14 +171,14 @@ impl Palette {
     }
 }
 
-/// Токены окна: палитры обеих тем и метрики.
+/// Токены окна: палитра текущей темы и метрики.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Tokens {
-    palettes: [Palette; 2],
+    palette: Palette,
     metrics: [f32; Metric::COUNT],
-    theme: Theme,
+    /// Тема, из которой выведена палитра (с подтянутым контрастом).
+    pub theme: Theme,
     pub high_contrast: bool,
-    /// Анимации egui (`ui.animations`).
     pub animations: bool,
 }
 
@@ -178,85 +186,84 @@ pub struct Tokens {
 pub const MIN_CONTRAST: f32 = 4.5;
 
 impl Tokens {
-    /// Токены из probe ОС и `[ui]`. Ошибки конфига — предупреждения, берётся дефолт.
+    /// Токены из probe ОС и `[ui]`: тема `[ui] theme` среди встроенных, иначе «как в ОС».
+    /// Ошибки конфига — предупреждения, берётся дефолт.
     pub fn build(probe: &SysProbe, cfg: &UiCfg) -> (Tokens, Vec<ConfigWarning>) {
         let mut warnings = Vec::new();
-        let accent = match cfg.accent.trim() {
-            a if a.is_empty() || a.eq_ignore_ascii_case("system") => probe.look.accent,
-            a => {
-                if let Some(c) = parse_color(a) {
-                    AccentPalette::from_base(c.to_opaque())
-                } else {
-                    warnings.push(warn("ui.accent", format!("bad color {a:?}")));
-                    probe.look.accent
+        let os = os_look(probe, cfg, &mut warnings);
+        let theme = Themes::default().resolve(&theme::normalize_choice(&cfg.theme), &os);
+        let (t, w) = Self::from_theme(theme, cfg);
+        warnings.extend(w);
+        (t, warnings)
+    }
+
+    /// Токены из готовой темы: палитра по таблице ролей, переопределения, метрики.
+    pub fn from_theme(theme: Theme, cfg: &UiCfg) -> (Tokens, Vec<ConfigWarning>) {
+        let mut warnings = Vec::new();
+        let mut palette = palette_of(&theme);
+        let hc = theme.id == "high-contrast";
+        if hc {
+            // Только системные цвета: без полупрозрачности и без переопределений.
+            for r in Role::ALL {
+                let [red, g, b, a] = palette.raw(*r);
+                if a != 255 && a != 0 {
+                    let solid = matches!(r, Role::AccentFillHover | Role::AccentFillPressed);
+                    palette.set(*r, [red, g, b, if solid { 255 } else { 0 }]);
                 }
             }
+        }
+        let none = std::collections::BTreeMap::new();
+        let (section, overrides) = if hc {
+            ("", &none)
+        } else if theme.dark {
+            ("ui.tokens.dark", &cfg.tokens.dark)
+        } else {
+            ("ui.tokens.light", &cfg.tokens.light)
         };
-        let hc = probe.look.high_contrast.then_some(probe.look.hc).flatten();
-        let palettes = match hc {
-            Some(hc) => {
-                let p = fluent::high_contrast(&hc);
-                [p.clone(), p]
+        for (name, value) in overrides {
+            let Some(role) = Role::from_name(name) else {
+                warnings.push(warn(section, format!("unknown token {name:?}")));
+                continue;
+            };
+            match parse_rgba(value) {
+                Some(c) => palette.set(role, c),
+                None => warnings.push(warn(section, format!("{name}: bad color {value:?}"))),
             }
-            None => [
-                palette(Theme::Light, &accent, &cfg.tokens.light, &mut warnings),
-                palette(Theme::Dark, &accent, &cfg.tokens.dark, &mut warnings),
-            ],
-        };
+        }
         let mut metrics: [f32; Metric::COUNT] =
             std::array::from_fn(|i| Metric::ALL[i].default_value());
-        if cfg.density == Density::Standard {
-            metrics[Metric::HRow as usize] = 32.0;
-            metrics[Metric::HControl as usize] = 32.0;
-        }
+        metrics[Metric::HRow as usize] = f32::from(cfg.density.px());
         let body = cfg.font_ui_size.clamp(8.0, 32.0);
         metrics[Metric::TypeBody as usize] = body;
         metrics[Metric::TypeCaption as usize] = body - 2.0;
         metrics[Metric::TypeSubtitle as usize] = body + 6.0;
         metrics[Metric::TypeMono as usize] = cfg.font_mono_size.clamp(8.0, 32.0);
         let tokens = Tokens {
-            palettes,
+            palette,
             metrics,
-            theme: probe.look.theme.unwrap_or(Theme::Light),
-            high_contrast: hc.is_some(),
+            high_contrast: theme.id == "high-contrast",
+            theme,
             animations: cfg.animations,
         };
         (tokens, warnings)
     }
 
-    /// Цвет роли в текущей теме.
+    /// Цвет роли.
     pub fn c(&self, r: Role) -> Color32 {
-        self.palette(self.theme).get(r)
+        self.palette.get(r)
     }
 
     pub fn m(&self, m: Metric) -> f32 {
         self.metrics[m as usize]
     }
 
-    /// Радиус скругления из метрики (0…255 px).
-    #[allow(clippy::cast_sign_loss, reason = "значение зажато в 0..=255")]
-    pub fn palette(&self, theme: Theme) -> &Palette {
-        &self.palettes[usize::from(theme == Theme::Dark)]
+    pub fn palette(&self) -> &Palette {
+        &self.palette
     }
 
-    /// Mica за базовым слоем (S2 §1.4): `bg.base` и `bg.base.alt` прозрачные — сквозь
-    /// них виден материал окна; карточки остаются непрозрачными (S0-decisions №33).
-    pub fn set_mica(&mut self, on: bool) {
-        if !on || self.high_contrast {
-            return;
-        }
-        for p in &mut self.palettes {
-            p.set(Role::BgBase, [0; 4]);
-            p.set(Role::BgBaseAlt, [0; 4]);
-        }
-    }
-
-    pub fn theme(&self) -> Theme {
-        self.theme
-    }
-
-    pub fn set_theme(&mut self, theme: Theme) {
-        self.theme = theme;
+    /// Тёмная тема (иконки, системные контролы).
+    pub fn dark(&self) -> bool {
+        self.theme.dark
     }
 }
 
@@ -273,51 +280,112 @@ fn warn(key: &str, msg: String) -> ConfigWarning {
     }
 }
 
-/// Палитра темы: нейтральные WinUI, акцент с гарантией контраста, переопределения.
-fn palette(
-    theme: Theme,
-    accent: &AccentPalette,
-    overrides: &std::collections::BTreeMap<String, String>,
-    warnings: &mut Vec<ConfigWarning>,
-) -> Palette {
-    let mut p = fluent::neutral(theme);
-    let dark = theme == Theme::Dark;
-    let (fill, text) = if dark {
-        (accent.light2, accent.light3)
-    } else {
-        (accent.dark1, accent.dark2)
+/// Что тема берёт от ОС: светлая/тёмная, акцент (`[ui] accent` — свой), контрастность.
+pub fn os_look(probe: &SysProbe, cfg: &UiCfg, warnings: &mut Vec<ConfigWarning>) -> OsLook {
+    let accent = match cfg.accent.trim() {
+        a if a.is_empty() || a.eq_ignore_ascii_case("system") => probe.look.accent,
+        a => {
+            if let Some(c) = parse_color(a) {
+                AccentPalette::from_base(c.to_opaque())
+            } else {
+                warnings.push(warn("ui.accent", format!("bad color {a:?}")));
+                probe.look.accent
+            }
+        }
     };
-    let subtle = if dark {
-        with_alpha(accent.light2, 0.16)
-    } else {
-        with_alpha(accent.base, 0.12)
-    };
-    p.set(Role::AccentFill, rgba(fill));
-    p.set(Role::AccentFillHover, with_alpha(fill, 0.9));
-    p.set(Role::AccentFillPressed, with_alpha(fill, 0.8));
-    p.set(Role::AccentOn, rgba(best_on(fill)));
+    OsLook {
+        dark: probe.look.theme == Some(crate::color::Theme::Dark),
+        accent: Some(accent),
+        high_contrast: probe.look.high_contrast.then_some(probe.look.hc).flatten(),
+    }
+}
+
+/// Роли S2 из ролей темы. Таблица соответствия:
+///
+/// | S2 | тема |
+/// |---|---|
+/// | `bg.base` / `bg.base.alt` | `frame` / `header` |
+/// | `layer.panel`, `layer.overlay`, `fill.control*` | `panel` |
+/// | `text.primary` / `.secondary` / `.tertiary` | `text` / `secondary` / `secondary` |
+/// | `text.disabled` | `secondary` на 60 % к `panel` |
+/// | `accent.fill` (+ hover 90 %, pressed 80 %) | `accent` |
+/// | `accent.on` | белый или чёрный — где контраст с `accent` выше |
+/// | `accent.subtle` | `accent` 12 % (светлая) / 16 % (тёмная) |
+/// | `accent.text` | `accent`, подтянутый до 4,5:1 к `accent.subtle` над `panel` (отмеченные) |
+/// | `fill.cursor` / `.passive` | `cursor` / `cursor` 50 % |
+/// | `fill.subtle.*` | `text` 4 % / 6 % |
+/// | `stroke.card/control/divider` | `border` |
+/// | `stroke.control.bottom`, `stroke.strong`, `type.muted` | `secondary` |
+/// | `critical/caution/success.fg` | `error` / `warning` / `success` |
+/// | `*.bg` статусов | тот же цвет 14 % к `panel` |
+/// | `info.bg` | `header` |
+/// | `type.archive` / `type.exec` / `type.temp` | `archive` / `exec` / `warning` |
+/// | `header`, `cursor.text`, `current_line`, `highlight`, `modified`, `context.*` | одноимённые |
+pub fn palette_of(t: &Theme) -> Palette {
+    let r = &t.roles;
+    let mut p = Palette([[0; 4]; Role::COUNT]);
+    let solid = |c: Color32| rgba(c);
+    let tint = |c: Color32, k: f32| rgba(theme::mix(r.panel, c, k));
+    p.set(Role::BgBase, solid(r.frame));
+    p.set(Role::BgBaseAlt, solid(r.header));
+    for role in [
+        Role::LayerPanel,
+        Role::LayerOverlay,
+        Role::FillControl,
+        Role::FillControlInput,
+    ] {
+        p.set(role, solid(r.panel));
+    }
+    p.set(Role::TextPrimary, solid(r.text));
+    p.set(Role::TextSecondary, solid(r.secondary));
+    p.set(Role::TextTertiary, solid(r.secondary));
+    p.set(Role::TextDisabled, tint(r.secondary, 0.6));
+    p.set(Role::AccentFill, solid(r.accent));
+    p.set(Role::AccentFillHover, with_alpha(r.accent, 0.9));
+    p.set(Role::AccentFillPressed, with_alpha(r.accent, 0.8));
+    p.set(Role::AccentOn, rgba(best_on(r.accent)));
+    let subtle = with_alpha(r.accent, if t.dark { 0.16 } else { 0.12 });
     p.set(Role::AccentSubtle, subtle);
-    // Текст-акцент помеченных строк — на `accent.subtle` поверх карточки (S0-decisions №31).
-    let marked_bg = over(p.get(Role::AccentSubtle), p.get(Role::LayerPanel));
+    let marked_bg = over(p.get(Role::AccentSubtle), r.panel);
     p.set(
         Role::AccentText,
-        rgba(ensure_contrast(text, marked_bg, dark)),
+        rgba(theme::toward_contrast(r.accent, marked_bg, t.dark)),
     );
-    let section = if dark {
-        "ui.tokens.dark"
-    } else {
-        "ui.tokens.light"
-    };
-    for (name, value) in overrides {
-        let Some(role) = Role::from_name(name) else {
-            warnings.push(warn(section, format!("unknown token {name:?}")));
-            continue;
-        };
-        match parse_rgba(value) {
-            Some(c) => p.set(role, c),
-            None => warnings.push(warn(section, format!("{name}: bad color {value:?}"))),
-        }
+    p.set(Role::FillCursor, solid(r.cursor));
+    p.set(Role::FillCursorPassive, with_alpha(r.cursor, 0.5));
+    p.set(Role::FillSubtleHover, with_alpha(r.text, 0.04));
+    p.set(Role::FillSubtlePressed, with_alpha(r.text, 0.06));
+    for role in [Role::StrokeCard, Role::StrokeControl, Role::StrokeDivider] {
+        p.set(role, solid(r.border));
     }
+    for role in [
+        Role::StrokeControlBottom,
+        Role::StrokeStrong,
+        Role::TypeMuted,
+    ] {
+        p.set(role, solid(r.secondary));
+    }
+    p.set(
+        Role::ShadowOverlay,
+        with_alpha(Color32::BLACK, if t.dark { 0.26 } else { 0.14 }),
+    );
+    p.set(Role::CriticalFg, solid(r.error));
+    p.set(Role::CriticalBg, tint(r.error, 0.14));
+    p.set(Role::CautionFg, solid(r.warning));
+    p.set(Role::CautionBg, tint(r.warning, 0.14));
+    p.set(Role::SuccessFg, solid(r.success));
+    p.set(Role::SuccessBg, tint(r.success, 0.14));
+    p.set(Role::InfoBg, solid(r.header));
+    p.set(Role::TypeArchive, solid(r.archive));
+    p.set(Role::TypeExec, solid(r.exec));
+    p.set(Role::TypeTemp, solid(r.warning));
+    p.set(Role::Header, solid(r.header));
+    p.set(Role::CursorText, solid(r.cursor_text));
+    p.set(Role::CurrentLine, solid(r.current_line));
+    p.set(Role::Highlight, solid(r.highlight));
+    p.set(Role::Modified, solid(r.modified));
+    p.set(Role::ContextAdmin, solid(r.context_admin));
+    p.set(Role::ContextRemote, solid(r.context_remote));
     p
 }
 
@@ -395,27 +463,7 @@ fn best_on(fill: Color32) -> Color32 {
     }
 }
 
-/// Сдвигает `fg` к тёмному (светлая тема) или светлому (тёмная), пока контраст с `bg`
-/// не достигнет [`MIN_CONTRAST`].
-fn ensure_contrast(fg: Color32, bg: Color32, dark: bool) -> Color32 {
-    let target = if dark { Color32::WHITE } else { Color32::BLACK };
-    let mut c = fg;
-    for step in 1..=20u8 {
-        if contrast(c, bg) >= MIN_CONTRAST {
-            break;
-        }
-        c = lerp(fg, target, f32::from(step) / 20.0);
-    }
-    c
-}
-
-#[allow(clippy::cast_sign_loss, reason = "значения 0..=255")]
-fn lerp(a: Color32, b: Color32, t: f32) -> Color32 {
-    let m = |x: u8, y: u8| (f32::from(x) + (f32::from(y) - f32::from(x)) * t).round() as u8;
-    Color32::from_rgb(m(a.r(), b.r()), m(a.g(), b.g()), m(a.b(), b.b()))
-}
-
-/// Таблица `роль  light  dark` (insta, документация).
+/// Таблица `роль  цвет` темы и метрики (insta, документация).
 pub fn table(t: &Tokens) -> String {
     let hex = |[r, g, b, a]: Rgba| {
         if a == 255 {
@@ -426,13 +474,7 @@ pub fn table(t: &Tokens) -> String {
     };
     let mut out = String::new();
     for r in Role::ALL {
-        let _ = writeln!(
-            out,
-            "{:<22} {:<10} {}",
-            r.name(),
-            hex(t.palette(Theme::Light).raw(*r)),
-            hex(t.palette(Theme::Dark).raw(*r))
-        );
+        let _ = writeln!(out, "{:<22} {}", r.name(), hex(t.palette().raw(*r)));
     }
     for m in Metric::ALL {
         let _ = writeln!(out, "{:<22} {}", m.name(), t.m(*m));

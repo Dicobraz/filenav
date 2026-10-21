@@ -1,0 +1,26 @@
+# Тема «sepia» — docs/THEMES.md (утверждено 2026-10-20, S0-decisions №59).
+id = "sepia"
+
+[roles]
+frame = "#E7DECF"
+panel = "#F2ECE1"
+header = "#ECE4D7"
+text = "#3A3128"
+secondary = "#7A6C5C"
+accent = "#9A6A3A"
+cursor = "#E8DCC6"
+cursor_text = "#3A3128"
+border = "#DACFBC"
+current_line = "#EBE3D6"
+highlight = "#EAD49A"
+modified = "#A8432F"
+exec = "#4F7A2E"
+archive = "#7A4F8F"
+context_admin = "#A8432F"
+context_remote = "#9A6212"
+
+[syntax]
+keyword = "#7A4A1F"
+string = "#5E6A2E"
+number = "#6A3F7A"
+comment = "#7A6C5C"

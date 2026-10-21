@@ -107,7 +107,7 @@
 | `prompt.reply` | `id:int`, `choice:str`, `input?:str`, `all?:bool` | Answer | Ответить | — | — |
 | `prompt.cancel` | `id:int` | Dismiss | Закрыть | — | — |
 
-## `ui` (26)
+## `ui` (31)
 
 | Команда | Аргументы | EN | RU | Клавиши (Far) | Меню F9 |
 |---|---|---|---|---|---|
@@ -120,7 +120,12 @@
 | `ui.prompt.hide` | `id?:int` | Hide question | Свернуть вопрос | — | — |
 | `ui.prompt.show` | `id?:int` | Show question | Развернуть вопрос | — | — |
 | `ui.jobs.toggle` | — | Expand tasks | Развернуть задачи | — | — |
-| `ui.theme` | `mode:str` | Theme | Тема | — | options |
+| `ui.theme.set` | `id:str` | Theme | Тема | — | options |
+| `ui.theme.next` | — | Next theme | Следующая тема | — | options |
+| `ui.theme.follow_os` | — | Theme as in Windows | Тема как в Windows | — | options |
+| `ui.theme.reload` | `if_changed?:bool` | Reload themes | Перечитать темы | — | — |
+| `ui.density.set` | `px:int` | Row height | Высота строки | — | — |
+| `ui.icons.set` | `mode:str` | File icons | Иконки файлов | — | — |
 | `ui.zoom` | `delta?:int` | Zoom | Масштаб | — | options |
 | `ui.split` | `delta?:int`, `reset?:bool` | Panel split | Раздел панелей | — | — |
 | `ui.lang` | `lang:str` | Language | Язык | — | options |

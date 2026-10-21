@@ -4,14 +4,10 @@
 
 use std::sync::mpsc;
 
-use super::{BackdropCaps, FontFiles, Look};
+use super::{Context, FontFiles, Look, ThemePolicyRaw};
 
 pub(super) fn look() -> Look {
     Look::default()
-}
-
-pub(super) fn backdrop() -> BackdropCaps {
-    BackdropCaps::default()
 }
 
 pub(super) fn fonts() -> FontFiles {
@@ -19,3 +15,11 @@ pub(super) fn fonts() -> FontFiles {
 }
 
 pub(super) fn watch(_wake: Box<dyn Fn() + Send>, _sink: mpsc::Sender<Look>) {}
+
+pub(super) fn theme_policy() -> ThemePolicyRaw {
+    ThemePolicyRaw::default()
+}
+
+pub(super) fn context() -> Option<Context> {
+    None
+}

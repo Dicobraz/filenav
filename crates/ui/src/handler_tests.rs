@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use urfin_core::{Boot, Command, Config, Core, Location, Paths, Services, Waker};
 
-use crate::state::{ThemeMode, UiState};
+use crate::state::UiState;
 
 struct NoWake;
 impl Waker for NoWake {
@@ -45,12 +45,12 @@ fn config_seeds_state_and_commands_write_back() {
     let mut c = core(&paths);
     let st = ui(&c);
     assert_eq!(
-        (st.theme, st.zoom, st.split),
-        (Some(ThemeMode::Dark), 120, 0.5)
+        (st.theme.as_str(), st.zoom, st.split),
+        ("system-dark", 120, 0.5)
     );
 
     for cmd in [
-        "ui.theme mode=light",
+        "ui.theme.set id=system-light",
         "ui.zoom delta=1",
         "ui.split delta=1",
         "ui.columns set=dev",
@@ -62,12 +62,12 @@ fn config_seeds_state_and_commands_write_back() {
     }
     urfin_i18n::set_language("en");
     let st = ui(&c);
-    assert_eq!((st.theme, st.zoom), (Some(ThemeMode::Light), 130));
+    assert_eq!((st.theme.as_str(), st.zoom), ("system-light", 130));
     // Выход пишет отложенное сразу, не дожидаясь debounce.
     let _ = c.shutdown(Duration::from_millis(500));
     let text = fs::read_to_string(paths.config_file()).unwrap();
     assert!(
-        text.starts_with("# мой конфиг\n[ui]\ntheme = \"light\"   # тёмная\nzoom = 130\n"),
+        text.starts_with("# мой конфиг\n[ui]\ntheme = \"system-light\"   # тёмная\nzoom = 130\n"),
         "{text}"
     );
     assert!(text.contains("split = 0.55\n"), "{text}");
@@ -80,7 +80,7 @@ fn config_seeds_state_and_commands_write_back() {
     // Следующий запуск — с сохранёнными значениями.
     let c = core(&paths);
     let st = ui(&c);
-    assert_eq!(st.theme, Some(ThemeMode::Light));
+    assert_eq!(st.theme, "system-light");
     assert_eq!(st.zoom, 130);
     assert!((st.split - 0.55).abs() < 1e-6);
     assert_eq!(st.columns.as_deref(), Some("dev"));
@@ -92,7 +92,7 @@ fn reload_config_applies_edited_ui_section() {
     let tmp = tempfile::tempdir().unwrap();
     let paths = Paths::in_dir(tmp.path());
     let mut c = core(&paths);
-    assert_eq!(ui(&c).theme, Some(ThemeMode::System));
+    assert_eq!(ui(&c).theme, "auto");
     fs::write(
         paths.config_file(),
         "[ui]\ntheme = \"dark\"\nzoom = 999\nsplit = 0.05\n",
@@ -101,13 +101,13 @@ fn reload_config_applies_edited_ui_section() {
     c.dispatch(Command::new("app.reload_config"));
     for _ in 0..400 {
         c.pump(Duration::from_millis(5));
-        if ui(&c).theme == Some(ThemeMode::Dark) {
+        if ui(&c).theme == "system-dark" {
             break;
         }
         std::thread::sleep(Duration::from_millis(5));
     }
     let st = ui(&c);
-    assert_eq!(st.theme, Some(ThemeMode::Dark));
+    assert_eq!(st.theme, "system-dark");
     assert_eq!(st.zoom, 300, "clamped to the zoom range");
     assert!((st.split - 0.1).abs() < 1e-6, "clamped to the split range");
 }

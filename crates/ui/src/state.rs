@@ -6,31 +6,24 @@ use compact_str::CompactString;
 use smallvec::SmallVec;
 use urfin_core::{Location, OverlayKind, PromptId, Side, TabId};
 
-/// Тема окна (`ui.theme`, `[ui] theme`).
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
-pub enum ThemeMode {
-    #[default]
-    System,
-    Light,
-    Dark,
+/// Тема, заданная политикой организации (`HKLM\Software\Policies\Aahz\Urfin`, T-01-5).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ThemePolicy {
+    /// `Theme` (`REG_SZ`): тема по умолчанию или единственная при `locked`.
+    pub theme: Option<CompactString>,
+    /// `ThemeLocked` (DWORD ≠ 0): сменить тему нельзя.
+    pub locked: bool,
 }
 
-impl ThemeMode {
-    /// `system | light | dark` без учёта регистра.
-    pub fn parse(s: &str) -> Option<ThemeMode> {
-        [ThemeMode::System, ThemeMode::Light, ThemeMode::Dark]
-            .into_iter()
-            .find(|m| s.trim().eq_ignore_ascii_case(m.as_str()))
-    }
-
-    /// Имя в конфиге и в аргументе `mode`.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            ThemeMode::System => "system",
-            ThemeMode::Light => "light",
-            ThemeMode::Dark => "dark",
-        }
-    }
+/// Пользовательские темы (`themes/*.toml`): загружаются задачей, не в UI-потоке.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct UserThemes {
+    pub themes: std::sync::Arc<Vec<crate::theme::Theme>>,
+    /// Растёт при каждой загрузке — ключ пересборки токенов окна.
+    pub generation: u64,
+    /// mtime каталога при последней загрузке: реактивация окна грузит заново, только
+    /// если он изменился (без файлового вотчера).
+    pub mtime: Option<std::time::SystemTime>,
 }
 
 /// Строка ввода аргумента команды (`ui.draft`): F7 → `ops.mkdir name`.
@@ -75,8 +68,17 @@ pub struct UiState {
     /// Свёрнутые вопросы (`ui.prompt.hide`).
     pub prompt_hidden: SmallVec<[PromptId; 4]>,
     pub jobs_expanded: bool,
-    /// Тема: `[ui] theme` при загрузке конфига, затем `ui.theme`; `None` — как в ОС.
-    pub theme: Option<ThemeMode>,
+    /// Выбор темы (№59): `auto` — как в ОС, или id темы; `[ui] theme` при загрузке
+    /// конфига, затем `ui.theme.*`. Политика `ThemeLocked` его перекрывает.
+    pub theme: CompactString,
+    /// Высота строки списка, px (`ui.density.set`): 20 / 24 / 28.
+    pub density: u8,
+    /// Иконки файлов (`ui.icons.set`).
+    pub icons: crate::config::IconMode,
+    pub user_themes: UserThemes,
+    pub policy: ThemePolicy,
+    /// Каталог своих тем (`<config_dir>/themes`); `None` — без диска (тесты).
+    pub themes_dir: Option<std::path::PathBuf>,
     /// Масштаб в процентах (`ui.zoom`), 100 — без масштаба.
     pub zoom: u16,
     /// Доля левой панели (`ui.split`), 0,5 — поровну.
@@ -113,7 +115,12 @@ impl UiState {
             next_gen: 0,
             prompt_hidden: SmallVec::new(),
             jobs_expanded: false,
-            theme: None,
+            theme: crate::theme::AUTO.into(),
+            density: 24,
+            icons: crate::config::IconMode::Mono,
+            user_themes: UserThemes::default(),
+            policy: ThemePolicy::default(),
+            themes_dir: None,
             columns: None,
             panels_hidden: false,
             tree: [None, None],

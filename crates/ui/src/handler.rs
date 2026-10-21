@@ -16,7 +16,8 @@ use urfin_core::{
 
 use crate::config::UiCfg;
 use crate::fs_tasks;
-use crate::state::{Draft, Subdirs, ThemeMode, UiState};
+use crate::state::{Draft, Subdirs, UiState};
+use crate::theme_cmd::{self, ThemeEnv};
 
 const fn arg(name: &'static str, kind: ValueKind, required: bool) -> ArgSpec {
     ArgSpec {
@@ -75,7 +76,25 @@ static COMMANDS: &[CommandMeta] = &[
     meta("ui.prompt.hide", "Hide question", &[ID]),
     meta("ui.prompt.show", "Show question", &[ID]),
     meta("ui.jobs.toggle", "Expand tasks", &[]),
-    meta("ui.theme", "Theme", &[arg("mode", ValueKind::Str, true)]),
+    // Темы (T-01-4, №59): id — встроенная, своя или `auto`.
+    meta("ui.theme.set", "Theme", &[arg("id", ValueKind::Str, true)]),
+    meta("ui.theme.next", "Next theme", &[]),
+    meta("ui.theme.follow_os", "Theme as in Windows", &[]),
+    meta(
+        "ui.theme.reload",
+        "Reload themes",
+        &[arg("if_changed", ValueKind::Bool, false)],
+    ),
+    meta(
+        "ui.density.set",
+        "Row height",
+        &[arg("px", ValueKind::Int, true)],
+    ),
+    meta(
+        "ui.icons.set",
+        "File icons",
+        &[arg("mode", ValueKind::Str, true)],
+    ),
     meta("ui.zoom", "Zoom", &[arg("delta", ValueKind::Int, false)]),
     meta(
         "ui.split",
@@ -132,6 +151,8 @@ pub struct UiHandler {
     views: crate::views::ViewTasks,
     /// Последний виденный конфиг: новый (старт, `app.reload_config`) — `[ui]` в состояние.
     config: Option<Arc<Config>>,
+    /// Каталог своих тем и политика — до первого pump, затем в [`UiState`].
+    env: Option<ThemeEnv>,
 }
 
 impl Default for UiHandler {
@@ -141,6 +162,7 @@ impl Default for UiHandler {
             task: None,
             views: crate::views::ViewTasks::default(),
             config: None,
+            env: Some(ThemeEnv::default()),
         }
     }
 }
@@ -152,6 +174,13 @@ impl std::fmt::Debug for UiHandler {
 }
 
 impl UiHandler {
+    pub fn new(env: ThemeEnv) -> UiHandler {
+        UiHandler {
+            env: Some(env),
+            ..UiHandler::default()
+        }
+    }
+
     /// Отменить прежнюю задачу и выдать токен новой.
     fn new_task(&mut self, cx: &Cx<'_>) -> CancelToken {
         self.cancel_task();
@@ -185,6 +214,12 @@ impl Handler for UiHandler {
             let config = Arc::clone(&cx.state.config);
             // Ошибку секции уже показал баннер core.
             let (cfg, _) = config.section::<UiCfg>("ui");
+            if let Some(env) = self.env.take() {
+                let st = ui_state(cx);
+                st.policy = env.policy;
+                st.themes_dir = env.dir;
+                theme_cmd::reload(cx, true);
+            }
             seed(ui_state(cx), &cfg);
             cx.state.touch();
             self.config = Some(config);
@@ -203,6 +238,9 @@ impl Handler for UiHandler {
     }
 
     fn handle(&mut self, cmd: &Command, cx: &mut Cx<'_>) -> Result<(), CmdError> {
+        if let Some(r) = theme_cmd::handle(cmd, cx) {
+            return r;
+        }
         let a = &cmd.args;
         match cmd.id.as_str() {
             "ui.menu" => self.menu(cx, a),
@@ -255,16 +293,6 @@ impl Handler for UiHandler {
             "ui.jobs.toggle" => {
                 let st = ui_state(cx);
                 st.jobs_expanded = !st.jobs_expanded;
-            }
-            "ui.theme" => {
-                let Some(mode) = ThemeMode::parse(a.str("mode").unwrap_or_default()) else {
-                    return Err(CmdError::Arg {
-                        name: "mode".into(),
-                        msg: "expected system | light | dark".into(),
-                    });
-                };
-                ui_state(cx).theme = Some(mode);
-                settings::set(&["ui", "theme"], mode.as_str()).apply(cx);
             }
             "ui.zoom" => {
                 let st = ui_state(cx);
@@ -442,7 +470,9 @@ fn split(st: &mut UiState, reset: Option<bool>, delta: Option<i64>) {
 
 /// `[ui]` конфига — в состояние; значения вне пределов приводятся к ним.
 fn seed(st: &mut UiState, cfg: &UiCfg) {
-    st.theme = ThemeMode::parse(&cfg.theme);
+    theme_cmd::seed(st, &cfg.theme);
+    st.density = cfg.density.px();
+    st.icons = cfg.icons;
     st.zoom = u16::try_from(i64::from(cfg.zoom).clamp(ZOOM_RANGE.0, ZOOM_RANGE.1)).unwrap_or(100);
     st.split = if cfg.split.is_finite() {
         cfg.split.clamp(SPLIT_RANGE.0, SPLIT_RANGE.1)

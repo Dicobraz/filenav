@@ -1,5 +1,10 @@
-//! Тема Fluent для GPUI (№56): токены S2 ([`Tokens`], роли и метрики), раскраска файлов
-//! ([`Highlighter`]) и формат ячеек ([`FmtCfg`]) — те же, что у egui-окна.
+//! Тема окна GPUI: токены из темы оформления (T-01, №59), раскраска файлов
+//! ([`Highlighter`]) и формат ячеек ([`FmtCfg`]).
+//!
+//! Токены пересобираются, когда меняется что-то из входа: выбор темы (`ui.theme.*`),
+//! светлая/тёмная ОС (gpui следит за окном), акцент и контрастность (`sys::watch`),
+//! свои темы (`ui.theme.reload`), высота строки. Номер пересборки — [`Theme::generation`],
+//! он входит в отпечатки кэшируемых видов.
 
 use crate::color::Color32;
 use gpui_kit::{Hsla, Rgba};
@@ -7,19 +12,29 @@ use gpui_kit::{Hsla, Rgba};
 use crate::config::UiCfg;
 use crate::fmt_cell::FmtCfg;
 use crate::highlight::Highlighter;
-use crate::sys::{SysProbe, Zone};
-use crate::tokens::{Metric, Role, Tokens};
+use crate::state::UserThemes;
+use crate::sys::{Look, SysProbe, Zone};
+use crate::theme::{OsLook, Themes};
+use crate::tokens::{Metric, Role, Tokens, os_look};
 
 /// Всё, что нужно видам для цвета, размеров и текста ячеек.
 pub struct Theme {
     pub tokens: Tokens,
     pub hl: Highlighter,
     pub fmt: FmtCfg,
+    cfg: UiCfg,
+    os: OsLook,
+    /// Вход последней сборки: выбор, тёмная ОС, поколение своих тем, высота строки.
+    key: (String, bool, u64, u8),
+    user: Themes,
+    generation: u64,
 }
 
 impl std::fmt::Debug for Theme {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Theme").finish_non_exhaustive()
+        f.debug_struct("Theme")
+            .field("id", &self.tokens.theme.id)
+            .finish_non_exhaustive()
     }
 }
 
@@ -29,7 +44,65 @@ impl Theme {
         let (hl, _) = Highlighter::build(&cfg.colors);
         let iso = cfg.date_format.eq_ignore_ascii_case("iso");
         let fmt = FmtCfg::new(&urfin_i18n::current(), iso, Zone::system());
-        Theme { tokens, hl, fmt }
+        let os = os_look(probe, cfg, &mut Vec::new());
+        Theme {
+            key: (
+                crate::theme::normalize_choice(&cfg.theme),
+                os.dark,
+                0,
+                cfg.density.px(),
+            ),
+            tokens,
+            hl,
+            fmt,
+            cfg: cfg.clone(),
+            os,
+            user: Themes::default(),
+            generation: 0,
+        }
+    }
+
+    /// Акцент, контрастность и светлость ОС из `sys::watch`.
+    pub fn set_look(&mut self, look: &Look) {
+        let probe = SysProbe {
+            look: *look,
+            ..SysProbe::default()
+        };
+        let os = os_look(&probe, &self.cfg, &mut Vec::new());
+        if os != self.os {
+            self.os = os;
+            self.rebuild();
+        }
+    }
+
+    /// Свести тему к входу кадра; `true` — токены пересобраны.
+    pub fn sync(&mut self, choice: &str, os_dark: bool, user: &UserThemes, density: u8) -> bool {
+        let key = (choice.to_owned(), os_dark, user.generation, density);
+        if key == self.key {
+            return false;
+        }
+        if key.2 != self.key.2 {
+            self.user = Themes {
+                user: user.themes.to_vec(),
+            };
+        }
+        self.key = key;
+        self.os.dark = os_dark;
+        self.rebuild();
+        true
+    }
+
+    fn rebuild(&mut self) {
+        let theme = self.user.resolve(&self.key.0, &self.os);
+        let mut cfg = self.cfg.clone();
+        cfg.density = crate::config::Density::new(i64::from(self.key.3));
+        self.tokens = Tokens::from_theme(theme, &cfg).0;
+        self.generation += 1;
+    }
+
+    /// Номер сборки токенов: меняется с темой (ключ кэшей видов).
+    pub fn generation(&self) -> u64 {
+        self.generation
     }
 
     /// Цвет роли.

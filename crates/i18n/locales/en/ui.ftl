@@ -69,6 +69,8 @@ menu-sel-remove = Deselect group…
     .menu-key = d
 menu-theme-system = System theme
     .menu-key = y
+menu-theme-next = Next theme
+    .menu-key = n
 menu-theme-light = Light theme
     .menu-key = l
 menu-theme-dark = Dark theme
@@ -195,3 +197,17 @@ ui-qview-hint = F3 — viewer
 ui-qview-binary = binary
 ui-qview-dir = A folder — its contents are in the panel
 ui-info-volume-local = Local Disk
+
+## Темы (T-01, №59)
+ui-theme-auto = As in Windows
+ui-theme-system-light = System light
+ui-theme-system-dark = System dark
+ui-theme-blue = Blue
+ui-theme-turquoise = Turquoise
+ui-theme-grass = Grass
+ui-theme-sepia = Sepia
+ui-theme-locked = The theme is set by your organization’s policy
+ui-theme-unknown = Unknown theme “{ $id }”
+ui-theme-error = Theme not loaded: { $error }
+ui-context-admin = Administrator
+ui-context-remote = Remote session

@@ -22,17 +22,25 @@ pub mod layout;
 pub mod menu;
 pub mod state;
 pub mod sys;
+pub mod theme;
+mod theme_cmd;
 pub mod tokens;
 pub mod views;
 
 use urfin_core::{Core, Side};
 
 pub use handler::UiHandler;
-pub use state::{Draft, ThemeMode, UiState};
+pub use state::{Draft, ThemePolicy, UiState};
+pub use theme_cmd::ThemeEnv;
 
 /// Регистрирует handler `ui`; `UiState` появится в `ext` в первом pump.
 pub fn register(core: &mut Core) {
-    core.register(Box::new(UiHandler::default()));
+    register_with(core, ThemeEnv::default());
+}
+
+/// Как [`register`], с каталогом своих тем и политикой организации (T-01).
+pub fn register_with(core: &mut Core, env: ThemeEnv) {
+    core.register(Box::new(UiHandler::new(env)));
 }
 
 /// Значение аргумента `side` команды.

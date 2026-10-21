@@ -1,0 +1,26 @@
+# Тема «grass» — docs/THEMES.md (утверждено 2026-10-20, S0-decisions №59).
+id = "grass"
+
+[roles]
+frame = "#E3ECDD"
+panel = "#EEF4EA"
+header = "#E8F0E3"
+text = "#222D1C"
+secondary = "#5F6D57"
+accent = "#4E8A3A"
+cursor = "#DCEBCF"
+cursor_text = "#222D1C"
+border = "#D5E0CC"
+current_line = "#E6EEE1"
+highlight = "#F0E2A6"
+modified = "#A84A2C"
+exec = "#2C6E8F"
+archive = "#7A4FA8"
+context_admin = "#A84A2C"
+context_remote = "#A86A12"
+
+[syntax]
+keyword = "#3E6E2E"
+string = "#8A4B12"
+number = "#2C5F8F"
+comment = "#5F6D57"

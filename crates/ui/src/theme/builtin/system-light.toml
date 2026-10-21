@@ -1,0 +1,26 @@
+# Тема «system-light» — docs/THEMES.md (утверждено 2026-10-20, S0-decisions №59).
+id = "system-light"
+
+[roles]
+frame = "#E9E9E9"
+panel = "#F4F4F4"
+header = "#EEEEEE"
+text = "#1B1B1B"
+secondary = "#5F5F5F"
+accent = "#0067C0"
+cursor = "#D3E3F1"
+cursor_text = "#1B1B1B"
+border = "#DCDCDC"
+current_line = "#ECECEC"
+highlight = "#F2E3A0"
+modified = "#B5402F"
+exec = "#2E7D32"
+archive = "#7B4FB0"
+context_admin = "#B5402F"
+context_remote = "#A86A12"
+
+[syntax]
+keyword = "#1F5FA8"
+string = "#8A4B12"
+number = "#6A3FA0"
+comment = "#5F6B76"
