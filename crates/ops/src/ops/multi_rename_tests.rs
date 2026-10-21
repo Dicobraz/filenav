@@ -162,9 +162,9 @@ fn job(h: &mut H, dir: &Path, rows: &[(&str, &str)]) -> JobState {
     h.wait_done(id)
 }
 
-/// Приёмка S5-23: a ↔ b (цикл) — в две фазы, данные на месте.
+/// Приёмка S5-23: a ↔ b (цикл) — через одно временное имя, данные на месте.
 #[test]
-fn swap_is_two_phase() {
+fn swap_via_one_temp_name() {
     let d = tmp();
     std::fs::write(d.path().join("a.txt"), b"A").unwrap();
     std::fs::write(d.path().join("b.txt"), b"B").unwrap();
@@ -181,6 +181,139 @@ fn swap_is_two_phase() {
         2,
         "no temp names left"
     );
+}
+
+fn rows(pairs: &[(&str, &str)]) -> Vec<(CompactString, CompactString)> {
+    pairs
+        .iter()
+        .map(|(f, t)| ((*f).into(), (*t).into()))
+        .collect()
+}
+
+/// Порядок (S0 №93): цепочка — с хвоста, цикл — отдельно, смена регистра —
+/// сама по себе.
+#[test]
+fn order_tails_then_cycles() {
+    // 0: a→b, 1: b→c (цепочка, хвост 1); 2: x→y, 3: y→z, 4: z→x (цикл);
+    // 5: Q→q (регистр); 6: m→n (одиночка).
+    let o = Order::new(&rows(&[
+        ("a", "b"),
+        ("b", "c"),
+        ("x", "y"),
+        ("y", "z"),
+        ("z", "x"),
+        ("Q", "q"),
+        ("m", "n"),
+    ]));
+    assert_eq!(o.tails, [1, 5, 6]);
+    assert_eq!(o.pred[1], Some(0), "a→b after b→c");
+    assert_eq!(o.cycles, [2]);
+    assert_eq!(o.rest(2).collect::<Vec<_>>(), [4, 3]);
+    // Имена без учёта регистра: B — старое имя строки «b».
+    let o = Order::new(&rows(&[("a", "B"), ("b", "c")]));
+    assert_eq!((o.tails.as_slice(), o.pred[1]), ([1].as_slice(), Some(0)));
+}
+
+fn names_in(dir: &Path) -> Vec<(String, String)> {
+    let mut v: Vec<_> = std::fs::read_dir(dir)
+        .unwrap()
+        .map(|e| {
+            let e = e.unwrap();
+            (
+                e.file_name().to_string_lossy().into_owned(),
+                std::fs::read_to_string(e.path()).unwrap(),
+            )
+        })
+        .collect();
+    v.sort();
+    v
+}
+
+fn put(dir: &Path, names: &[&str]) {
+    for n in names {
+        std::fs::write(dir.join(n), n).unwrap();
+    }
+}
+
+/// Цепочка, цикл, регистр и одиночка в одном job — всё на месте, временных нет.
+#[test]
+fn mixed_chains_and_cycles() {
+    let d = tmp();
+    put(d.path(), &["a", "b", "x", "y", "z", "Q", "m"]);
+    let mut h = H::new(8);
+    let st = job(
+        &mut h,
+        d.path(),
+        &[
+            ("a", "b"),
+            ("b", "c"),
+            ("x", "y"),
+            ("y", "z"),
+            ("z", "x"),
+            ("Q", "q"),
+            ("m", "n"),
+        ],
+    );
+    assert!(
+        matches!(&st, JobState::Done(s) if s.items == 7 && s.errors == 0),
+        "{st:?}"
+    );
+    let want = [
+        ("b", "a"),
+        ("c", "b"),
+        ("n", "m"),
+        ("q", "Q"),
+        ("x", "z"),
+        ("y", "x"),
+        ("z", "y"),
+    ];
+    let want: Vec<_> = want
+        .iter()
+        .map(|(n, c)| ((*n).to_owned(), (*c).to_owned()))
+        .collect();
+    assert_eq!(names_in(d.path()), want);
+}
+
+/// Хвост цепочки упёрся в чужое имя: вся цепочка — ошибки, файлы не тронуты.
+#[test]
+fn blocked_chain_keeps_files() {
+    let d = tmp();
+    put(d.path(), &["a", "b", "c"]);
+    let before = names_in(d.path());
+    let mut h = H::new(8);
+    let st = job(&mut h, d.path(), &[("a", "b"), ("b", "c")]);
+    assert!(
+        matches!(&st, JobState::Done(s) if s.items == 0 && s.errors == 2),
+        "{st:?}"
+    );
+    assert_eq!(names_in(d.path()), before);
+}
+
+/// Цикл, где один файл не переименовать (открыт без `FILE_SHARE_DELETE`):
+/// откат всего цикла — имена прежние, временных нет. И когда держат первый
+/// (временное имя не взять), и когда середину.
+#[cfg(windows)]
+#[test]
+fn broken_cycle_rolls_back() {
+    use std::os::windows::fs::OpenOptionsExt;
+    for locked in ["a", "b"] {
+        let d = tmp();
+        put(d.path(), &["a", "b", "c"]);
+        let before = names_in(d.path());
+        let hold = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(1) // FILE_SHARE_READ
+            .open(d.path().join(locked))
+            .unwrap();
+        let mut h = H::new(8);
+        let st = job(&mut h, d.path(), &[("a", "b"), ("b", "c"), ("c", "a")]);
+        drop(hold);
+        assert!(
+            matches!(&st, JobState::Done(s) if s.items == 0 && s.errors == 3),
+            "{locked}: {st:?}"
+        );
+        assert_eq!(names_in(d.path()), before, "{locked}");
+    }
 }
 
 /// Приёмка S5-23: цепочка из 10k (`f_i → f_{i+1}`) — корректно.

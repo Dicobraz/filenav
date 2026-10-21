@@ -9,8 +9,9 @@
 //!
 //! План (`from → to`) строится без I/O по именам каталога — для превью на
 //! каждое нажатие (10k — меньше 50 мс). Проверки: недопустимое имя, дубли среди
-//! новых имён, занятое имя вне набора. Применение — job: цепочки и циклы
-//! (`a → b`, `b → a`) — в две фазы через временные имена.
+//! новых имён, занятое имя вне набора. Применение — job, одно переименование
+//! на элемент: цепочка (`a → b`, `b → c`) идёт с хвоста, цикл (`a → b`,
+//! `b → a`) — через одно временное имя на цикл (S0 №93).
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -323,13 +324,85 @@ pub(crate) fn start(eng: &JobEngine, cx: &mut Cx<'_>, base: Location, plan: &Ren
     eng.start(cx, spec, 1, MultiRename { base, rows })
 }
 
-fn failed(path: &Path, e: &std::io::Error) -> FailedItem {
-    FailedItem {
+fn failed(path: &Path, e: &std::io::Error) -> ItemResult {
+    blocked(path, e.to_string().into())
+}
+
+fn blocked(path: &Path, error: std::sync::Arc<str>) -> ItemResult {
+    ItemResult::Failed(FailedItem {
         path: path.to_path_buf(),
         op: ItemOp::Rename,
-        error: e.to_string().into(),
+        error,
         class: IoClass::Other,
         pair: None,
+    })
+}
+
+/// Порядок применения. Ребро `i → succ`: новое имя `i` — старое имя `succ`,
+/// `succ` переименовывается раньше. Новые имена различны (дубли отсеял план),
+/// поэтому у строки не больше одного предшественника, и граф распадается на
+/// цепочки и циклы.
+struct Order {
+    pred: Vec<Option<usize>>,
+    /// Концы цепочек (новое имя ничьё): с них обход по `pred`.
+    tails: Vec<usize>,
+    /// По строке на цикл.
+    cycles: Vec<usize>,
+}
+
+impl Order {
+    fn new(rows: &[(CompactString, CompactString)]) -> Order {
+        let n = rows.len();
+        let from: std::collections::HashMap<CompactString, usize> = rows
+            .iter()
+            .enumerate()
+            .map(|(i, (f, _))| (name_key(f), i))
+            .collect();
+        let mut succ = vec![None; n];
+        let mut pred = vec![None; n];
+        for (i, (f, t)) in rows.iter().enumerate() {
+            let key = name_key(t);
+            // Смена регистра — своё же имя. Второй претендент на имя
+            // (дубль мимо плана) — хвост: упадёт на занятом имени.
+            if key != name_key(f)
+                && let Some(&j) = from.get(&key)
+                && pred[j].is_none()
+            {
+                succ[i] = Some(j);
+                pred[j] = Some(i);
+            }
+        }
+        let tails: Vec<usize> = (0..n).filter(|&i| succ[i].is_none()).collect();
+        let mut seen = vec![false; n];
+        for &t in &tails {
+            let mut cur = Some(t);
+            while let Some(i) = cur {
+                seen[i] = true;
+                cur = pred[i];
+            }
+        }
+        let mut cycles = Vec::new();
+        for s in 0..n {
+            if seen[s] {
+                continue;
+            }
+            cycles.push(s);
+            let mut i = s;
+            while !seen[i] {
+                seen[i] = true;
+                i = succ[i].unwrap_or(s);
+            }
+        }
+        Order {
+            pred,
+            tails,
+            cycles,
+        }
+    }
+
+    /// Строки цикла после `s` в порядке применения (по `pred`).
+    fn rest(&self, s: usize) -> impl Iterator<Item = usize> + '_ {
+        std::iter::successors(self.pred[s], |&i| self.pred[i]).take_while(move |&i| i != s)
     }
 }
 
@@ -338,8 +411,122 @@ impl MultiRename {
         crate::names::os_path(&self.base.path)
     }
 
+    fn paths(&self, i: usize) -> (PathBuf, PathBuf) {
+        let dir = self.dir();
+        let (f, t) = &self.rows[i];
+        (dir.join(f.as_str()), dir.join(t.as_str()))
+    }
+
     fn one(from: &Path, to: &Path, case_only: bool) -> std::io::Result<()> {
         crate::sys::rename(from, to, case_only)
+    }
+
+    /// Причина для строк цикла, которые не тронуты или откачены.
+    fn stopped_at(&self, i: usize) -> std::sync::Arc<str> {
+        let mut a = urfin_i18n::FluentArgs::new();
+        a.set("name", self.rows[i].0.as_str());
+        urfin_i18n::current().fmt("ops-mr-cycle-blocked", &a).into()
+    }
+
+    /// Цикл: `s` — во временное имя, остальные по `pred` на освободившиеся
+    /// места, временное — в новое имя `s`. Сбой или отмена — откат всего цикла:
+    /// имена прежние, под временным именем файл не остаётся. Итоги строк
+    /// пишутся в конце цикла.
+    fn cycle(
+        &self,
+        p: &mut Plan<'_, Self>,
+        order: &Order,
+        s: usize,
+        tag: &str,
+    ) -> Result<(), PlanError> {
+        let (from, to) = self.paths(s);
+        let tmp = self.dir().join(format!(".fnv~mr{tag}-{s}"));
+        if let Err(err) = Self::one(&from, &tmp, false) {
+            p.record(None, failed(&from, &err));
+            for i in order.rest(s) {
+                p.record(None, blocked(&self.paths(i).0, self.stopped_at(s)));
+            }
+            return Ok(());
+        }
+        let mut done = Vec::new();
+        // Сломавшая цикл строка (`None` — сама `s`) и ошибка.
+        let mut fail = None;
+        for i in order.rest(s) {
+            if let Err(c) = p.cx().checkpoint() {
+                if let (_, Err(err)) = self.undo(&done, &tmp, &from) {
+                    tracing::warn!(target: "ops", tmp = %tmp.display(), error = %err, "multi-rename cancel: temp name left");
+                }
+                return Err(c.into());
+            }
+            let (src, dst) = self.paths(i);
+            match Self::one(&src, &dst, false) {
+                Ok(()) => done.push(i),
+                Err(err) => {
+                    fail = Some((Some(i), err));
+                    break;
+                }
+            }
+        }
+        let (bad, err) = match fail {
+            Some(f) => f,
+            None => match Self::one(&tmp, &to, false) {
+                Ok(()) => {
+                    for _ in 0..=done.len() {
+                        p.record(None, ItemResult::Done);
+                    }
+                    return Ok(());
+                }
+                Err(err) => (None, err),
+            },
+        };
+        let why = self.stopped_at(bad.unwrap_or(s));
+        let (back, home) = self.undo(&done, &tmp, &from);
+        p.record(
+            None,
+            match home {
+                // Не вернулся на место — показать, где он.
+                Err(home_err) => failed(&tmp, &home_err),
+                Ok(()) if bad.is_none() => failed(&from, &err),
+                Ok(()) => blocked(&from, why.clone()),
+            },
+        );
+        for (&i, ok) in done.iter().zip(back) {
+            // Не откатился — остался с новым именем: переименован.
+            p.record(
+                None,
+                if ok {
+                    blocked(&self.paths(i).0, why.clone())
+                } else {
+                    ItemResult::Done
+                },
+            );
+        }
+        for i in order.rest(s).skip(done.len()) {
+            let src = self.paths(i).0;
+            p.record(
+                None,
+                if Some(i) == bad {
+                    failed(&src, &err)
+                } else {
+                    blocked(&src, why.clone())
+                },
+            );
+        }
+        Ok(())
+    }
+
+    /// Откат цикла: сделанное — назад с конца, временное — на старое место.
+    /// По строке `done` — откатилась ли; итог возврата временного.
+    fn undo(&self, done: &[usize], tmp: &Path, from: &Path) -> (Vec<bool>, std::io::Result<()>) {
+        let mut back = vec![true; done.len()];
+        for (k, &i) in done.iter().enumerate().rev() {
+            let (f, t) = self.paths(i);
+            if let Err(e) = Self::one(&t, &f, false) {
+                tracing::warn!(target: "ops", from = %t.display(), error = %e, "multi-rename undo");
+                back[k] = false;
+            }
+        }
+        (back, Self::one(tmp, from, false))
     }
 }
 
@@ -348,14 +535,6 @@ impl OpExec for MultiRename {
     type Dir = ();
 
     fn plan(&self, p: &mut Plan<'_, Self>) -> Result<(), PlanError> {
-        let dir = self.dir();
-        let keys: std::collections::HashSet<CompactString> =
-            self.rows.iter().map(|(f, _)| name_key(f)).collect();
-        // Цепочка или цикл: новое имя — чьё-то старое (не своё) → две фазы.
-        let chain = self
-            .rows
-            .iter()
-            .any(|(f, t)| name_key(t) != name_key(f) && keys.contains(&name_key(t)));
         {
             let cx = p.cx();
             let pr = cx.progress();
@@ -364,41 +543,30 @@ impl OpExec for MultiRename {
             pr.total_final
                 .store(true, std::sync::atomic::Ordering::Relaxed);
             pr.set_phase(urfin_core::Phase::Transfer);
+            // И при отмене часть имён уже другая.
+            cx.touch(&self.base);
         }
-        let tag = format!("{:x}", std::process::id());
-        let mut staged: Vec<(PathBuf, PathBuf, PathBuf)> = Vec::new();
-        for (i, (f, t)) in self.rows.iter().enumerate() {
-            p.cx().checkpoint()?;
-            let (from, to) = (dir.join(f.as_str()), dir.join(t.as_str()));
-            let case_only = name_key(f) == name_key(t);
-            if !chain || case_only {
-                let r = Self::one(&from, &to, case_only);
+        let order = Order::new(&self.rows);
+        // Цепочки — с хвоста: цель каждого шага освободил предыдущий.
+        for &tail in &order.tails {
+            let mut cur = Some(tail);
+            while let Some(i) = cur {
+                p.cx().checkpoint()?;
+                let (from, to) = self.paths(i);
+                let (f, t) = &self.rows[i];
+                let r = Self::one(&from, &to, name_key(f) == name_key(t));
                 p.record(
                     None,
-                    r.map_or_else(
-                        |e| ItemResult::Failed(failed(&from, &e)),
-                        |()| ItemResult::Done,
-                    ),
+                    r.map_or_else(|e| failed(&from, &e), |()| ItemResult::Done),
                 );
-                continue;
-            }
-            let tmp = dir.join(format!(".fnv~mr{tag}-{i}"));
-            match Self::one(&from, &tmp, false) {
-                Ok(()) => staged.push((from, tmp, to)),
-                Err(e) => p.record(None, ItemResult::Failed(failed(&from, &e))),
+                cur = order.pred[i];
             }
         }
-        for (from, tmp, to) in staged {
-            match Self::one(&tmp, &to, false) {
-                Ok(()) => p.record(None, ItemResult::Done),
-                Err(e) => {
-                    // Вернуть старое имя: файл не теряется под временным.
-                    let _ = Self::one(&tmp, &from, false);
-                    p.record(None, ItemResult::Failed(failed(&from, &e)));
-                }
-            }
+        let tag = format!("{:x}", std::process::id());
+        for &s in &order.cycles {
+            p.cx().checkpoint()?;
+            self.cycle(p, &order, s, &tag)?;
         }
-        p.cx().touch(&self.base);
         Ok(())
     }
 
