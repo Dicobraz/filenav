@@ -330,6 +330,15 @@ pub(super) fn strip_keys(s: &AppState) -> Option<Vec<(String, String)>> {
         ]);
     }
     let ui = s.ext.get::<crate::UiState>();
+    // Дополнение поля (№70): его клавиши.
+    if ui.is_some_and(|u| u.complete.as_ref().is_some_and(|c| !c.items.is_empty())) {
+        return Some(vec![
+            ("Tab".into(), i18n.get("ui-keys-complete-next")),
+            ("↑ ↓".into(), i18n.get("ui-keys-choose")),
+            ("Enter".into(), i18n.get("ui-keys-insert")),
+            ("Esc".into(), i18n.get("ui-keys-close")),
+        ]);
+    }
     // Открытое меню или «мешочек»: его клавиши.
     if let Some(open) = ui
         .and_then(crate::menu::open_id)

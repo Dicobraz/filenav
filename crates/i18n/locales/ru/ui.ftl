@@ -332,3 +332,11 @@ ui-keys-choose = Выбрать
 ui-keys-toggle = Переключить
 ui-keys-go = Перейти
 ui-keys-other-panel = Открыть в другой панели
+
+## Дополнение полей (№70)
+ui-complete-history = история
+ui-complete-folder = папка
+ui-complete-here = в папке
+ui-keys-complete-next = Следующий
+ui-keys-insert = Вставить
+ui-keys-field-history = История поля

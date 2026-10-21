@@ -10,9 +10,15 @@ use gpui_kit::{Context, Div, Entity, SharedString, Window, div, px};
 use urfin_core::{AppState, Command, Row, Tab};
 use urfin_i18n::FluentArgs;
 
+use std::cell::Cell;
+use std::rc::Rc;
+
+use gpui_kit::{Bounds, Pixels};
+
 use super::theme::Theme;
 use super::{CoreHost, overlays};
 use crate::UiState;
+use crate::field_history::FieldKind;
 use crate::tokens::{Metric, Role};
 
 /// Что сейчас редактируется.
@@ -29,8 +35,42 @@ pub(super) enum Key {
 pub(super) struct Field {
     pub key: Key,
     pub input: Entity<InputState>,
-    /// Подписка на правку поля (превью группового переименования).
+    /// Подписка на правку поля (превью группового переименования, дополнение).
     pub _sub: Option<gpui_kit::Subscription>,
+    /// Где поле на экране (прошлый кадр): от него открывается дополнение (№70).
+    pub bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
+    /// Где кнопка выпадающего списка строки («Если файл есть ▾»).
+    pub drop: Rc<Cell<Option<Bounds<Pixels>>>>,
+}
+
+impl Field {
+    /// Вид поля для дополнения и истории (№70); переименование — без них (Tab там —
+    /// имя ↔ расширение).
+    pub(super) fn kind(&self) -> Option<FieldKind> {
+        match &self.key {
+            Key::Draft(cmd) => FieldKind::of_draft(cmd),
+            Key::Path(_) => Some(FieldKind::Path),
+            Key::Rename(..) => None,
+        }
+    }
+
+    /// Пустой элемент на всю площадь обёртки поля: запоминает её положение.
+    pub(super) fn probe(&self) -> impl IntoElement + use<> {
+        probe(Rc::clone(&self.bounds))
+    }
+
+    /// То же для кнопки выпадающего списка.
+    pub(super) fn probe_drop(&self) -> impl IntoElement + use<> {
+        probe(Rc::clone(&self.drop))
+    }
+}
+
+fn probe(cell: Rc<Cell<Option<Bounds<Pixels>>>>) -> impl IntoElement {
+    gpui_kit::canvas(move |b, _, _| cell.set(Some(b)), |_, (), _, _| {})
+        .absolute()
+        .top_0()
+        .left_0()
+        .size_full()
 }
 
 /// Черновик группового переименования (S5-23): поле — шаблон, под ним превью.
@@ -170,27 +210,44 @@ impl CoreHost {
                     }
                 });
                 // Групповое переименование: превью на каждую правку шаблона.
-                let sub = (key == Key::Draft(MULTI_RENAME.to_owned())).then(|| {
+                let multi = key == Key::Draft(MULTI_RENAME.to_owned());
+                if multi {
                     self.run(mr_command(&init, false), window, cx);
-                    cx.subscribe_in(
-                        &input,
-                        window,
-                        |h: &mut CoreHost,
-                         input,
-                         ev: &gpui_kit::component::input::InputEvent,
-                         window,
-                         cx| {
-                            if matches!(ev, gpui_kit::component::input::InputEvent::Change) {
-                                let text = input.read(cx).value().to_string();
-                                h.run(mr_command(&text, false), window, cx);
-                            }
-                        },
-                    )
-                });
+                }
+                // Правка поля: превью группового переименования и обновление открытого
+                // списка дополнений (№70).
+                let sub = cx.subscribe_in(
+                    &input,
+                    window,
+                    move |h: &mut CoreHost,
+                          input,
+                          ev: &gpui_kit::component::input::InputEvent,
+                          window,
+                          cx| {
+                        if !matches!(ev, gpui_kit::component::input::InputEvent::Change) {
+                            return;
+                        }
+                        let text = input.read(cx).value().to_string();
+                        if multi {
+                            h.run(mr_command(&text, false), window, cx);
+                        }
+                        if let Some(c) = h.completion() {
+                            h.run(
+                                Command::new("ui.complete")
+                                    .arg("kind", c.kind.as_str())
+                                    .arg("text", text.as_str()),
+                                window,
+                                cx,
+                            );
+                        }
+                    },
+                );
                 self.field = Some(Field {
                     key,
                     input,
-                    _sub: sub,
+                    _sub: Some(sub),
+                    bounds: Rc::new(Cell::new(None)),
+                    drop: Rc::new(Cell::new(None)),
                 });
             }
             (Some(_), None) => {
@@ -256,6 +313,101 @@ impl CoreHost {
 }
 
 impl CoreHost {
+    /// Открытый список дополнений поля (№70).
+    pub(super) fn completion(&self) -> Option<&crate::state::Complete> {
+        self.core
+            .as_ref()
+            .and_then(|c| c.state().ext.get::<UiState>())
+            .and_then(|u| u.complete.as_ref())
+            .filter(|_| self.field.as_ref().and_then(Field::kind).is_some())
+    }
+
+    /// `ui.field.remember` для Enter в поле: введённое — в историю его вида.
+    pub(super) fn field_remember(&self, cx: &Context<Self>) -> Option<Command> {
+        let f = self.field.as_ref()?;
+        let kind = f.kind()?;
+        let text = f.input.read(cx).value().to_string();
+        (!text.trim().is_empty()).then(|| {
+            Command::new("ui.field.remember")
+                .arg("kind", kind.as_str())
+                .arg("text", text.trim())
+        })
+    }
+
+    /// Клавиша в поле при открытом или закрытом списке дополнений: `None` — не наша.
+    /// Tab — открыть (или следующий вариант), Alt+↓ — история поля, ↑↓ — выбор,
+    /// Enter — вставить, Esc — закрыть список (поле остаётся).
+    pub(super) fn completion_key(
+        &mut self,
+        ks: &gpui_kit::Keystroke,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<Vec<Command>> {
+        let f = self.field.as_ref()?;
+        let kind = f.kind()?;
+        let text = f.input.read(cx).value().to_string();
+        let open = self.completion().map(|c| (c.items.len(), c.generation));
+        if let Some((_, generation)) = open
+            && self.complete_sel.0 != generation
+        {
+            self.complete_sel = (generation, 0);
+        }
+        let ask = |history: bool| {
+            let mut c = Command::new("ui.complete")
+                .arg("kind", kind.as_str())
+                .arg("text", text.as_str());
+            if history {
+                c = c.arg("history", true);
+            }
+            vec![c]
+        };
+        let alt = ks.modifiers.alt;
+        match (ks.key.as_str(), open) {
+            ("down", _) if alt => Some(ask(true)),
+            ("tab", None) => Some(ask(false)),
+            ("tab" | "down", Some((n, _))) if n > 0 => {
+                self.complete_sel.1 = (self.complete_sel.1 + 1) % n;
+                Some(Vec::new())
+            }
+            ("up", Some((n, _))) if n > 0 => {
+                self.complete_sel.1 = (self.complete_sel.1 + n - 1) % n;
+                Some(Vec::new())
+            }
+            ("escape", Some(_)) => Some(vec![Command::new("ui.complete.close")]),
+            ("enter", Some((n, _))) if n > 0 => {
+                let pick = self
+                    .completion()
+                    .and_then(|c| c.items.get(self.complete_sel.1))
+                    .map(|c| c.text.clone())?;
+                Some(self.complete_insert(&pick, kind, window, cx))
+            }
+            _ => None,
+        }
+    }
+
+    /// Вставить вариант в поле; папка (`…\`) — список остаётся открытым для неё.
+    pub(super) fn complete_insert(
+        &mut self,
+        pick: &str,
+        kind: FieldKind,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Vec<Command> {
+        if let Some(f) = self.field.as_ref() {
+            let value = pick.to_owned();
+            f.input.update(cx, |s, cx| s.set_value(value, window, cx));
+        }
+        if kind == FieldKind::Path && pick.ends_with(['\\', '/']) {
+            vec![
+                Command::new("ui.complete")
+                    .arg("kind", kind.as_str())
+                    .arg("text", pick),
+            ]
+        } else {
+            vec![Command::new("ui.complete.close")]
+        }
+    }
+
     /// «Сейчас» для поля времени (ISO, локальное).
     pub(super) fn now_iso(&self) -> String {
         let nanos = std::time::SystemTime::now()
@@ -323,6 +475,8 @@ pub(super) struct StripOpts {
     pub verify: bool,
     /// F7: имена через `;` — несколько папок.
     pub many: bool,
+    /// Открыт список «Если файл есть».
+    pub dropdown: bool,
     /// Ctrl+A: атрибуты целей по [`ATTRS`] (`None` — у целей разные) и выбранные.
     pub attrs_now: [Option<bool>; 4],
     pub attrs: [Option<bool>; 4],
@@ -517,9 +671,14 @@ pub(super) fn draft_bar(
         )
         .on_click(click(vec![Command::new("ui.cancel")]))
     };
-    let input = field
-        .filter(|f| matches!(f.key, Key::Draft(_)))
-        .map(|f| div().flex_1().min_w_0().child(Input::new(&f.input)));
+    let input = field.filter(|f| matches!(f.key, Key::Draft(_))).map(|f| {
+        div()
+            .flex_1()
+            .min_w_0()
+            .relative()
+            .child(Input::new(&f.input))
+            .child(f.probe())
+    });
     let title = |text: String| {
         div()
             .flex_none()
@@ -567,6 +726,7 @@ pub(super) fn draft_bar(
                         .child(SharedString::from(i18n.get("ui-strip-ifexists")))
                         .child(
                             div()
+                                .relative()
                                 .h(px(26.0))
                                 .px(px(10.0))
                                 .flex()
@@ -574,8 +734,13 @@ pub(super) fn draft_bar(
                                 .gap(px(6.0))
                                 .rounded(px(4.0))
                                 .border_1()
-                                .border_color(theme.c(Role::StrokeControl))
+                                .border_color(theme.c(if opts.dropdown {
+                                    Role::AccentFill
+                                } else {
+                                    Role::StrokeControl
+                                }))
                                 .bg(theme.c(Role::LayerPanel))
+                                .children(field.map(Field::probe_drop))
                                 .child(SharedString::from(i18n.get(label)))
                                 .child(
                                     div()
@@ -980,10 +1145,16 @@ fn mr_preview(p: &MrPreview, theme: &Theme) -> Div {
 }
 
 /// Поле правки пути панели `side` (если оно открыто).
-pub(super) fn path_input(field: Option<&Field>, side: urfin_core::Side) -> Option<Input> {
+pub(super) fn path_input(field: Option<&Field>, side: urfin_core::Side) -> Option<Div> {
     let f = field?;
     match &f.key {
-        Key::Path(s) if *s == side => Some(Input::new(&f.input)),
+        Key::Path(s) if *s == side => Some(
+            div()
+                .flex_1()
+                .relative()
+                .child(Input::new(&f.input))
+                .child(f.probe()),
+        ),
         _ => None,
     }
 }

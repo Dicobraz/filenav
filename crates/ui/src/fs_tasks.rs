@@ -220,3 +220,117 @@ fn display(loc: &Location) -> String {
         loc.to_uri()
     }
 }
+
+/// Каталог и начало имени для дополнения пути: `C:\Dev\ur` → (`C:\Dev`, `ur`);
+/// относительный — от `base`.
+pub fn split_path_prefix(text: &str, base: &Location) -> Option<(Location, String)> {
+    let cut = text.rfind(['\\', '/']).map_or(0, |i| i + 1);
+    let (dir, name) = text.split_at(cut);
+    let dir = if dir.is_empty() {
+        base.clone()
+    } else {
+        resolve_input(dir, base)?
+    };
+    Some((dir, name.to_owned()))
+}
+
+/// Подкаталоги `dir`, чьё имя начинается с набранного: варианты дополнения поля.
+pub fn spawn_complete_dirs(
+    rt: &Runtime,
+    vfs: Arc<VfsRegistry>,
+    dir: Location,
+    text: String,
+    generation: u64,
+    cancel: CancelToken,
+) {
+    rt.spawn(Lane::Interactive, "ui.complete", cancel, move |t| {
+        let cut = text.rfind(['\\', '/']).map_or(0, |i| i + 1);
+        let (head, name) = text.split_at(cut);
+        let low = name.to_lowercase();
+        let names = list_dirs(&vfs, &dir, &t.cancel, MENU_MAX).unwrap_or_default();
+        let items = names
+            .iter()
+            .filter(|n| n.to_lowercase().starts_with(&low))
+            .take(COMPLETE_DIRS)
+            .map(|n| format!("{head}{n}\\"))
+            .collect();
+        let _ = t
+            .sink
+            .send(Box::new(DirsCompleted { generation, items }), &t.cancel);
+    });
+}
+
+/// Подкаталогов в дополнении не больше.
+const COMPLETE_DIRS: usize = 12;
+
+struct DirsCompleted {
+    generation: u64,
+    items: Vec<String>,
+}
+
+impl Msg for DirsCompleted {
+    fn name(&self) -> &'static str {
+        "ui.complete"
+    }
+
+    fn apply(self: Box<Self>, cx: &mut Cx<'_>) {
+        match ui_state(cx).complete.as_mut() {
+            Some(c) if c.generation == self.generation => {
+                // Папки — перед историей.
+                let fs: Vec<crate::state::Cand> = self
+                    .items
+                    .into_iter()
+                    .filter(|t| !c.items.iter().any(|i| &i.text == t))
+                    .map(|text| crate::state::Cand {
+                        text,
+                        history: false,
+                    })
+                    .collect();
+                c.items.splice(0..0, fs);
+            }
+            _ => cx.keep_rev(),
+        }
+    }
+}
+
+/// Прочитать историю полей при старте; нет файла — пусто.
+pub fn spawn_fields_load(rt: &Runtime, file: std::path::PathBuf) {
+    rt.spawn(Lane::Bulk, "ui.fields.load", CancelToken::new(), move |t| {
+        let text = std::fs::read_to_string(&file).unwrap_or_default();
+        let fields = crate::field_history::FieldHistory::from_text(&text);
+        let _ = t.sink.send(Box::new(FieldsLoaded(fields)), &t.cancel);
+    });
+}
+
+struct FieldsLoaded(crate::field_history::FieldHistory);
+
+impl Msg for FieldsLoaded {
+    fn name(&self) -> &'static str {
+        "ui.fields.load"
+    }
+
+    fn apply(self: Box<Self>, cx: &mut Cx<'_>) {
+        ui_state(cx).fields = self.0;
+        cx.keep_rev();
+    }
+}
+
+/// Записать историю полей атомарно: временный файл рядом и переименование.
+pub fn spawn_fields_save(rt: &Runtime, file: std::path::PathBuf, text: String) {
+    rt.spawn(
+        Lane::Bulk,
+        "ui.fields.save",
+        CancelToken::new(),
+        move |_| {
+            let tmp = file.with_extension("toml.tmp");
+            let r = file
+                .parent()
+                .map_or(Ok(()), std::fs::create_dir_all)
+                .and_then(|()| std::fs::write(&tmp, text.as_bytes()))
+                .and_then(|()| std::fs::rename(&tmp, &file));
+            if let Err(e) = r {
+                tracing::warn!(file = %file.display(), error = %e, "field history not saved");
+            }
+        },
+    );
+}

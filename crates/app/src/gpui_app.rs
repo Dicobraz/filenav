@@ -171,5 +171,6 @@ fn theme_env(
             theme: probe.policy.theme.as_deref().map(Into::into),
             locked: probe.policy.locked,
         },
+        fields: Some(paths.state_dir.join("fields.toml")),
     }
 }

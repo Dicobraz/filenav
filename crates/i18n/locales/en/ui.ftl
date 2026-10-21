@@ -319,3 +319,11 @@ ui-keys-choose = Choose
 ui-keys-toggle = Toggle
 ui-keys-go = Go
 ui-keys-other-panel = Open in the other panel
+
+## Field completion (No. 70)
+ui-complete-history = history
+ui-complete-folder = folder
+ui-complete-here = in folder
+ui-keys-complete-next = Next
+ui-keys-insert = Insert
+ui-keys-field-history = Field history

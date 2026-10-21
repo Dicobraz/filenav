@@ -48,6 +48,26 @@ pub struct Subdirs {
     pub generation: u64,
 }
 
+/// Вариант дополнения поля (№70).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Cand {
+    pub text: String,
+    /// Из истории поля (иначе — из ФС или текущей папки).
+    pub history: bool,
+}
+
+/// Открытый список дополнений поля: для какого текста и что предложено.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Complete {
+    pub generation: u64,
+    pub kind: crate::field_history::FieldKind,
+    /// Текст поля, для которого список (дополнение заменяет его целиком).
+    pub text: String,
+    /// Только история (Alt+↓): без ФС и имён папки.
+    pub history_only: bool,
+    pub items: Vec<Cand>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct UiState {
     /// Зеркало `Focus::Overlay` (S0 v3 №1): открытый оверлей.
@@ -95,6 +115,11 @@ pub struct UiState {
     pub tree: [Option<crate::views::TreeState>; 2],
     pub info: [Option<crate::views::InfoState>; 2],
     pub preview: [Option<crate::views::PreviewState>; 2],
+    /// История полей ввода (№70) и её файл (`None` — без диска: тесты, `--screens`).
+    pub fields: crate::field_history::FieldHistory,
+    pub fields_file: Option<std::path::PathBuf>,
+    /// Список дополнений открытого поля.
+    pub complete: Option<Complete>,
 }
 
 impl Default for UiState {
@@ -132,6 +157,9 @@ impl UiState {
             tree: [None, None],
             info: [None, None],
             preview: [None, None],
+            fields: crate::field_history::FieldHistory::default(),
+            fields_file: None,
+            complete: None,
         }
     }
 
@@ -146,6 +174,7 @@ impl UiState {
         self.rename = None;
         self.path_edit = None;
         self.path_check = None;
+        self.complete = None;
     }
 
     /// Новое поколение фонового запроса.
