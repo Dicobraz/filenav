@@ -760,6 +760,7 @@ impl Transfer {
         let flags = sys::CopyFlags {
             excl,
             symlink: false,
+            no_buffering: it.size >= self.strategy.large,
         };
         let r = sys::copy_file(&it.src, to, flags, &mut |done| {
             if done > last {

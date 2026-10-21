@@ -36,7 +36,7 @@ impl Default for OpsConfig {
             device_jobs: DeviceJobs::default(),
             strategy: BTreeMap::new(),
             small_file: 1 << 20,
-            large_file: 256 << 20,
+            large_file: crate::strategy::LARGE_FILE,
             experimental_fast_trash: false,
         }
     }

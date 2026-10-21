@@ -25,6 +25,8 @@ pub struct CopyFlags {
     pub excl: bool,
     /// Ссылку — как ссылку, без разыменования.
     pub symlink: bool,
+    /// Мимо кэша ОС (`COPY_FILE_NO_BUFFERING`): крупные файлы (S5-16).
+    pub no_buffering: bool,
 }
 
 /// Копирует данные, альтернативные потоки, атрибуты и время изменения (как
@@ -354,6 +356,9 @@ mod imp {
         if flags.symlink {
             f |= COPY_FILE_COPY_SYMLINK;
         }
+        if flags.no_buffering {
+            f |= windows_sys::Win32::Storage::FileSystem::COPY_FILE_NO_BUFFERING;
+        }
         let data: *mut Progress<'_> = &raw mut progress;
         // SAFETY: строки с NUL живут до конца вызова; `data` указывает на
         // локальную переменную, переживающую вызов.
@@ -624,6 +629,7 @@ mod tests {
         let flags = CopyFlags {
             excl: true,
             symlink: false,
+            no_buffering: false,
         };
         let e = copy_file(&src, &dst, flags, &mut |_| true).unwrap_err();
         assert_eq!(e.kind(), io::ErrorKind::AlreadyExists);
