@@ -25,13 +25,14 @@
 
 ## G-04 Панели
 - Две панели на `uniform_list`/виртуальной таблице gpui-kit; кэш строк по `(tab, gen, idx)`; курсор/выделение по №31, раскраска по №32; режимы Full/Brief/Medium/Wide/Tree/Info/QuickView (Custom — заглушка).
-- Breadcrumb, футер панели, `..`.
+- Breadcrumb, футер панели, `..`. Метрики строк, курсора, отметки и раскраски — `docs/design/DESIGN.md`.
 - Приёмка: 100k строк — p99 листания ≤ 9,5 мс на Intel; CPU в пределах гейта против `egui-final`; `win-manual`.
 
 ## G-05 Каркас интерфейса и тема
-- Тема Fluent поверх gpui-kit (№56): акцент и light/dark из ОС, строки 24 px, Segoe UI Variable/Fluent Icons с диска ОС, Mica на каркасе через DWM (`ui::sys`).
+- Тема Fluent поверх gpui-kit (№56): акцент и light/dark из ОС, строки 24 px, Segoe UI Variable/Fluent Icons с диска ОС; **без Mica**, сплошной фон каркаса (№60). Темы — `docs/THEMES.md` / `docs/TASKS-THEMES.md` (№59), правило «одна информация — одно место» (№61).
 - Табы в заголовке окна (по набору на панель), cmdline, keybar F1–F10 с модификаторами, тосты (№51), inline-подтверждения и конфликты (PromptDetail), job-бар, меню F9, quick search.
-- Приёмка: экраны соответствуют мокапам S2 с поправками №31–№33; ресайз p99 ≤ 13 мс; `win-manual` со скриншотами.
+- Дизайн — `docs/design/DESIGN.md` (метрики, правила, снимки `docs/design/screens/`).
+- Приёмка: экраны соответствуют `docs/design/screens/` (поправки №31–№32 сохраняются); ресайз p99 ≤ 13 мс; `win-manual` со скриншотами.
 
 ## G-06 Удаление egui и рендер
 - Удалить egui/eframe/wgpu и `crates/ui/legacy`; `--ui=gpui` — единственный путь.
@@ -46,5 +47,5 @@
 
 ## Дальше (после G-07, отдельными пакетами)
 - S6: отрисовка терминала на GPUI (`alacritty_terminal` + GPUI, по образцу Zed).
-- S7: вьювер и редактор на редакторе gpui-kit, tree-sitter (№53).
+- S7: вьювер и редактор на редакторе gpui-kit, tree-sitter (№53); дизайн — `docs/design/screens/screen-viewer.png`, `screen-editor.png`.
 - Ревизия спек S2/S3/S7 под GPUI (S0).

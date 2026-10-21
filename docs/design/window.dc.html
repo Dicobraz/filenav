@@ -1,0 +1,806 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Урфин — окно</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1280px; height: 760px; box-sizing: border-box; display: flex; flex-direction: column; background: {{t.f}}; color: {{t.t}}; font-family: 'Segoe UI Variable', 'Segoe UI', Inter, system-ui, sans-serif; font-size: 13px; font-variant-numeric: tabular-nums; position: relative; overflow: hidden">
+<sc-if value="{{ctx.on}}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: {{ctx.color}}"></div>
+</sc-if>
+<div style="height: 40px; display: flex; align-items: flex-end; gap: 2px; padding-left: 12px">
+<sc-if value="{{oneSet}}" hint-placeholder-val="{{ true }}">
+<sc-for list="{{tabs}}" as="tb" hint-placeholder-count="3">
+<button type="button" aria-label="{{tb.aria}}" title="{{tb.aria}}" style="{{tb.style}}"><sc-if value="{{tb.icon}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.1"></rect><path d="M8 2.5v11 M1.5 5.5h13" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></sc-if>{{tb.label}}<sc-if value="{{tb.close}}" hint-placeholder-val="{{ false }}"><span style="color: {{t.s}}; font-size: 11px" aria-hidden="true">×</span></sc-if></button>
+</sc-for>
+<button type="button" aria-label="Новая вкладка" style="height: 32px; padding: 0 12px; border: 0; background: transparent; color: {{t.s}}; font: inherit">+</button>
+</sc-if>
+<sc-if value="{{twoSets}}" hint-placeholder-val="{{ false }}">
+<div style="width: 628px; flex: none; display: flex; align-items: flex-end; gap: 2px">
+<sc-if value="{{leftSet}}" hint-placeholder-val="{{ true }}">
+<sc-for list="{{tabsL}}" as="tb" hint-placeholder-count="2">
+<button type="button" aria-label="{{tb.aria}}" title="{{tb.aria}}" style="{{tb.style}}"><sc-if value="{{tb.icon}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.1"></rect><path d="M8 2.5v11 M1.5 5.5h13" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></sc-if>{{tb.label}}<sc-if value="{{tb.close}}" hint-placeholder-val="{{ false }}"><span style="color: {{t.s}}; font-size: 11px" aria-hidden="true">×</span></sc-if></button>
+</sc-for>
+<button type="button" aria-label="Новая вкладка" style="height: 32px; padding: 0 12px; border: 0; background: transparent; color: {{t.s}}; font: inherit">+</button>
+</sc-if>
+</div>
+<div style="width: 1px; height: 16px; flex: none; align-self: center; margin-top: 8px; background: {{t.b}}"></div>
+<div style="flex: 1; min-width: 0; display: flex; align-items: flex-end; gap: 2px; padding-left: 12px">
+<sc-for list="{{tabsR}}" as="tb" hint-placeholder-count="3">
+<button type="button" aria-label="{{tb.aria}}" title="{{tb.aria}}" style="{{tb.style}}"><sc-if value="{{tb.icon}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.1"></rect><path d="M8 2.5v11 M1.5 5.5h13" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></sc-if>{{tb.label}}<sc-if value="{{tb.close}}" hint-placeholder-val="{{ false }}"><span style="color: {{t.s}}; font-size: 11px" aria-hidden="true">×</span></sc-if></button>
+</sc-for>
+<button type="button" aria-label="Новая вкладка" style="height: 32px; padding: 0 12px; border: 0; background: transparent; color: {{t.s}}; font: inherit">+</button>
+</div>
+</sc-if>
+<div style="margin-left: auto; align-self: flex-start; display: flex; align-items: center">
+<sc-if value="{{ctx.on}}" hint-placeholder-val="{{ false }}">
+<span style="margin-right: 12px; padding: 2px 8px; border: 1px solid {{ctx.color}}; border-radius: 4px; color: {{ctx.color}}; font-size: 12px">{{ctx.label}}</span>
+</sc-if>
+<button type="button" aria-label="Свернуть" style="width: 46px; height: 32px; border: 0; background: transparent; color: {{t.s}}; font: inherit">—</button>
+<button type="button" aria-label="Развернуть" style="width: 46px; height: 32px; border: 0; background: transparent; color: {{t.s}}; font: inherit">☐</button>
+<button type="button" aria-label="Закрыть" style="width: 46px; height: 32px; border: 0; background: transparent; color: {{t.s}}; font: inherit">✕</button>
+</div>
+</div>
+<div style="flex: 1; min-height: 0; display: flex; gap: 1px; background: {{t.b}}; position: relative">
+<sc-if value="{{showTerm}}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; left: 0; right: 0; top: 0; bottom: 0; padding: 8px 12px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: flex-end; background: {{t.p}}; font-family: 'Cascadia Mono', Consolas, monospace; font-size: 13px; overflow: hidden">
+<sc-for list="{{termLines}}" as="ln" hint-placeholder-count="20"><div style="height: 19px; flex: none; display: flex; white-space: pre"><sc-for list="{{ln}}" as="sg" hint-placeholder-count="2"><span style="{{sg.s}}">{{sg.x}}</span></sc-for></div></sc-for>
+</div>
+</sc-if>
+<sc-if value="{{isPanels}}" hint-placeholder-val="{{ true }}">
+<sc-for list="{{panels}}" as="pn" hint-placeholder-count="2">
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; background: {{t.p}}; position: relative; {{pn.vis}}">
+<div style="height: 30px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid {{t.b}}; font-size: 12.5px">
+<span style="display: flex; align-items: flex-end; align-self: stretch; gap: 8px">
+<sc-if value="{{pn.drives}}" hint-placeholder-val="{{ false }}">
+<span style="position: relative; display: flex">
+<button type="button" style="position: relative; z-index: 2; height: 25px; margin-bottom: -1px; padding: 0 10px 1px; display: flex; align-items: center; gap: 6px; border: 1px solid {{t.b}}; border-bottom: 0; border-radius: 8px 8px 0 0; background: {{t.p}}; color: {{t.t}}; font: inherit; font-weight: 500">C: <span style="color: {{t.s}}; font-size: 10px">▾</span></button>
+<svg width="9" height="9" viewBox="0 0 9 9" aria-hidden="true" style="position: absolute; right: -8px; top: calc(100% - 8px); z-index: 3; transform: scaleX(-1)"><path d="M0 9V8.5A8.5 8.5 0 0 0 8.5 0H9V9Z" fill="{{t.p}}"></path><path d="M0 8.5A8.5 8.5 0 0 0 8.5 0" fill="none" stroke="{{t.b}}"></path></svg>
+<div style="position: absolute; left: 0; top: 100%; width: 400px; padding: 6px 4px 4px; box-sizing: border-box; background: {{t.p}}; border: 1px solid {{t.b}}; border-radius: 0 8px 8px 8px; display: flex; flex-direction: column; z-index: 1">
+<sc-for list="{{drives}}" as="dv" hint-placeholder-count="10">
+<sc-if value="{{dv.head}}" hint-placeholder-val="{{ false }}"><div style="padding: 8px 10px 4px; color: {{t.s}}; font-size: 11.5px">{{dv.label}}</div></sc-if>
+<sc-if value="{{dv.item}}" hint-placeholder-val="{{ true }}">
+<button type="button" style="{{dv.style}}">
+<span style="display: inline-flex; color: {{dv.iconColor}}"><sc-if value="{{dv.isDrive}}" hint-placeholder-val="{{ true }}"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="4.5" width="13" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.1"></rect><path d="M4 8h3" stroke="currentColor" stroke-width="1.1"></path><circle cx="11.5" cy="8" r="0.9" fill="currentColor"></circle></svg></sc-if><sc-if value="{{dv.isNet}}" hint-placeholder-val="{{ false }}"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.1"></rect><path d="M8 8.5v3 M3 13.5h10 M8 11.5v2" stroke="currentColor" stroke-width="1.1"></path></svg></sc-if><sc-if value="{{dv.isPlace}}" hint-placeholder-val="{{ false }}"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14s4.5-4 4.5-7.5a4.5 4.5 0 0 0-9 0C3.5 10 8 14 8 14z" fill="none" stroke="currentColor" stroke-width="1.1"></path><circle cx="8" cy="6.5" r="1.5" fill="none" stroke="currentColor" stroke-width="1.1"></circle></svg></sc-if></span>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; text-align: left">
+<span style="display: flex; gap: 8px; align-items: baseline"><span style="font-weight: 500">{{dv.name}}</span><span style="color: {{dv.subColor}}; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{dv.sub}}</span></span>
+<sc-if value="{{dv.hasBar}}" hint-placeholder-val="{{ false }}"><span style="height: 4px; border-radius: 2px; background: {{dv.track}}; overflow: hidden; display: block"><span style="{{dv.bar}}"></span></span></sc-if>
+</span>
+<span style="color: {{dv.subColor}}; font-size: 12px; white-space: nowrap">{{dv.free}}</span>
+</button>
+</sc-if>
+</sc-for>
+</div>
+</span>
+</sc-if>
+<span style="align-self: center; {{pn.pathStyle}}">{{pn.path}}</span>
+<sc-if value="{{pn.tag}}" hint-placeholder-val="{{ false }}"><span style="align-self: center; {{tagStyle}}">{{pn.tag}}</span></sc-if>
+</span>
+<span style="color: {{t.s}}">{{pn.info}}</span>
+</div>
+<sc-if value="{{pn.isFull}}" hint-placeholder-val="{{ true }}">
+<div style="height: 24px; display: flex; align-items: center; padding: 0 12px; border-bottom: 1px solid {{t.b}}; color: {{t.s}}; font-size: 11.5px">
+<span style="flex: 1">Имя</span>
+<span style="width: 92px; text-align: right">Размер</span>
+<sc-if value="{{pn.packedCol}}" hint-placeholder-val="{{ false }}"><span style="width: 80px; text-align: right">Сжато</span></sc-if>
+<span style="width: 120px; text-align: right">Изменён</span>
+</div>
+<sc-for list="{{pn.rows}}" as="r" hint-placeholder-count="12">
+<div style="{{r.rowStyle}}">
+<span style="flex: 1; display: flex; align-items: center; gap: 8px; overflow: hidden; white-space: nowrap; font-weight: {{r.weight}}">
+<sc-if value="{{icons}}" hint-placeholder-val="{{ true }}">
+<span style="display: inline-flex; width: 14px; color: {{r.iconColor}}">
+<sc-if value="{{r.isUp}}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3M4 7l4-4 4 4" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></sc-if>
+<sc-if value="{{r.isDir}}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 3.5h4.5l1.5 1.5h7v8h-13z" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></sc-if>
+<sc-if value="{{r.isFile}}" hint-placeholder-val="{{ true }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z M9.5 1.5v3h3" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></sc-if>
+</span>
+</sc-if>
+<span style="overflow: hidden; text-overflow: ellipsis">{{r.n1}}<span style="{{r.hlStyle}}">{{r.n2}}</span>{{r.n3}}</span>
+</span>
+<span style="width: 92px; text-align: right">{{r.size}}</span>
+<sc-if value="{{pn.packedCol}}" hint-placeholder-val="{{ false }}"><span style="width: 80px; text-align: right; color: {{r.dateColor}}">{{r.packed}}</span></sc-if>
+<span style="width: 120px; text-align: right; color: {{r.dateColor}}">{{r.date}}</span>
+</div>
+</sc-for>
+</sc-if>
+<sc-if value="{{pn.isBrief}}" hint-placeholder-val="{{ false }}">
+<div style="{{pn.briefGrid}}">
+<sc-for list="{{pn.rows}}" as="r" hint-placeholder-count="33">
+<div style="{{r.briefStyle}}"><span style="display: inline-flex; width: 14px; flex: none; color: {{r.iconColor}}"><sc-if value="{{r.isDir}}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 3.5h4.5l1.5 1.5h7v8h-13z" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></sc-if><sc-if value="{{r.isFile}}" hint-placeholder-val="{{ true }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z M9.5 1.5v3h3" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></sc-if></span><span style="overflow: hidden; text-overflow: ellipsis">{{r.name}}</span></div>
+</sc-for>
+</div>
+</sc-if>
+<sc-if value="{{pn.isTree}}" hint-placeholder-val="{{ false }}">
+<div style="padding-top: 4px; display: flex; flex-direction: column">
+<sc-for list="{{tree}}" as="n" hint-placeholder-count="20">
+<div style="{{n.style}}"><span style="{{n.indent}}"></span><span style="width: 14px; flex: none; text-align: center; color: {{n.chevColor}}; font-size: 10px">{{n.chev}}</span><span style="display: inline-flex; width: 14px; flex: none; color: {{n.iconColor}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 3.5h4.5l1.5 1.5h7v8h-13z" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></span><span style="font-weight: {{n.weight}}">{{n.name}}</span><span style="margin-left: auto; color: {{n.metaColor}}; font-size: 12px">{{n.meta}}</span></div>
+</sc-for>
+</div>
+</sc-if>
+<sc-if value="{{pn.isInfo}}" hint-placeholder-val="{{ false }}">
+<div style="padding: 20px 20px 16px; display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; gap: 14px; align-items: center">
+<span style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: {{t.h}}; border: 1px solid {{t.b}}; color: {{t.a}}"><svg width="26" height="26" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z M9.5 1.5v3h3 M5.5 8h5 M5.5 10.5h5" fill="none" stroke="currentColor" stroke-width="0.9"></path></svg></span>
+<div style="display: flex; flex-direction: column; gap: 3px"><span style="font-size: 15px; font-weight: 500">Cargo.toml</span><span style="color: {{t.s}}">Файл TOML · 1 214 байт</span></div>
+</div>
+<div style="display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 7px 12px; font-size: 12.5px">
+<sc-for list="{{infoRows}}" as="ir" hint-placeholder-count="8"><span style="color: {{t.s}}">{{ir.k}}</span><span style="{{ir.vs}}">{{ir.v}}</span></sc-for>
+</div>
+<div style="height: 1px; background: {{t.b}}"></div>
+<div style="display: flex; flex-direction: column; gap: 8px; font-size: 12.5px">
+<div style="display: flex; justify-content: space-between"><span><span style="font-weight: 500">C:</span> <span style="color: {{t.s}}">Windows · NTFS</span></span><span style="color: {{t.s}}">214 ГБ свободно из 931 ГБ</span></div>
+<div style="height: 6px; border-radius: 3px; background: {{t.b}}; overflow: hidden"><div style="height: 100%; width: 77%; background: {{t.a}}"></div></div>
+<div style="color: {{t.s}}">Папка C:\Dev\urfin: 12 файлов, 4 папки · 98,2 МБ</div>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{pn.isState}}" hint-placeholder-val="{{ false }}">
+<div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 0 40px 40px; text-align: center">
+<span style="width: 56px; height: 56px; border-radius: 28px; display: flex; align-items: center; justify-content: center; background: {{t.h}}; border: 1px solid {{t.b}}; color: {{pn.st.iconColor}}"><sc-if value="{{pn.st.lock}}" hint-placeholder-val="{{ false }}"><svg width="26" height="26" viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="7" width="9" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1"></rect><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2 M8 9.5v2" fill="none" stroke="currentColor" stroke-width="1"></path></svg></sc-if><sc-if value="{{pn.st.net}}" hint-placeholder-val="{{ false }}"><svg width="26" height="26" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="7" rx="1" fill="none" stroke="currentColor" stroke-width="1"></rect><path d="M8 9.5v3 M4 13.5h8 M2 1.5l12 12" fill="none" stroke="currentColor" stroke-width="1"></path></svg></sc-if><sc-if value="{{pn.st.empty}}" hint-placeholder-val="{{ true }}"><svg width="26" height="26" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 3.5h4.5l1.5 1.5h7v8h-13z" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="2 1.5"></path></svg></sc-if></span>
+<span style="font-size: 15px; font-weight: 500">{{pn.st.title}}</span>
+<sc-if value="{{pn.st.text}}" hint-placeholder-val="{{ false }}"><span style="color: {{t.s}}; max-width: 380px">{{pn.st.text}}</span></sc-if>
+<div style="display: flex; gap: 8px; margin-top: 6px"><sc-for list="{{pn.st.btns}}" as="b" hint-placeholder-count="2"><button type="button" style="{{b.style}}">{{b.label}} <span style="{{b.keyStyle}}">{{b.key}}</span></button></sc-for></div>
+</div>
+</sc-if>
+<sc-if value="{{pn.isQv}}" hint-placeholder-val="{{ false }}">
+<div style="padding: 6px 0; font-family: 'Cascadia Mono', Consolas, monospace; font-size: 12.5px">
+<sc-for list="{{qvLines}}" as="ln" hint-placeholder-count="24">
+<div style="height: 20px; display: flex; align-items: center; white-space: pre"><span style="width: 40px; flex: none; padding-right: 12px; box-sizing: border-box; text-align: right; color: {{t.s}}">{{ln.n}}</span><sc-for list="{{ln.segs}}" as="sg" hint-placeholder-count="3"><span style="{{sg.style}}">{{sg.x}}</span></sc-for></div>
+</sc-for>
+</div>
+</sc-if>
+</div>
+</sc-for>
+</sc-if>
+<sc-if value="{{isSearch}}" hint-placeholder-val="{{ false }}">
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; background: {{t.p}}">
+<div style="padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid {{t.b}}">
+<div style="display: flex; gap: 8px; align-items: center">
+<label style="width: 44px; color: {{t.s}}; font-size: 12px" for="q-name">Имя</label>
+<input id="q-name" value="*.rs" style="width: 120px; {{inputStyle}}">
+<label style="color: {{t.s}}; font-size: 12px" for="q-text">Текст</label>
+<input id="q-text" value="spawn_blocking" style="flex: 1; min-width: 0; {{inputStyle}}">
+<button type="button" style="{{chipOn}}">Aa</button>
+<button type="button" style="{{chipOff}}">.*</button>
+</div>
+<div style="display: flex; gap: 8px; align-items: center">
+<label style="width: 44px; color: {{t.s}}; font-size: 12px" for="q-in">В</label>
+<input id="q-in" value="C:\Dev\urfin\crates" style="flex: 1; min-width: 0; {{inputStyle}}">
+<label style="display: flex; gap: 6px; align-items: center; color: {{t.t}}; font-size: 12px"><input type="checkbox" checked="{{ true }}" readOnly="{{ true }}">Подкаталоги</label>
+</div>
+</div>
+<div style="height: 24px; display: flex; align-items: center; padding: 0 12px; border-bottom: 1px solid {{t.b}}; color: {{t.s}}; font-size: 11.5px">
+<span style="width: 270px">Файл</span>
+<span style="flex: 1">Совпадение</span>
+</div>
+<sc-for list="{{results}}" as="r" hint-placeholder-count="9">
+<div style="{{r.style}}">
+<span style="width: 270px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{r.file}}<span style="color: {{r.lnColor}}">:{{r.line}}</span></span>
+<span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre; font-family: 'Cascadia Mono', Consolas, monospace; font-size: 12px">{{r.pre}}<span style="background: {{t.hl}}; border-radius: 2px">{{r.hit}}</span>{{r.post}}</span>
+</div>
+</sc-for>
+<div style="margin-top: auto; padding: 8px 12px; border-top: 1px solid {{t.b}}; display: flex; flex-direction: column; gap: 6px">
+<div style="height: 2px; background: {{t.a}}"></div>
+<div style="display: flex; justify-content: space-between; color: {{t.s}}; font-size: 12px"><span>Найдено 9 совпадений в 7 файлах</span><span>просмотрено 1 284 файла · 0,4 с</span></div>
+</div>
+</div>
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; background: {{t.p}}">
+<div style="height: 30px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid {{t.b}}; font-size: 12.5px">
+<span>crates\urfin-core\src\ops\copy.rs</span>
+<span style="color: {{t.s}}">стр 142 · предпросмотр</span>
+</div>
+<div style="padding: 6px 0; font-family: 'Cascadia Mono', Consolas, monospace; font-size: 12.5px">
+<sc-for list="{{preview}}" as="ln" hint-placeholder-count="24">
+<div style="{{ln.style}}"><span style="width: 44px; padding-right: 14px; text-align: right; color: {{t.s}}; flex: none">{{ln.n}}</span><span>{{ln.pre}}<span style="background: {{t.hl}}; border-radius: 2px">{{ln.hit}}</span>{{ln.post}}</span></div>
+</sc-for>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{isViewer}}" hint-placeholder-val="{{ false }}">
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; background: {{t.p}}">
+<div style="height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid {{t.b}}; background: {{t.h}}">
+<span style="display: inline-flex; color: {{t.a}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z M9.5 1.5v3h3 M5.5 8h5 M5.5 10.5h5 M5.5 13h3" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></span>
+<span style="color: {{t.s}}">C:\Dev\urfin</span>
+<span style="{{tagStyle}}">только чтение</span>
+<div style="margin-left: auto; display: flex; border: 1px solid {{t.b}}; border-radius: 5px; overflow: hidden">
+<button type="button" style="{{segOff}}">Текст</button>
+<button type="button" style="{{segOn}}">Разметка</button>
+<button type="button" style="{{segOff}}">Hex</button>
+</div>
+</div>
+<div style="flex: 1; min-height: 0; display: flex">
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; font-family: 'Cascadia Mono', Consolas, monospace; font-size: 13px">
+<sc-for list="{{viewLines}}" as="ln" hint-placeholder-count="27">
+<div style="height: 22px; display: flex; align-items: center; white-space: pre"><span style="{{gutterStyle}}">{{ln.n}}</span><span style="padding-left: 16px"><sc-for list="{{ln.segs}}" as="s" hint-placeholder-count="3"><span style="{{s.style}}">{{s.x}}</span></sc-for></span></div>
+</sc-for>
+<div style="flex: 1; display: flex"><span style="{{gutterStyle}}"></span></div>
+</div>
+<div style="width: 14px; flex: none; position: relative; border-left: 1px solid {{t.b}}; background: {{t.h}}">
+<div style="position: absolute; left: 3px; right: 3px; top: 3px; height: 13%; border-radius: 4px; background: {{t.c}}; border: 1px solid {{t.b}}; box-sizing: border-box"></div>
+<sc-for list="{{marks}}" as="m" hint-placeholder-count="5"><div style="{{m}}"></div></sc-for>
+</div>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{isEditor}}" hint-placeholder-val="{{ false }}">
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; background: {{t.p}}; position: relative">
+<div style="height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid {{t.b}}; background: {{t.h}}">
+<span style="display: inline-flex; color: {{t.a}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 4.5L2 8l3.5 3.5 M10.5 4.5L14 8l-3.5 3.5 M9 3l-2 10" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></span>
+<span style="color: {{t.s}}">C:\Dev\urfin</span>
+<span style="margin-left: auto; {{tagStyle}}">+2 добавлено · 1 изменена</span>
+</div>
+<div style="flex: 1; min-height: 0; display: flex">
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; font-family: 'Cascadia Mono', Consolas, monospace; font-size: 13px">
+<sc-for list="{{editLines}}" as="ln" hint-placeholder-count="31">
+<div style="{{ln.style}}"><span style="{{ln.barStyle}}"></span><span style="{{ln.numStyle}}">{{ln.n}}</span><span style="{{foldCol}}">{{ln.fold}}</span><span style="padding-left: 12px"><sc-for list="{{ln.segs}}" as="s" hint-placeholder-count="3"><span style="{{s.style}}">{{s.x}}</span></sc-for></span></div>
+</sc-for>
+<div style="flex: 1; display: flex"><span style="width: 3px; flex: none; background: {{t.h}}"></span><span style="width: 40px; flex: none; background: {{t.h}}"></span><span style="{{foldCol}}"></span></div>
+</div>
+<div style="width: 88px; flex: none; position: relative; padding: 6px 8px; box-sizing: border-box; border-left: 1px solid {{t.b}}; background: {{t.p}}; overflow: hidden">
+<div style="{{viewportStyle}}"></div>
+<sc-for list="{{mini}}" as="m" hint-placeholder-count="41"><div style="position: relative; height: 3px; margin-bottom: 1px; display: flex; gap: 2px; overflow: hidden"><sc-for list="{{m}}" as="b" hint-placeholder-count="3"><div style="{{b}}"></div></sc-for></div></sc-for>
+</div>
+</div>
+<div style="position: absolute; top: 44px; right: 104px; display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: {{t.h}}; border: 1px solid {{t.b}}; border-radius: 6px">
+<input aria-label="Найти" value="a41c9e0" style="width: 180px; {{inputStyle}}">
+<span style="color: {{t.s}}; font-size: 12px; min-width: 44px; text-align: center">1 из 2</span>
+<button type="button" aria-label="Предыдущее" style="{{chipOff}}">↑</button>
+<button type="button" aria-label="Следующее" style="{{chipOff}}">↓</button>
+<button type="button" style="{{chipOff}}">Aa</button>
+<button type="button" style="{{chipOff}}">.*</button>
+<button type="button" aria-label="Закрыть поиск" style="{{chipOff}}">✕</button>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{isSettings}}" hint-placeholder-val="{{ false }}">
+<div style="flex: 1; min-width: 0; display: flex; background: {{t.p}}">
+<div style="width: 220px; flex: none; padding: 16px 8px; display: flex; flex-direction: column; gap: 2px; border-right: 1px solid {{t.b}}; background: {{t.h}}">
+<sc-for list="{{nav}}" as="n" hint-placeholder-count="8">
+<button type="button" style="{{n.style}}">{{n.label}}</button>
+</sc-for>
+</div>
+<sc-if value="{{secView}}" hint-placeholder-val="{{ true }}">
+<div style="flex: 1; min-width: 0; padding: 24px 32px; display: flex; flex-direction: column; gap: 22px">
+<div style="display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; align-items: center; justify-content: space-between">
+<span style="font-size: 15px; font-weight: 500">Тема</span>
+<label style="display: flex; gap: 8px; align-items: center; color: {{t.t}}"><input type="checkbox" checked="{{followOs}}" onChange="{{toggleOs}}">Как в Windows — светлая или тёмная и акцент из системы</label>
+</div>
+<div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px">
+<sc-for list="{{cards}}" as="c" hint-placeholder-count="6">
+<button type="button" onClick="{{c.pick}}" style="{{c.cardStyle}}">
+<div style="{{c.prevStyle}}">
+<div style="{{c.panelStyle}}"><div style="{{c.accStyle}}"></div><div style="{{c.barStyle}}"></div><div style="{{c.curStyle}}"></div><div style="{{c.barStyle}}"></div><div style="{{c.barStyle}}"></div></div>
+<div style="{{c.panelStyle}}"><div style="height: 2px"></div><div style="{{c.barStyle}}"></div><div style="{{c.barStyle}}"></div><div style="{{c.barStyle}}"></div><div style="{{c.barStyle}}"></div></div>
+</div>
+<span style="font-size: 12px; color: {{t.t}}">{{c.name}}</span>
+</button>
+</sc-for>
+</div>
+</div>
+<div style="display: flex; align-items: center; gap: 24px">
+<span style="width: 160px; font-weight: 500">Высота строки</span>
+<div style="display: flex; gap: 4px">
+<sc-for list="{{densOpts}}" as="o" hint-placeholder-count="3">
+<button type="button" onClick="{{o.pick}}" style="{{o.style}}">{{o.label}}</button>
+</sc-for>
+</div>
+</div>
+<div style="display: flex; align-items: center; gap: 24px">
+<span style="width: 160px; font-weight: 500">Иконки файлов</span>
+<div style="display: flex; gap: 4px">
+<sc-for list="{{iconOpts}}" as="o" hint-placeholder-count="3">
+<button type="button" onClick="{{o.pick}}" style="{{o.style}}">{{o.label}}</button>
+</sc-for>
+</div>
+</div>
+<div style="display: flex; align-items: flex-start; gap: 24px">
+<span style="width: 160px; font-weight: 500">Шрифты</span>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span>Интерфейс — Segoe UI Variable, 13</span>
+<span style="font-family: 'Cascadia Mono', Consolas, monospace; font-size: 12.5px">Код и терминал — Cascadia Mono, 12,5</span>
+</div>
+</div>
+<div style="margin-top: auto; padding-top: 14px; border-top: 1px solid {{t.b}}; color: {{t.s}}; font-size: 12px">Политика организации: тема не зафиксирована · HKLM\Software\Policies\Aahz\Urfin</div>
+</div>
+</sc-if>
+<sc-if value="{{secForm}}" hint-placeholder-val="{{ false }}">
+<div style="flex: 1; min-width: 0; padding: 24px 32px; display: flex; flex-direction: column; gap: 24px">
+<sc-for list="{{form}}" as="g" hint-placeholder-count="2">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span style="font-size: 15px; font-weight: 500; margin-bottom: 4px">{{g.title}}</span>
+<sc-for list="{{g.rows}}" as="r" hint-placeholder-count="5">
+<div style="min-height: 36px; display: flex; align-items: center; gap: 24px; border-bottom: 1px solid {{t.b}}">
+<span style="width: 240px; flex: none">{{r.label}}</span>
+<sc-if value="{{r.seg}}" hint-placeholder-val="{{ false }}"><div style="display: flex; gap: 4px"><sc-for list="{{r.opts}}" as="o" hint-placeholder-count="3"><button type="button" style="{{o.style}}">{{o.label}}</button></sc-for></div></sc-if>
+<sc-if value="{{r.check}}" hint-placeholder-val="{{ false }}"><label style="display: flex; gap: 8px; align-items: center"><input type="checkbox" checked="{{r.on}}" readOnly="{{ true }}">{{r.text}}</label></sc-if>
+<sc-if value="{{r.select}}" hint-placeholder-val="{{ false }}"><select aria-label="{{r.label}}" style="min-width: 260px; {{inputStyle}}"><option>{{r.value}}</option></select></sc-if>
+<span style="margin-left: auto; color: {{t.s}}; font-size: 12px">{{r.note}}</span>
+</div>
+</sc-for>
+</div>
+</sc-for>
+</div>
+</sc-if>
+<sc-if value="{{secKeys}}" hint-placeholder-val="{{ false }}">
+<div style="flex: 1; min-width: 0; padding: 24px 32px; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; align-items: center; gap: 16px">
+<span style="font-size: 15px; font-weight: 500">Клавиатура</span>
+<div style="display: flex; gap: 4px"><sc-for list="{{presets}}" as="o" hint-placeholder-count="3"><button type="button" style="{{o.style}}">{{o.label}}</button></sc-for></div>
+<input aria-label="Найти команду или клавишу" placeholder="Команда или клавиша" style="margin-left: auto; width: 280px; {{inputStyle}}">
+</div>
+<div style="display: flex; flex-direction: column; border: 1px solid {{t.b}}; border-radius: 6px; overflow: hidden">
+<div style="height: 28px; display: flex; align-items: center; gap: 16px; padding: 0 12px; background: {{t.h}}; border-bottom: 1px solid {{t.b}}; color: {{t.s}}; font-size: 11.5px"><span style="flex: 1">Команда</span><span style="width: 260px">Клавиши</span><span style="width: 150px">Где</span></div>
+<sc-for list="{{keymap}}" as="km" hint-placeholder-count="12">
+<div style="{{km.style}}">
+<span style="flex: 1; display: flex; flex-direction: column"><span>{{km.cmd}}</span><sc-if value="{{km.warn}}" hint-placeholder-val="{{ false }}"><span style="color: {{t.rem}}; font-size: 12px">{{km.warn}}</span></sc-if></span>
+<span style="width: 260px; display: flex; gap: 6px; flex-wrap: wrap"><sc-for list="{{km.keys}}" as="k" hint-placeholder-count="1"><span style="{{k.style}}">{{k.label}}</span></sc-for></span>
+<span style="width: 150px; color: {{t.s}}; font-size: 12px">{{km.ctx}}</span>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-if>
+</div>
+</sc-if>
+<sc-if value="{{isCopy}}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; left: 0; right: 0; bottom: 0; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; background: {{t.h}}; border-top: 2px solid {{t.a}}">
+<div style="display: flex; align-items: center; gap: 12px">
+<span style="font-weight: 500; white-space: nowrap">Копировать 3 объекта · 72,5 КБ в</span>
+<input aria-label="Куда" value="\\fs01\share\presale\" style="flex: 1; min-width: 0; {{inputStyle}}">
+</div>
+<div style="display: flex; align-items: center; gap: 20px">
+<label style="display: flex; gap: 8px; align-items: center; font-size: 12.5px">Если файл есть
+<select style="{{inputStyle}}"><option>Спросить</option><option>Заменить</option><option>Пропустить</option><option>Заменить, если новее</option></select>
+</label>
+<label style="display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" checked="{{ true }}" readOnly="{{ true }}">Сохранять даты</label>
+<label style="display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" readOnly="{{ true }}">Проверить хэш после копирования</label>
+<div style="margin-left: auto; display: flex; gap: 8px">
+<button type="button" style="{{btnPrimary}}">Копировать <span style="opacity: 0.8; font-size: 11px">Enter</span></button>
+<button type="button" style="{{btn}}">В фоне <span style="color: {{t.s}}; font-size: 11px">Shift+Enter</span></button>
+<button type="button" style="{{btn}}">Отмена <span style="color: {{t.s}}; font-size: 11px">Esc</span></button>
+</div>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{isMenu}}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; left: 0; right: 0; top: 0; height: 30px; display: flex; align-items: flex-end; gap: 2px; padding: 0 8px; background: {{t.h}}; border-bottom: 1px solid {{t.b}}; z-index: 1">
+<sc-for list="{{menuBar}}" as="m" hint-placeholder-count="5">
+<div style="position: relative; display: flex">
+<button type="button" style="{{m.style}}">{{m.label}}</button>
+<sc-if value="{{m.open}}" hint-placeholder-val="{{ false }}">
+<sc-if value="{{m.filletL}}" hint-placeholder-val="{{ false }}"><svg width="9" height="9" viewBox="0 0 9 9" aria-hidden="true" style="position: absolute; left: -8px; top: calc(100% - 8px); z-index: 3"><path d="M0 9V8.5A8.5 8.5 0 0 0 8.5 0H9V9Z" fill="{{t.p}}"></path><path d="M0 8.5A8.5 8.5 0 0 0 8.5 0" fill="none" stroke="{{t.b}}"></path></svg></sc-if>
+<sc-if value="{{m.filletR}}" hint-placeholder-val="{{ false }}"><svg width="9" height="9" viewBox="0 0 9 9" aria-hidden="true" style="position: absolute; right: -8px; top: calc(100% - 8px); z-index: 3; transform: scaleX(-1)"><path d="M0 9V8.5A8.5 8.5 0 0 0 8.5 0H9V9Z" fill="{{t.p}}"></path><path d="M0 8.5A8.5 8.5 0 0 0 8.5 0" fill="none" stroke="{{t.b}}"></path></svg></sc-if>
+<div style="{{m.listStyle}}">
+<sc-for list="{{menuItems}}" as="mi" hint-placeholder-count="14">
+<sc-if value="{{mi.sep}}" hint-placeholder-val="{{ false }}"><div style="height: 1px; margin: 4px 6px; background: {{t.b}}"></div></sc-if>
+<sc-if value="{{mi.item}}" hint-placeholder-val="{{ true }}"><button type="button" style="{{mi.style}}"><span style="flex: 1; text-align: left">{{mi.label}}</span><span style="{{mi.keyStyle}}">{{mi.key}}</span></button></sc-if>
+</sc-for>
+</div>
+</sc-if>
+</div>
+</sc-for>
+</div>
+</sc-if>
+<sc-if value="{{isCtx}}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; left: 200px; top: 240px; width: 300px; padding: 4px; box-sizing: border-box; background: {{t.p}}; border: 1px solid {{t.b}}; border-radius: 8px; display: flex; flex-direction: column; z-index: 2">
+<sc-for list="{{ctxItems}}" as="mi" hint-placeholder-count="14">
+<sc-if value="{{mi.sep}}" hint-placeholder-val="{{ false }}"><div style="height: 1px; margin: 4px 6px; background: {{t.b}}"></div></sc-if>
+<sc-if value="{{mi.item}}" hint-placeholder-val="{{ true }}"><button type="button" style="{{mi.style}}"><span style="flex: 1; text-align: left">{{mi.label}}</span><span style="{{mi.keyStyle}}">{{mi.key}}</span></button></sc-if>
+</sc-for>
+</div>
+</sc-if>
+<sc-if value="{{isSelect}}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; left: 0; right: calc(50% + 0.5px); bottom: 0; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; background: {{t.h}}; border-top: 2px solid {{t.a}}">
+<div style="display: flex; align-items: center; gap: 10px">
+<label for="sel-mask" style="font-weight: 500; white-space: nowrap">Отметить</label>
+<input id="sel-mask" value="*.toml; *.lock" style="flex: 1; min-width: 0; {{inputStyle}}">
+<span style="color: {{t.s}}; font-size: 12px; white-space: nowrap">совпадает 4</span>
+</div>
+<div style="display: flex; align-items: center; gap: 16px">
+<label style="display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" readOnly="{{ true }}">Регистр</label>
+<label style="display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" readOnly="{{ true }}">И папки</label>
+<div style="margin-left: auto; display: flex; gap: 8px">
+<button type="button" style="{{btnPrimary}}">Отметить <span style="opacity: 0.8; font-size: 11px">Enter</span></button>
+<button type="button" style="{{btn}}">Отмена <span style="color: {{t.s}}; font-size: 11px">Esc</span></button>
+</div>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{isQuick}}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; left: 0; right: calc(50% + 0.5px); bottom: 0; height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: {{t.h}}; border-top: 2px solid {{t.a}}">
+<span style="display: inline-flex; color: {{t.s}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.5" fill="none" stroke="currentColor" stroke-width="1.2"></circle><path d="M10 10l4 4" stroke="currentColor" stroke-width="1.2"></path></svg></span>
+<span style="font-family: 'Cascadia Mono', Consolas, monospace; font-size: 12.5px">car<span style="display: inline-block; width: 2px; height: 15px; margin-left: 1px; vertical-align: -3px; background: {{t.a}}"></span></span>
+<span style="margin-left: auto; color: {{t.s}}; font-size: 12px">2 совпадения · 1-е</span>
+</div>
+</sc-if>
+<sc-if value="{{isDelete}}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; left: 0; right: calc(50% + 0.5px); bottom: 0; padding: 10px 14px; display: flex; align-items: center; gap: 10px; background: {{t.h}}; border-top: 2px solid {{t.k}}">
+<span style="display: inline-flex; color: {{t.k}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11 M6 4V2.5h4V4 M4 4l.7 9.5h6.6L12 4 M6.5 6.5v5 M9.5 6.5v5" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></span>
+<span style="white-space: nowrap"><span style="font-weight: 500">Удалить 2 объекта</span><span style="color: {{t.s}}"> · 67,7 КБ · в Корзину</span></span>
+<div style="margin-left: auto; display: flex; gap: 8px">
+<button type="button" style="{{btnDanger}}">Удалить <span style="opacity: 0.8; font-size: 11px">Enter</span></button>
+<button type="button" style="{{btn}}">Безвозвратно <span style="color: {{t.s}}; font-size: 11px">Shift+Enter</span></button>
+<button type="button" style="{{btn}}">Отмена <span style="color: {{t.s}}; font-size: 11px">Esc</span></button>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{isConflict}}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; left: 0; right: 0; bottom: 0; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; background: {{t.h}}; border-top: 2px solid {{t.rem}}">
+<div style="display: flex; align-items: center; gap: 10px">
+<span style="display: inline-flex; color: {{t.rem}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2l6.5 11.5h-13z M8 6.5v3.5 M8 11.5v.5" fill="none" stroke="currentColor" stroke-width="1.2"></path></svg></span>
+<span style="font-weight: 500">Файл уже есть в папке назначения</span>
+<span style="color: {{t.s}}">report_q3.xlsx · конфликт 4 из 12</span>
+</div>
+<div style="display: grid; grid-template-columns: 90px minmax(0, 1fr) minmax(0, 1fr); gap: 4px 16px; font-size: 12.5px">
+<span></span><span style="color: {{t.s}}">Копируемый · C:\Dev\urfin</span><span style="color: {{t.s}}">Существующий · \\fs01\share\presale</span>
+<span style="color: {{t.s}}">Размер</span><span>96 КБ</span><span>88 КБ</span>
+<span style="color: {{t.s}}">Изменён</span><span>20.10.26 18:02 <span style="margin-left: 6px; padding: 0 6px; border-radius: 4px; border: 1px solid {{t.a}}; color: {{t.a}}; font-size: 11px">новее</span></span><span>09.10.26 19:12</span>
+</div>
+<div style="display: flex; align-items: center; gap: 8px">
+<button type="button" style="{{btnPrimary}}">Заменить <span style="opacity: 0.8; font-size: 11px">Enter</span></button>
+<button type="button" style="{{btn}}">Пропустить <span style="color: {{t.s}}; font-size: 11px">S</span></button>
+<button type="button" style="{{btn}}">Заменить, если новее <span style="color: {{t.s}}; font-size: 11px">N</span></button>
+<button type="button" style="{{btn}}">Переименовать <span style="color: {{t.s}}; font-size: 11px">R</span></button>
+<label style="margin-left: auto; display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" checked="{{ true }}" readOnly="{{ true }}">Так же для остальных 8</label>
+<button type="button" style="{{btn}}">Отмена <span style="color: {{t.s}}; font-size: 11px">Esc</span></button>
+</div>
+</div>
+</sc-if>
+</div>
+<sc-if value="{{showJobs}}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; padding: 2px 0; background: {{t.h}}; border-top: 1px solid {{t.b}}">
+<sc-for list="{{jobs}}" as="j" hint-placeholder-count="2">
+<div style="height: 30px; display: flex; align-items: center; gap: 12px; padding: 0 12px; font-size: 12.5px">
+<span style="width: 110px; font-weight: 500">{{j.name}}</span>
+<span style="width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: {{t.s}}">{{j.what}}</span>
+<div style="flex: 1; height: 4px; border-radius: 2px; background: {{t.b}}; overflow: hidden"><div style="{{j.bar}}"></div></div>
+<span style="width: 250px; text-align: right; color: {{j.infoColor}}">{{j.info}}</span>
+<button type="button" style="{{chipOff}}">{{j.act}}</button>
+<button type="button" aria-label="Отменить задачу" style="{{chipOff}}">✕</button>
+</div>
+</sc-for>
+</div>
+</sc-if>
+<sc-if value="{{showCli}}" hint-placeholder-val="{{ true }}">
+<div style="height: 30px; display: flex; align-items: center; gap: 6px; padding: 0 12px; background: {{t.p}}; border-top: 1px solid {{t.b}}; font-family: 'Cascadia Mono', Consolas, monospace; font-size: 12.5px">
+<span style="color: {{t.s}}">pwsh</span>
+<span>C:\Dev\urfin&gt;</span>
+<span>{{cliCmd}}</span>
+<span style="display: inline-block; width: 8px; height: 16px; background: {{t.a}}"></span>
+</div>
+</sc-if>
+<div style="height: 26px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; background: {{t.h}}; border-top: 1px solid {{t.b}}; color: {{t.s}}; font-size: 12px">
+<sc-for list="{{status}}" as="s" hint-placeholder-count="3"><span>{{s}}</span></sc-for>
+</div>
+<div style="{{keybarStyle}}">
+<sc-for list="{{keys}}" as="k" hint-placeholder-count="10">
+<span><span style="color: {{t.t}}; font-weight: 500">{{k.k}}</span> {{k.v}}</span>
+</sc-for>
+</div>
+<sc-if value="{{showToast}}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; top: 118px; right: 16px; width: 300px; box-sizing: border-box; padding: 10px 12px; background: {{t.p}}; border: 1px solid {{t.b}}; border-radius: 6px; font-size: 12.5px">
+<div style="color: {{t.t}}; margin-bottom: 3px">Копирование завершено</div>
+<div style="color: {{t.s}}">48 файлов · 1,9 ГБ · 6,2 с</div>
+</div>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark","blue","turquoise","grass","sepia"],"default":"light"},"screen":{"editor":"enum","options":["panels","settings-panels","settings-keys","settings-editor","terminal","termhalf","menu","context","select","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress","search","viewer","editor","settings"],"default":"panels"},"density":{"editor":"enum","options":["20","24","28"],"default":"24"},"icons":{"editor":"enum","options":["none","mono","color"],"default":"mono"},"context":{"editor":"enum","options":["none","admin","remote"],"default":"none"},"$preview":{"width":1280,"height":760}}'>
+class Component extends DCLogic {
+renderVals() {
+const TH = {
+light: {f:"#E9E9E9",p:"#F4F4F4",h:"#EEEEEE",t:"#1B1B1B",s:"#5F5F5F",a:"#0067C0",c:"#D3E3F1",ct:"#1B1B1B",b:"#DCDCDC",k:"#B5402F",ex:"#2E7D32",ar:"#7B4FB0",cl:"#ECECEC",hl:"#F2E3A0",kw:"#1F5FA8",str:"#8A4B12",num:"#6A3FA0",com:"#5F6B76",adm:"#B5402F",rem:"#A86A12"},
+dark: {f:"#1C1C1C",p:"#262626",h:"#2B2B2B",t:"#F2F2F2",s:"#B8B8B8",a:"#6CC4F2",c:"#24557A",ct:"#FFFFFF",b:"#3C3C3C",k:"#FFB86C",ex:"#8FD98A",ar:"#C9B4FF",cl:"#2E2E2E",hl:"#5C4A1C",kw:"#7FB8F0",str:"#E3B07A",num:"#C9B4FF",com:"#949494",adm:"#FF8A7A",rem:"#FFC46B"},
+blue: {f:"#E1E9F1",p:"#EEF3F8",h:"#E8EEF4",t:"#1E2A36",s:"#5E6B78",a:"#3A6EA5",c:"#D4E3F2",ct:"#1E2A36",b:"#D3DDE8",k:"#B0452F",ex:"#2E7D4A",ar:"#7A4FA8",cl:"#E6EDF4",hl:"#F0E2A6",kw:"#2F5F96",str:"#8A4B12",num:"#6A3FA0",com:"#5E6B78",adm:"#B0452F",rem:"#A86A12"},
+turquoise: {f:"#DFEDEB",p:"#EDF5F4",h:"#E6F1EF",t:"#1D2E2D",s:"#5A7270",a:"#2C8C86",c:"#CFE9E6",ct:"#1D2E2D",b:"#CFE1DE",k:"#B0502F",ex:"#3A7D2E",ar:"#7A4FA8",cl:"#E4F0EE",hl:"#F0E2A6",kw:"#1F6F6A",str:"#8A4B12",num:"#6A3FA0",com:"#5A7270",adm:"#B0502F",rem:"#A86A12"},
+grass: {f:"#E3ECDD",p:"#EEF4EA",h:"#E8F0E3",t:"#222D1C",s:"#5F6D57",a:"#4E8A3A",c:"#DCEBCF",ct:"#222D1C",b:"#D5E0CC",k:"#A84A2C",ex:"#2C6E8F",ar:"#7A4FA8",cl:"#E6EEE1",hl:"#F0E2A6",kw:"#3E6E2E",str:"#8A4B12",num:"#2C5F8F",com:"#5F6D57",adm:"#A84A2C",rem:"#A86A12"},
+sepia: {f:"#E7DECF",p:"#F2ECE1",h:"#ECE4D7",t:"#3A3128",s:"#7A6C5C",a:"#9A6A3A",c:"#E8DCC6",ct:"#3A3128",b:"#DACFBC",k:"#A8432F",ex:"#4F7A2E",ar:"#7A4F8F",cl:"#EBE3D6",hl:"#EAD49A",kw:"#7A4A1F",str:"#5E6A2E",num:"#6A3F7A",com:"#7A6C5C",adm:"#A8432F",rem:"#9A6212"}
+};
+const NAMES = [["light","Системная светлая"],["dark","Системная тёмная"],["blue","Голубая"],["turquoise","Бирюза"],["grass","Травяная"],["sepia","Сепия"]];
+const st = this.state || {};
+const themeId = st.theme || this.props.theme || "light";
+const t = TH[themeId] || TH.light;
+const screenRaw = this.props.screen || "panels";
+const sec = screenRaw.indexOf("settings-") === 0 ? screenRaw.slice(9) : "view";
+const screen = screenRaw.indexOf("settings") === 0 ? "settings" : screenRaw;
+const rowH = parseInt(st.density || this.props.density || "24", 10);
+const iconMode = st.icons || this.props.icons || "mono";
+const icons = iconMode !== "none";
+const context = this.props.context || "none";
+const ctx = { on: context !== "none", color: context === "admin" ? t.adm : t.rem, label: context === "admin" ? "Администратор" : "Удалённая сессия" };
+const mono = "'Cascadia Mono', Consolas, monospace";
+const inputStyle = "height: 28px; box-sizing: border-box; padding: 0 8px; border: 1px solid " + t.b + "; border-radius: 4px; background: " + t.p + "; color: " + t.t + "; font: inherit; font-size: 12.5px";
+const chip = (on) => "height: 26px; padding: 0 10px; border: 1px solid " + (on ? t.a : t.b) + "; border-radius: 4px; background: " + (on ? t.c : "transparent") + "; color: " + (on ? t.ct : t.t) + "; font: inherit; font-size: 12px";
+const btn = "height: 30px; padding: 0 14px; border: 1px solid " + t.b + "; border-radius: 4px; background: " + t.p + "; color: " + t.t + "; font: inherit; display: flex; gap: 8px; align-items: center";
+const btnPrimary = "height: 30px; padding: 0 14px; border: 1px solid " + t.a + "; border-radius: 4px; background: " + t.a + "; color: " + t.p + "; font: inherit; display: flex; gap: 8px; align-items: center";
+const tabStyle = (on) => on ? "height: 32px; padding: 0 14px; display: flex; align-items: center; gap: 10px; border: 0; border-radius: 7px 7px 0 0; background: " + t.p + "; color: " + t.t + "; font: inherit" : "height: 32px; padding: 0 14px; display: flex; align-items: center; border: 0; background: transparent; color: " + t.s + "; font: inherit";
+const TABS = {
+panels: [["urfin",1],["share",0],["logs",0]],
+copy: [["urfin",1],["share",0],["logs",0]],
+search: [["urfin",1],["share",0],["logs",0]],
+viewer: [["",0,"Панели — C:\\Dev\\urfin"],["CHANGELOG.md",1]],
+editor: [["",0,"Панели — C:\\Dev\\urfin"],["Cargo.toml ●",1]],
+settings: [["",0,"Панели — C:\\Dev\\urfin"],["Настройки",1]]
+};
+const tabs = (TABS[screen] || TABS.panels).map(([label, on, aria]) => ({ label, close: !!on, icon: !!aria, aria: aria || undefined, style: tabStyle(on) + (aria ? "; padding: 0 12px" : "") }));
+const L = [["..","up","",""],[".github","d","","12.10.26 09:14"],["crates","d","","19.10.26 22:41"],["docs","d","","20.10.26 11:02"],["target","d","","20.10.26 13:55"],["Cargo.lock","f","58,3 КБ","20.10.26 13:50"],["Cargo.toml","m","1,2 КБ","19.10.26 22:40"],["CHANGELOG.md","f","9,4 КБ","18.10.26 17:05"],["deny.toml","f","2,0 КБ","15.10.26 10:11"],["LICENSE-APACHE","f","11,1 КБ","01.09.26 12:00"],["LICENSE-MIT","f","1,0 КБ","01.09.26 12:00"],["README.md","f","4,8 КБ","17.10.26 21:33"],["build.ps1","x","3,6 КБ","14.10.26 08:47"],["rust-toolchain.toml","f","96 Б","02.09.26 14:20"],["urfin-0.4.2.zip","a","8,9 МБ","19.10.26 23:10"],["urfin.exe","x","11,7 МБ","20.10.26 13:55"]];
+const R = [["..","up","",""],["archive","d","","03.10.26 16:22"],["clients","d","","18.10.26 12:40"],["templates","d","","11.09.26 09:05"],["budget_2027.xlsx","f","412 КБ","17.10.26 18:31"],["contract_draft.docx","f","96 КБ","16.10.26 11:47"],["logo.svg","f","6,4 КБ","22.07.26 10:00"],["meeting_notes.txt","f","2,1 КБ","20.10.26 10:15"],["presale_kit.pdf","f","3,2 МБ","14.10.26 15:58"],["report_q3.xlsx","f","88 КБ","09.10.26 19:12"],["setup.msi","x","9,7 МБ","19.10.26 23:12"],["backup_1019.7z","a","1,4 ГБ","19.10.26 02:00"]];
+const isCopy = screen === "copy";
+const marked = isCopy ? [5, 7, 11] : (screen === "delete" ? [5, 7] : []);
+const cur = isCopy ? 11 : (screen === "delete" ? 7 : (screen === "quick" ? 5 : 6));
+const qs = screen === "quick" ? "car" : "";
+const kindColor = {up:t.t,d:t.t,f:t.t,m:t.k,x:t.ex,a:t.ar};
+const rows = (list, c) => list.map((q, i) => {
+const kind = q[1], isC = i === c, isM = marked.indexOf(i) >= 0 && c >= 0;
+const col = isC ? t.ct : (isM ? t.a : kindColor[kind]);
+const iconCol = isC ? t.ct : (iconMode === "color" ? (kind === "d" || kind === "up" ? t.a : kindColor[kind]) : t.s);
+return {
+name: q[0], size: kind === "d" ? "<DIR>" : q[2], date: q[3], packed: q[4] || "",
+...(() => { const nm = q[0]; if (screen === "select" && c >= 0 && /\.(toml|lock)$/i.test(nm)) return { n1: "", n2: nm, n3: "" }; if (qs && c >= 0 && nm.toLowerCase().indexOf(qs) === 0) return { n1: "", n2: nm.slice(0, qs.length), n3: nm.slice(qs.length) }; return { n1: nm, n2: "", n3: "" }; })(),
+hlStyle: "background: " + t.hl + "; color: " + t.t + "; border-radius: 2px",
+isUp: kind === "up", isDir: kind === "d", isFile: kind !== "up" && kind !== "d",
+weight: (kind === "d" || kind === "up" || isM) ? 500 : 400,
+iconColor: iconCol, dateColor: isC ? t.ct : t.s,
+rowStyle: "height: " + rowH + "px; display: flex; align-items: center; padding: 0 12px; background: " + (isC ? t.c : "transparent") + "; color: " + col,
+briefStyle: "height: " + rowH + "px; display: flex; align-items: center; gap: 8px; padding: 0 10px; overflow: hidden; white-space: nowrap; font-weight: " + ((kind === "d" || kind === "up") ? 500 : 400) + "; background: " + (isC ? t.c : "transparent") + "; color: " + col
+};
+});
+const actPath = "color: " + t.t + "; border-bottom: 2px solid " + t.a + "; padding-bottom: 3px", pasPath = "color: " + t.s;
+const SRC = ["..","app.rs","breadcrumb.rs","cache.rs","cmdline.rs","columns.rs","commands.rs","conflict.rs","drives.rs","editor.rs","file_list.rs","fonts.rs","icons.rs","info.rs","job_bar.rs","keybar.rs","layout.rs","lib.rs","menu.rs","panel.rs","prompt_bar.rs","quick_search.rs","quick_view.rs","settings.rs","status.rs","tabs.rs","theme.rs","toast.rs","tree.rs","viewer.rs","widgets.rs","window.rs","sys"].map((n) => n === ".." ? ["..","up","",""] : (n === "sys" ? ["sys","d","",""] : [n,"f","",""]));
+const DES = [["..","up","",""],["screens","d","","20.10.26 20:31"],["DESIGN.md","f","9,8 КБ","20.10.26 20:35"],["window.dc.html","f","48,1 КБ","20.10.26 20:31"]];
+const P = (o) => Object.assign({ vis: "", isFull: false, isBrief: false, isTree: false, isInfo: false, isQv: false, isState: false, drives: false, tag: "", packedCol: false }, o);
+const full = (path, info, list, c, act, extra) => P(Object.assign({ isFull: true, path, info, rows: rows(list, c), pathStyle: act ? actPath : pasPath }, extra || {}));
+const B = (label, key, primary) => ({ label, key, style: primary ? btnPrimary : btn, keyStyle: "font-size: 11px; " + (primary ? "opacity: 0.8" : "color: " + t.s) });
+const ARC = [["..","up","","",""],["crates","d","","19.10.26 22:41",""],["docs","d","","20.10.26 11:02",""],["Cargo.lock","f","58,3 КБ","20.10.26 13:50","12,1 КБ"],["Cargo.toml","f","1,2 КБ","19.10.26 22:40","0,5 КБ"],["LICENSE-APACHE","f","11,1 КБ","01.09.26 12:00","3,9 КБ"],["LICENSE-MIT","f","1,0 КБ","01.09.26 12:00","0,6 КБ"],["README.md","f","4,8 КБ","17.10.26 21:33","2,0 КБ"],["urfin.exe","x","11,7 МБ","20.10.26 13:55","8,2 МБ"]];
+const ST = {
+empty: { empty: true, iconColor: t.s, title: "Папка пуста", text: "", btns: [] },
+lock: { lock: true, iconColor: t.k, title: "Нет доступа к папке", text: "Читать эту папку могут только администраторы.", btns: [B("Открыть от администратора", "Ctrl+Shift+Enter", true), B("Назад", "Backspace", false)] },
+net: { net: true, iconColor: t.rem, title: "Нет связи с \\\\nas\\backup", text: "Последний ответ — 2 мин назад, повтор через 12 с. Остальная работа не ждёт.", btns: [B("Повторить сейчас", "Ctrl+R", true), B("Отключить ресурс", "", false)] }
+};
+const panels = screen === "archive" ? [P({ isFull: true, path: "C:\\Dev\\urfin\\urfin-0.4.2.zip\\urfin-0.4.2", tag: "zip", info: "8 объектов", pathStyle: actPath, rows: rows(ARC, 4), packedCol: true }), P({ isState: true, path: "\\\\fs01\\share\\presale\\new", info: "", pathStyle: pasPath, st: ST.empty })]
+: screen === "terminal" ? [P({ vis: "visibility: hidden", path: "", rows: [] }), P({ vis: "visibility: hidden", path: "", rows: [] })]
+: screen === "termhalf" ? [P({ vis: "visibility: hidden", path: "C:\\Dev\\urfin", rows: [] }), full("\\\\fs01\\share\\presale", "12 объектов", R, 4, true)]
+: screen === "errors" ? [P({ isState: true, path: "C:\\System Volume Information", info: "", pathStyle: actPath, st: ST.lock }), P({ isState: true, path: "\\\\nas\\backup", info: "", pathStyle: pasPath, st: ST.net })]
+: screen === "brief" ? [P({ isBrief: true, path: "C:\\Dev\\urfin\\crates\\ui\\src", info: "32 объекта", pathStyle: actPath, rows: rows(SRC, 8), briefGrid: "flex: 1; display: grid; grid-auto-flow: column; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(22, " + rowH + "px); padding-top: 4px; align-content: start; background-image: linear-gradient(to right, transparent calc(33.33% - 1px), " + t.b + " calc(33.33% - 1px), " + t.b + " 33.33%, transparent 33.33%, transparent calc(66.66% - 1px), " + t.b + " calc(66.66% - 1px), " + t.b + " 66.66%, transparent 66.66%)" }), full("\\\\fs01\\share\\presale", "12 объектов", R, -1, false)]
+: screen === "tree" ? [P({ isTree: true, path: "C:\\Dev\\urfin", info: "дерево", pathStyle: actPath }), full("C:\\Dev\\urfin\\docs\\design", "3 объекта", DES, -1, false)]
+: screen === "info" ? [full("C:\\Dev\\urfin", "16 объектов", L, 6, true), P({ isInfo: true, path: "Сведения", info: "", pathStyle: pasPath })]
+: screen === "quickview" ? [full("C:\\Dev\\urfin", "16 объектов", L, 6, true), P({ isQv: true, path: "Быстрый просмотр", info: "TOML", pathStyle: pasPath })]
+: screen === "drives" ? [full("\\Dev\\urfin", "16 объектов", L, 6, true, { drives: true }), full("\\\\fs01\\share\\presale", "12 объектов", R, -1, false)]
+: [full("C:\\Dev\\urfin", "16 объектов", L, cur, true), full("\\\\fs01\\share\\presale", "12 объектов", R, -1, false)];
+const TREE = [[0,"urfin","▾",""],[1,".github","▸",""],[1,"assets","▾",""],[2,"icon","",""],[1,"crates","▾",""],[2,"app","▸",""],[2,"core","▾",""],[3,"src","▸",""],[2,"ui","▸",""],[2,"vfs","▸",""],[1,"docs","▾",""],[2,"adr","▸",""],[2,"design","▸","3"],[2,"specs","▸",""],[1,"scripts","▸",""],[1,"target","▸","2,1 ГБ"]];
+const tree = TREE.map(([d, name, chev, meta], i) => {
+const isC = i === 12;
+return { name, chev, meta, weight: d === 0 || isC ? 500 : 400, chevColor: isC ? t.ct : t.s, iconColor: isC ? t.ct : (iconMode === "color" ? t.a : t.s), metaColor: isC ? t.ct : t.s,
+indent: "width: " + (d * 16) + "px; flex: none; align-self: stretch; background-image: repeating-linear-gradient(to right, transparent 0 7px, " + t.b + " 7px 8px, transparent 8px 16px)",
+style: "height: " + rowH + "px; display: flex; align-items: center; gap: 6px; padding: 0 12px; background: " + (isC ? t.c : "transparent") + "; color: " + (isC ? t.ct : t.t) };
+});
+const infoRows = [["Путь","C:\\Dev\\urfin\\Cargo.toml"],["Изменён","19.10.26 22:40:12"],["Создан","01.09.26 12:00:03"],["Открыт","20.10.26 13:50:41"],["Атрибуты","архивный"],["Владелец","a.antropov"],["Права","полный доступ"],["Ссылки","1 · не символическая"]].map(([k, v]) => ({ k, v, vs: "overflow: hidden; text-overflow: ellipsis; white-space: nowrap" }));
+const bar = (pct, col) => "display: block; height: 100%; width: " + pct + "%; background: " + col;
+const DRV = [["h","Диски"],["d","C:","Windows · NTFS","214 ГБ своб.",77,true],["d","D:","Dev Drive · ReFS","380 ГБ своб.",24,false],["d","E:","KINGSTON · exFAT · съёмный","12,1 ГБ своб.",58,false],["h","Сеть"],["n","\\\\fs01\\share","подключён как S:","",0,false],["n","\\\\nas\\backup","нет связи","",0,false],["h","Места"],["p","Рабочий стол","C:\\Users\\a.antropov\\Desktop","",0,false],["p","Загрузки","C:\\Users\\a.antropov\\Downloads","",0,false],["p","Корзина","38 объектов · 1,2 ГБ","",0,false]];
+const drives = DRV.map((d) => d[0] === "h" ? { head: true, item: false, label: d[1] } : (() => {
+const on = d[5], off = d[2] === "нет связи";
+return { head: false, item: true, isDrive: d[0] === "d", isNet: d[0] === "n", isPlace: d[0] === "p", name: d[1], sub: d[2], free: d[3], hasBar: d[0] === "d",
+bar: bar(d[4], on ? t.ct : (d[4] > 75 ? t.k : t.a)), track: on ? t.p : t.b,
+iconColor: on ? t.ct : (off ? t.s : t.a), subColor: on ? t.ct : (off ? t.k : t.s),
+style: "min-height: 40px; display: flex; align-items: center; gap: 12px; padding: 4px 10px; border: 0; border-radius: 4px; font: inherit; background: " + (on ? t.c : "transparent") + "; color: " + (on ? t.ct : t.t) };
+})());
+const RES = [
+["crates\\urfin-core\\src\\ops\\copy.rs",142,"handles.push(pool.","(move || copy_file(src, dst, &cancel)));"],
+["crates\\urfin-core\\src\\ops\\delete.rs",57,"pool.","(move || remove_tree(path, &cancel))"],
+["crates\\urfin-core\\src\\ops\\rename.rs",74,"let h = pool.","(move || rename_or_copy(src, dst, &c));"],
+["crates\\urfin-core\\src\\fs\\scan.rs",88,"io.","(move || read_dir_window(dir, range))"],
+["crates\\urfin-core\\src\\fs\\scan.rs",131,"io.","(move || stat_batch(paths))"],
+["crates\\urfin-core\\src\\fs\\watch.rs",31,"self.io.","(move || watch_loop(rx, tx));"],
+["crates\\urfin-view\\src\\hex.rs",64,"io.","(move || read_chunk(file, off, len))"],
+["crates\\urfin-edit\\src\\load.rs",23,"pool.","(move || Rope::from_reader(f))"],
+["crates\\urfin-edit\\src\\save.rs",40,"pool.","(move || atomic_write(path, text))"]
+];
+const results = RES.map((r, i) => ({ file: r[0].replace("crates\\", ""), line: r[1], pre: r[2], hit: "spawn_blocking", post: r[3], lnColor: i === 0 ? t.ct : t.s, style: "height: " + rowH + "px; display: flex; align-items: center; gap: 12px; padding: 0 12px; background: " + (i === 0 ? t.c : "transparent") + "; color: " + (i === 0 ? t.ct : t.t) }));
+const PV = ["pub fn copy_many(","    jobs: Vec<CopyJob>,","    pool: &IoPool,","    cancel: CancelToken,","    progress: &Progress,",") -> TaskHandle {","    // UI-поток не делает I/O: всё уходит в io-pool","    let mut handles = Vec::with_capacity(jobs.len());","    for job in jobs {","        let cancel = cancel.clone();","        let progress = progress.clone();","        let (src, dst) = (job.src, job.dst);","        handles.push(pool.spawn_blocking(move || copy_file(src, dst, &cancel)));","        progress.add_total(job.size);","    }","    TaskHandle::join_all(handles, cancel)","}","","fn copy_file(src: PathBuf, dst: PathBuf, cancel: &CancelToken) -> io::Result<u64> {","    if cancel.is_cancelled() {","        return Err(io::ErrorKind::Interrupted.into());","    }","    sys::copy_file_ex(&src, &dst, cancel)","}"];
+const preview = PV.map((x, i) => {
+const n = 130 + i, hitAt = x.indexOf("spawn_blocking");
+const isHit = n === 142;
+return { n, pre: isHit ? x.slice(0, hitAt) : x, hit: isHit ? "spawn_blocking" : "", post: isHit ? x.slice(hitAt + 14) : "", style: "height: 20px; display: flex; white-space: pre; background: " + (isHit ? t.cl : "transparent") + "; color: " + (x.trim().indexOf("//") === 0 ? t.com : t.t) };
+});
+const VL = ["# Changelog","","## 0.4.2 — 2026-10-19","- Копирование: CopyFileEx с отменой и прогрессом, UI не блокируется","- Панели: окно строк читается в фоне с упреждением (100k строк — 1,6 мс на кадр)","- Редактор: подсветка в фоне; файлы больше 16 МБ открываются без подсветки","- Исправлено: потеря фокуса панели после закрытия inline-диалога","","## 0.4.1 — 2026-10-12","- Встроенная командная строка: pwsh, cmd и wsl во вкладках","- Повторный запуск открывает путь в уже запущенном окне","- Исправлено: сортировка по дате для каталогов на сетевых дисках","","## 0.4.0 — 2026-10-01","- Табы в заголовке окна, восстановление сессии","- Быстрый поиск по имени в панели — печать без модификаторов","- Ошибки и падения дублируются в журнал Windows «Приложение»","","## 0.3.0 — 2026-09-14","- Две панели, F3/F4/F5/F6/F7/F8, inline-подтверждения без модальных окон","","## 0.2.0 — 2026-08-30","- Ядро: асинхронное чтение каталогов, отмена любой операции","- Исправлено: зависание при обращении к спящему сетевому диску","","## 0.1.0 — 2026-08-12","- Первая сборка: одна панель, навигация, F3"];
+const sty = (c, w, extra) => "color: " + c + (w ? "; font-weight: " + w : "") + (extra ? "; " + extra : "");
+const viewLines = VL.map((x, i) => {
+let segs;
+if (x.indexOf("# ") === 0) segs = [{ x: x.slice(2), style: sty(t.t, 500, "font-size: 15px; font-family: 'Segoe UI Variable', 'Segoe UI', Inter, sans-serif") }];
+else if (x.indexOf("## ") === 0) { const p = x.slice(3).split(" — "); segs = [{ x: "v" + p[0], style: sty(t.kw, 500) }, { x: "  " + (p[1] || ""), style: sty(t.s) }]; }
+else if (x.indexOf("- ") === 0) { const body = x.slice(2), c = body.indexOf(":"); const lab = c > 0 ? body.slice(0, c + 1) : "", rest = c > 0 ? body.slice(c + 1) : body; segs = [{ x: "•  ", style: sty(t.a) }, { x: lab, style: sty(lab.indexOf("Исправлено") === 0 ? t.k : t.t, 500) }, { x: rest, style: sty(t.t) }]; }
+else segs = [{ x: x, style: sty(t.t) }];
+return { n: i + 1, segs };
+});
+const gutterStyle = "width: 52px; flex: none; align-self: stretch; display: flex; align-items: center; justify-content: flex-end; padding-right: 12px; box-sizing: border-box; color: " + t.s + "; background: " + t.h + "; border-right: 1px solid " + t.b;
+const marks = [6, 11, 33, 58, 81].map((p) => "position: absolute; left: 2px; right: 2px; top: " + p + "%; height: 2px; background: " + t.k);
+const tagStyle = "padding: 1px 8px; border-radius: 4px; border: 1px solid " + t.b + "; background: " + t.p + "; color: " + t.s + "; font-size: 11.5px; white-space: nowrap";
+const segBtn = (on) => "height: 26px; padding: 0 12px; border: 0; background: " + (on ? t.c : t.p) + "; color: " + (on ? t.ct : t.t) + "; font: inherit; font-size: 12px; font-weight: " + (on ? 500 : 400);
+const EL = ["[workspace]","resolver = \"3\"","members = [\"crates/*\"]","","[workspace.package]","version = \"0.4.2\"","edition = \"2024\"","license = \"MIT OR Apache-2.0\"","publisher = \"Aahz\"","","[workspace.dependencies]","pets-ui = { git = \"https://github.com/Dicobraz/pets\", rev = \"a41c9e0\" }","pets-commands = { git = \"https://github.com/Dicobraz/pets\", rev = \"a41c9e0\" }","rayon = \"1.10\"","thiserror = \"2\"","tracing = \"0.1\"","parking_lot = \"0.12\"","smallvec = \"1.13\"","windows = { version = \"0.58\", features = [\"Win32_Storage_FileSystem\"] }","# UI-поток не делает I/O","","[profile.dev]","debug = \"line-tables-only\"","","[profile.dev.package.\"*\"]","debug = false","","[profile.release]","lto = \"thin\"","codegen-units = 1","strip = \"symbols\"","panic = \"abort\"","","[workspace.lints.clippy]","pedantic = { level = \"warn\", priority = -1 }","module_name_repetitions = \"allow\"","missing_errors_doc = \"allow\"","","[workspace.metadata.urfin]","winget = \"Aahz.Urfin\"","msi = true"];
+const tomlSegs = (line) => {
+if (/^\s*#/.test(line)) return [{ x: line, c: t.com }];
+if (/^\s*\[/.test(line)) return [{ x: line, c: t.kw }];
+const m = line.match(/^(\s*[\w.-]+)(\s*=\s*)(.*)$/);
+if (!m) return [{ x: line, c: t.t }];
+const out = [{ x: m[1], c: t.t }, { x: m[2], c: t.s }];
+const v = m[3], re = /("[^"]*")|(\b\d[\d.]*\b)|(\btrue\b|\bfalse\b)|([{}\[\],=])/g;
+let last = 0, r;
+while ((r = re.exec(v))) {
+if (r.index > last) out.push({ x: v.slice(last, r.index), c: t.t });
+out.push({ x: r[0], c: r[1] ? t.str : (r[2] || r[3]) ? t.num : t.s });
+last = r.index + r[0].length;
+}
+if (last < v.length) out.push({ x: v.slice(last), c: t.t });
+return out;
+};
+const q = "a41c9e0";
+const changed = { 5: t.a, 16: t.ex, 17: t.ex };
+const mini = [];
+const editAll = EL.map((line, i) => {
+const segs = [], raw = tomlSegs(line);
+raw.forEach((s) => {
+const parts = s.x.split(q);
+parts.forEach((p, j) => {
+if (p) segs.push({ x: p, style: "color: " + s.c });
+if (j < parts.length - 1) segs.push({ x: q, style: "color: " + s.c + "; background: " + t.hl + "; border-radius: 2px" });
+});
+});
+mini.push(raw.filter((s) => s.x.trim()).map((s) => "flex: none; height: 3px; border-radius: 1px; width: " + Math.min(60, Math.max(2, Math.round(s.x.trim().length * 1.1))) + "px; background: " + s.c + "; opacity: 0.55"));
+const isCur = i === 5;
+if (isCur) segs.push({ x: "", style: "border-left: 2px solid " + t.a + "; margin-left: 1px" });
+return {
+n: i + 1, segs, fold: line.indexOf("[") === 0 ? "▾" : "",
+barStyle: "width: 3px; flex: none; align-self: stretch; background: " + (changed[i] || t.h),
+numStyle: "width: 40px; flex: none; align-self: stretch; display: flex; align-items: center; justify-content: flex-end; padding-right: 6px; box-sizing: border-box; background: " + t.h + "; color: " + (isCur ? t.t : t.s) + "; font-weight: " + (isCur ? 500 : 400),
+style: "height: 20px; display: flex; align-items: center; white-space: pre; background: " + (isCur ? t.cl : "transparent")
+};
+});
+const editLines = editAll.slice(0, 31);
+const foldCol = "width: 14px; flex: none; align-self: stretch; display: flex; align-items: center; justify-content: center; color: " + t.s + "; background: " + t.h + "; border-right: 1px solid " + t.b + "; font-size: 10px";
+const viewportStyle = "position: absolute; left: 4px; right: 4px; top: 4px; height: " + (31 * 4 + 4) + "px; border-radius: 3px; background: " + t.cl + "; border: 1px solid " + t.b + "; box-sizing: border-box";
+const NAV = ["Вид","Панели","Клавиатура","Редактор","Просмотр","Терминал","Операции","Политики"];
+const navSel = { view: 0, panels: 1, keys: 2, editor: 3 }[sec] || 0;
+const nav = NAV.map((label, j) => ({ label, i: j === navSel ? 0 : 1 })).map(({ label, i }) => ({ label, style: "height: 32px; padding: 0 12px; text-align: left; border: 0; border-radius: 4px; background: " + (i === 0 ? t.c : "transparent") + "; color: " + (i === 0 ? t.ct : t.t) + "; font: inherit; font-weight: " + (i === 0 ? 500 : 400) }));
+const followOs = st.followOs !== undefined ? st.followOs : false;
+const cards = NAMES.map(([id, name]) => {
+const x = TH[id], on = id === themeId;
+return {
+name,
+pick: () => this.setState({ theme: id }),
+cardStyle: "display: flex; flex-direction: column; gap: 8px; padding: 8px; border: 2px solid " + (on ? t.a : t.b) + "; border-radius: 8px; background: " + t.p + "; font: inherit; text-align: left; cursor: pointer",
+prevStyle: "height: 64px; display: flex; gap: 3px; padding: 6px; border-radius: 4px; background: " + x.f,
+panelStyle: "flex: 1; display: flex; flex-direction: column; gap: 4px; padding: 4px; background: " + x.p,
+accStyle: "height: 2px; background: " + x.a,
+barStyle: "height: 4px; background: " + x.b,
+curStyle: "height: 6px; background: " + x.c
+};
+});
+const seg = (on) => "height: 30px; padding: 0 14px; border: 1px solid " + (on ? t.a : t.b) + "; border-radius: 4px; background: " + (on ? t.c : t.p) + "; color: " + (on ? t.ct : t.t) + "; font: inherit; cursor: pointer";
+const densOpts = ["20","24","28"].map((d) => ({ label: d + " px", style: seg(String(rowH) === d), pick: () => this.setState({ density: d }) }));
+const iconOpts = [["none","Без иконок"],["mono","Монохромные"],["color","Цветные"]].map(([id, label]) => ({ label, style: seg(iconMode === id), pick: () => this.setState({ icons: id }) }));
+const STATUS = {
+panels: ["Cargo.toml · 1,2 КБ · 19.10.26 22:40","Выделено 1 из 16 · 1,2 КБ","C: 214 ГБ свободно"],
+copy: ["README.md · 4,8 КБ · 17.10.26 21:33","Выделено 3 из 16 · 72,5 КБ","C: 214 ГБ свободно"],
+quick: ["Cargo.lock · 58,3 КБ · 20.10.26 13:50","Выделено 0 из 16","C: 214 ГБ свободно"],
+brief: ["drives.rs · 7,9 КБ · 20.10.26 19:58","Выделено 0 из 32","C: 214 ГБ свободно"],
+tree: ["docs\\design · 3 объекта","","C: 214 ГБ свободно"],
+info: ["","Выделено 0 из 16",""],
+quickview: ["Cargo.toml · 1,2 КБ · 19.10.26 22:40","стр 1–26 из 41",""],
+drives: ["","",""],
+terminal: ["pwsh 7.5 · интеграция с оболочкой","",""],
+termhalf: ["budget_2027.xlsx · 412 КБ · 17.10.26 18:31","Выделено 0 из 12","S: 1,8 ТБ свободно"],
+archive: ["Cargo.toml · 1,2 КБ, сжато до 0,5 КБ · 19.10.26 22:40","Выделено 0 из 8","архив 8,9 МБ · сжатие 38 %"],
+errors: ["папка системная, скрытая","",""],
+search: ["Поиск «spawn_blocking» в C:\\Dev\\urfin\\crates","9 совпадений","готово за 0,4 с"],
+viewer: ["Стр 1–27 из 212 · 13 %","5 отметок «Исправлено»","9,4 КБ · UTF-8 · CRLF"],
+editor: ["Стр 6, Кол 18","41 строка","TOML · Пробелы: 4 · UTF-8 · LF · Вставка"],
+settings: [sec === "keys" ? "%APPDATA%\\Urfin\\keymap.toml" : "%APPDATA%\\Urfin\\settings.toml", sec === "keys" ? "1 конфликт" : "", "Применяется сразу"],
+delete: ["CHANGELOG.md · 9,4 КБ · 18.10.26 17:05","Выделено 2 из 16 · 67,7 КБ","C: 214 ГБ свободно"]
+};
+const KEYS = {
+menu: [["← →","Меню"],["↑ ↓","Пункт"],["Enter","Выбрать"],["Esc","Закрыть"]],
+terminal: [["Ctrl+O","Панели"],["Ctrl+F1","Левая"],["Ctrl+F2","Правая"],["Ctrl+Shift+F","Поиск в выводе"],["Ctrl+Break","Прервать"]],
+context: [["↑ ↓","Пункт"],["→","Подменю"],["Enter","Выбрать"],["Esc","Закрыть"]],
+select: [["Tab","Следующее поле"],["Alt+↓","История масок"]],
+drives: [["Enter","Открыть"],["Del","Извлечь или отключить"],["Alt+Enter","Свойства тома"],["Esc","Закрыть"]],
+quick: [["Ctrl+Enter","Следующее"],["Ctrl+Shift+Enter","Предыдущее"],["Enter","Открыть"],["Esc","Закрыть"]],
+panels: [["F1","Помощь"],["F2","Меню"],["F3","Смотр"],["F4","Ред"],["F5","Коп"],["F6","Перен"],["F7","Папка"],["F8","Удал"],["F9","Конф"],["F10","Выход"]],
+copy: [["Tab","Следующее поле"],["Alt+↓","История путей"]],
+delete: [["Ins","Изменить отметку"],["Tab","Следующая кнопка"]],
+conflict: [["F3","Сравнить содержимое"],["Tab","Следующая кнопка"]],
+search: [["Enter","Перейти"],["F3","Смотр"],["F4","Ред"],["Ctrl+Enter","В панель"],["Alt+F7","Новый поиск"],["Esc","Закрыть"]],
+viewer: [["F2","Перенос"],["F7","Поиск"],["F8","Кодировка"],["Ctrl+G","Строка"],["Esc","Закрыть"]],
+editor: [["F2","Сохранить"],["Ctrl+H","Замена"],["Ctrl+G","Строка"],["Esc","Закрыть"]],
+settings: [["Tab","Раздел"],["Ctrl+F","Найти настройку"],["Esc","Закрыть"]]
+};
+const keys = (KEYS[screen] || KEYS.panels).map(([k, v]) => ({ k, v }));
+const keybarStyle = "height: 26px; display: flex; align-items: center; justify-content: " + (keys.length >= 10 ? "space-between" : "flex-start") + "; gap: 28px; padding: 0 12px; color: " + t.s + "; font-size: 12px";
+return {
+t, icons, ctx, tabs, panels, results, preview, viewLines, editLines, mini, viewportStyle, foldCol, gutterStyle, marks, tagStyle, segOn: segBtn(true), segOff: segBtn(false), nav, cards, densOpts, iconOpts, followOs, keys, keybarStyle,
+toggleOs: () => this.setState({ followOs: !followOs }),
+status: STATUS[screen] || STATUS.panels,
+isPanels: ["panels","terminal","termhalf","menu","context","select","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress"].indexOf(screen) >= 0,
+showTerm: screen === "terminal" || screen === "termhalf",
+cliCmd: screen === "terminal" || screen === "termhalf" ? "" : "cargo build --release",
+oneSet: ["viewer","editor","settings","search"].indexOf(screen) >= 0,
+twoSets: ["viewer","editor","settings","search","terminal"].indexOf(screen) < 0,
+leftSet: screen !== "termhalf",
+tabsL: [[(panels[0].path || "C:\\Dev\\urfin").split("\\").filter(Boolean).pop(), 1], ["logs", 0]].map(([label, on]) => ({ label, close: on && screen !== "termhalf", style: on ? (screen === "termhalf" ? tabStyle(true) + "; color: " + t.s : tabStyle(true)) : tabStyle(false) })),
+tabsR: [[(panels[1] && panels[1].path ? panels[1].path : "presale").split("\\").filter(Boolean).pop(), 1], ["backup", 0], ["clients", 0]].map(([label, on]) => ({ label, close: on && screen === "termhalf", style: on ? (screen === "termhalf" ? tabStyle(true) : tabStyle(true) + "; color: " + t.s) : tabStyle(false) })),
+termLines: (() => {
+const c = { t: t.t, s: t.s, a: t.a, ex: t.ex, w: t.rem, kw: t.kw, k: t.k };
+const S = (x, k, b) => ({ x, s: "color: " + c[k] + (b ? "; font-weight: 600" : "") });
+const PS = (cmd) => [S("PS ", "s"), S("C:\\Dev\\urfin", "a"), S("> ", "s"), S(cmd, "t")];
+return [
+PS("cargo build --release"),
+[S("   Compiling", "ex", 1), S(" proc-macro2 v1.0.95", "t")],
+[S("   Compiling", "ex", 1), S(" urfin-core v0.4.2 (C:\\Dev\\urfin\\crates\\core)", "t")],
+[S("   Compiling", "ex", 1), S(" urfin-vfs v0.4.2 (C:\\Dev\\urfin\\crates\\vfs)", "t")],
+[S("warning", "w", 1), S(": unused variable: `cancel`", "t", 1)],
+[S("   --> ", "kw"), S("crates\\ops\\src\\copy.rs:142:9", "t")],
+[S("    |", "kw")],
+[S("142 |", "kw"), S("     let cancel = cancel.clone();", "t")],
+[S("    |", "kw"), S("         ^^^^^^", "w", 1), S(" help: prefix it with an underscore: `_cancel`", "w")],
+[S("   Compiling", "ex", 1), S(" urfin-ui v0.4.2 (C:\\Dev\\urfin\\crates\\ui)", "t")],
+[S("   Compiling", "ex", 1), S(" urfin-app v0.4.2 (C:\\Dev\\urfin\\crates\\app)", "t")],
+[S("    Finished", "ex", 1), S(" `release` profile [optimized] target(s) in 1m 42s", "t")],
+PS("git status --short"),
+[S(" M", "k"), S(" crates/ui/src/theme.rs", "t")],
+[S("??", "s"), S(" docs/design/", "t")],
+PS("Get-ChildItem target\\release\\urfin.exe | Select-Object Length"),
+[S("", "t")],
+[S("  Length", "t", 1)],
+[S("  ------", "s")],
+[S("12268544", "t")]
+];
+})(),
+secView: sec === "view", secForm: sec === "panels" || sec === "editor", secKeys: sec === "keys",
+form: (() => {
+const segS = (on) => "height: 28px; padding: 0 12px; border: 1px solid " + (on ? t.a : t.b) + "; border-radius: 4px; background: " + (on ? t.c : t.p) + "; color: " + (on ? t.ct : t.t) + "; font: inherit";
+const SEG = (label, opts, on, note) => ({ label, seg: true, opts: opts.map((o, i) => ({ label: o, style: segS(i === on) })), note: note || "" });
+const CHK = (label, text, on, note) => ({ label, check: true, text, on, note: note || "" });
+const SEL = (label, value, note) => ({ label, select: true, value, note: note || "" });
+return sec === "editor" ? [
+{ title: "Текст", rows: [SEL("Шрифт", "Cascadia Mono, 13"), SEG("Табуляция", ["2","4","8"], 1), CHK("Отступы", "Пробелы вместо табов", true), CHK("Перенос строк", "Переносить длинные строки", false), CHK("Поля", "Номера строк, свёртка, мини-карта", true)] },
+{ title: "Файлы", rows: [SEL("Кодировка новых файлов", "UTF-8 без BOM"), SEG("Переводы строк", ["LF","CRLF","Как в файле"], 2), CHK("Подсветка синтаксиса", "Включена", true, "файлы больше 16 МБ — без подсветки"), SEL("Автосохранение", "Выключено")] }
+] : [
+{ title: "Вид панели", rows: [SEG("Режим по умолчанию", ["Full","Brief","Medium","Wide"], 0), SEL("Сортировка", "Имя ▲, папки сверху"), CHK("Скрытые и системные", "Показывать", false), CHK("Раскраска", "По типам и маскам", true)] },
+{ title: "Поведение", rows: [SEL("Enter на архиве", "Открыть как папку"), SEG("Быстрый поиск", ["Alt+буква","Печать в панели"], 0), CHK("Автообновление", "Следить за изменениями папки", true), SEL("Сетевые папки", "Обновлять раз в 5 с"), CHK("Размер папок", "Считать в фоне при входе", false, "нагружает сетевые диски")] }
+];
+})(),
+presets: ["Urfin","Far","DN"].map((l, i) => ({ label: l, style: "height: 28px; padding: 0 12px; border: 1px solid " + (i === 0 ? t.a : t.b) + "; border-radius: 4px; background: " + (i === 0 ? t.c : t.p) + "; color: " + (i === 0 ? t.ct : t.t) + "; font: inherit" })),
+keymap: (() => {
+const kb = "padding: 1px 7px; border: 1px solid " + t.b + "; border-bottom-width: 2px; border-radius: 4px; background: " + t.h + "; font-size: 12px; white-space: nowrap";
+const cap = "padding: 1px 9px; border: 1px solid " + t.a + "; border-radius: 4px; background: " + t.p + "; color: " + t.a + "; font-size: 12px";
+const K = [["Копировать",["F5"],"Панели"],["Переместить или переименовать",["F6"],"Панели"],["Создать папку",["F7"],"Панели"],["Удалить",["F8","Shift+Del"],"Панели"],["Отметить группу",["Num +"],"Панели"],["Сравнить каталоги",null,"Панели"],["Свойства",["Alt+Enter"],"Панели","конфликт: «Свойства тома» в том же месте"],["Свойства тома",["Alt+Enter"],"Панели","конфликт: «Свойства»"],["Быстрый поиск",["Alt+буква"],"Панели"],["Скрыть панели",["Ctrl+O"],"Окно"],["Левая панель",["Ctrl+F1"],"Окно"],["Поиск файлов",["Alt+F7"],"Окно"]];
+return K.map(([cmd, keys, ctx, warn], i) => ({ cmd, ctx, warn: warn || "",
+keys: keys ? keys.map((k) => ({ label: k, style: kb })) : [{ label: "Нажмите сочетание… Esc — отмена", style: cap }],
+style: "min-height: 34px; display: flex; align-items: center; gap: 16px; padding: 4px 12px; box-sizing: border-box; border-bottom: 1px solid " + t.b + "; background: " + (keys ? (warn ? t.h : "transparent") : t.cl) }));
+})(),
+isDelete: screen === "delete", isConflict: screen === "conflict", isMenu: screen === "menu", isCtx: screen === "context", isSelect: screen === "select",
+ctxItems: [["Открыть","Enter"],["Открыть с помощью","›"],["Просмотр","F3"],["Редактировать","F4"],null,["Копировать путь","Ctrl+Shift+C"],["Копировать имя",""],null,["Упаковать в архив",""],["Сравнить с файлом в другой панели",""],null,["Удалить","F8"],["Свойства","Alt+Enter"],null,["Меню Проводника","›"]].map((m, i) => m ? ({ item: true, sep: false, label: m[0], key: m[1], keyStyle: "font-size: 12px; color: " + (i === 3 ? t.ct : t.s), style: "height: 28px; display: flex; align-items: center; gap: 16px; padding: 0 10px; border: 0; border-radius: 4px; font: inherit; background: " + (i === 3 ? t.c : "transparent") + "; color: " + (i === 3 ? t.ct : t.t) }) : ({ item: false, sep: true })), isQuick: screen === "quick", tree, infoRows, drives,
+qvLines: EL.slice(0, 26).map((line, i) => ({ n: i + 1, segs: tomlSegs(line).map((sg) => ({ x: sg.x, style: "color: " + sg.c })) })),
+menuBar: ["Левая","Файлы","Команды","Параметры","Правая"].map((label, i) => ({ label, open: i === 1, filletL: true, filletR: true, listStyle: "position: absolute; left: -40px; top: 100%; width: 330px; padding: 6px 4px 4px; box-sizing: border-box; background: " + t.p + "; border: 1px solid " + t.b + "; border-radius: 8px; display: flex; flex-direction: column; z-index: 1", style: i === 1 ? "position: relative; z-index: 2; height: 27px; margin-bottom: -1px; padding: 0 12px 1px; border: 1px solid " + t.b + "; border-bottom: 0; border-radius: 8px 8px 0 0; font: inherit; font-weight: 500; background: " + t.p + "; color: " + t.t : "height: 24px; margin-bottom: 3px; padding: 0 12px; border: 1px solid transparent; border-radius: 4px; font: inherit; background: transparent; color: " + t.t })),
+menuItems: [["Просмотр","F3"],["Редактировать","F4"],["Копировать","F5"],["Переместить или переименовать","F6"],["Создать папку","F7"],["Удалить","F8"],null,["Отметить группу","Num +"],["Снять отметку с группы","Num −"],["Инвертировать отметку","Num *"],null,["Атрибуты и права","Ctrl+A"],["Сравнить каталоги","›"],["Свойства","Alt+Enter"]].map((m, i) => m ? ({ item: true, sep: false, label: m[0], key: m[1], keyStyle: "font-size: 12px; color: " + (i === 2 ? t.ct : t.s), style: "height: 28px; display: flex; align-items: center; gap: 16px; padding: 0 10px; border: 0; border-radius: 4px; font: inherit; background: " + (i === 2 ? t.c : "transparent") + "; color: " + (i === 2 ? t.ct : t.t) }) : ({ item: false, sep: true })),
+showJobs: screen === "progress" || screen === "conflict",
+jobs: (screen === "conflict" ? [["Копирование","3 объекта → \\\\fs01\\share\\presale",35,"ждёт ответа: конфликт 4 из 12",t.rem,"Пауза"]] : [["Копирование","48 файлов → \\\\fs01\\share\\presale",35,"1,2 из 3,4 ГБ · 48 МБ/с · ещё 47 с",t.a,"Пауза"],["Удаление","target\\debug → Корзина",70,"9 012 из 12 870 · ещё 4 с",t.a,"Пауза"]]).map(([name, what, pct, info, col, act]) => ({ name, what, info, act, infoColor: col === t.a ? t.s : col, bar: "height: 100%; width: " + pct + "%; background: " + col })),
+isCopy, isSearch: screen === "search", isViewer: screen === "viewer", isEditor: screen === "editor", isSettings: screen === "settings",
+showCli: ["panels","terminal","termhalf","menu","context","select","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress","search"].indexOf(screen) >= 0,
+showToast: screen === "panels",
+inputStyle, chipOn: chip(true), chipOff: chip(false), btn, btnPrimary,
+btnDanger: "height: 30px; padding: 0 14px; border: 1px solid " + t.k + "; border-radius: 4px; background: " + t.k + "; color: " + t.p + "; font: inherit; display: flex; gap: 8px; align-items: center"
+};
+}
+}
+</script>
+</body>
+</html>
