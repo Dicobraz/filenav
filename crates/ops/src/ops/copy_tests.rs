@@ -1713,6 +1713,7 @@ fn bench_small_files() {
                 excl: true,
                 symlink: false,
                 no_buffering: false,
+                sparse: false,
             };
             crate::sys::fs::copy_file(s, d, f, &mut |_| true)
         }),
@@ -1837,6 +1838,7 @@ fn bench_large_file() {
                     excl: true,
                     symlink: false,
                     no_buffering: nb,
+                    sparse: false,
                 },
                 &mut |_| true,
             )
@@ -2232,4 +2234,80 @@ fn bench_verify() {
             remove_dir_all::remove_dir_all(&dst).unwrap();
         }
     }
+}
+
+// --- S5-22: ссылки и разреженные файлы при копировании ---
+
+/// Приёмка S5-22: junction внутри копируемого дерева указывает на то же место в
+/// копии; junction наружу — на прежнюю цель.
+#[test]
+fn junction_inside_tree_is_rewritten() {
+    let d = tmp();
+    let (src, dst, outside) = (d.path().join("s"), d.path().join("d"), d.path().join("out"));
+    write(&src.join("t/real/x.txt"), b"x", old(1_500_000_000));
+    std::fs::create_dir_all(&outside).unwrap();
+    crate::sys::fs::make_junction(&src.join("t/j"), &src.join("t/real")).unwrap();
+    crate::sys::fs::make_junction(&src.join("t/o"), &outside).unwrap();
+    std::fs::create_dir(&dst).unwrap();
+    let mut h = H::new(64);
+    let r = run(
+        &mut h,
+        transfer(Mode::Copy, &src, &["t"], &dst, None, OpOptions::default()),
+    );
+    assert_eq!(done(&r).errors, 0, "{:?}", r.report.failed);
+    let inside = crate::sys::fs::junction_target(&dst.join("t/j")).unwrap();
+    assert!(
+        strip_prefix_ci(&inside, &dst.join("t/real")).is_some(),
+        "rewritten into the copy: {}",
+        inside.display()
+    );
+    assert_eq!(std::fs::read(dst.join("t/j/x.txt")).unwrap(), b"x");
+    let out = crate::sys::fs::junction_target(&dst.join("t/o")).unwrap();
+    assert!(
+        strip_prefix_ci(&out, &outside).is_some(),
+        "outside kept: {}",
+        out.display()
+    );
+}
+
+/// S5-22: разреженный файл копируется разреженным — на диске только данные.
+#[test]
+fn sparse_file_stays_sparse() {
+    use std::io::{Seek, SeekFrom, Write};
+    let d = tmp();
+    let (src, dst) = (d.path().join("s"), d.path().join("d"));
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::create_dir(&dst).unwrap();
+    let f = src.join("vm.img");
+    std::fs::write(&f, b"").unwrap();
+    crate::sys::fs::make_sparse(&f).unwrap();
+    {
+        let mut h = std::fs::OpenOptions::new().write(true).open(&f).unwrap();
+        h.set_len(64 << 20).unwrap();
+        h.seek(SeekFrom::Start((64 << 20) - 4096)).unwrap();
+        h.write_all(&[7u8; 4096]).unwrap();
+    }
+    assert!(
+        crate::sys::fs::disk_size(&f).unwrap() < 1 << 20,
+        "source is sparse"
+    );
+    let mut h = H::new(64);
+    let r = run(
+        &mut h,
+        transfer(
+            Mode::Copy,
+            &src,
+            &["vm.img"],
+            &dst,
+            None,
+            OpOptions::default(),
+        ),
+    );
+    assert_eq!(done(&r).errors, 0, "{:?}", r.report.failed);
+    let c = dst.join("vm.img");
+    assert_eq!(std::fs::metadata(&c).unwrap().len(), 64 << 20);
+    assert_eq!(hash(&c), hash(&f));
+    let on_disk = crate::sys::fs::disk_size(&c).unwrap();
+    eprintln!("sparse copy: {on_disk} bytes on disk of {}", 64 << 20);
+    assert!(on_disk < 8 << 20, "copy stays sparse: {on_disk}");
 }
