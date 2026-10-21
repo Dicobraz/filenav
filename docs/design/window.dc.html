@@ -10,6 +10,7 @@
 <helmet>
 <style>
 body{margin:0}
+@keyframes urfinFlash{0%,40%{background:var(--fl)}20%,60%{background:var(--bg)}80%{background:var(--fl)}100%{background:var(--bg)}}
 </style>
 </helmet>
 <div style="width: 1280px; height: 760px; box-sizing: border-box; display: flex; flex-direction: column; background: {{t.f}}; color: {{t.t}}; font-family: 'Segoe UI Variable', 'Segoe UI', Inter, system-ui, sans-serif; font-size: 13px; font-variant-numeric: tabular-nums; position: relative; overflow: hidden">
@@ -919,7 +920,7 @@ body{margin:0}
 </div>
 </sc-if>
 <sc-if value="{{frFirst}}" hint-placeholder-val="{{ false }}">
-<div style="height: 40px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 12px; background: {{t.h}}; border-top: 2px solid {{t.a}}">
+<div style="height: 40px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 12px; background: {{t.h}}; border-top: 2px solid {{t.a}}; --bg: {{t.h}}; --fl: color-mix(in srgb, {{t.a}} 22%, {{t.h}}); animation: urfinFlash 1.4s ease-in-out 0.3s 1">
 <span style="display: inline-flex; color: {{t.a}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.1"></rect><path d="M8 2.5v11" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></span>
 <span style="font-weight: 500; white-space: nowrap">Добро пожаловать в Урфин</span>
 <span style="margin-left: 8px; color: {{t.s}}; white-space: nowrap">Клавиши</span>
@@ -936,7 +937,7 @@ body{margin:0}
 </div>
 </sc-if>
 <sc-if value="{{frNews}}" hint-placeholder-val="{{ false }}">
-<div style="height: 40px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 12px; background: {{t.h}}; border-top: 2px solid {{t.a}}">
+<div style="height: 40px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 12px; background: {{t.h}}; border-top: 2px solid {{t.a}}; --bg: {{t.h}}; --fl: color-mix(in srgb, {{t.a}} 22%, {{t.h}}); animation: urfinFlash 1.4s ease-in-out 0.3s 1">
 <span style="display: inline-flex; color: {{t.a}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.1"></circle><path d="M8 11.5v-7 M5 7.5l3-3 3 3" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></span>
 <span style="font-weight: 500; white-space: nowrap">Урфин обновлён до 0.4.2</span>
 <span style="color: {{t.s}}; white-space: nowrap">с 0.4.1 · 5 изменений</span>
@@ -1210,7 +1211,7 @@ const SR_GREP = [["urfin-arc\\src\\","extract.rs","9,1 КБ","21.10.26 09:30",57
 const SR_GMARK = { 3: { m: true }, 4: { m: true } };
 const srHitsPanel = () => { const pn = full("*.toml в C:\\Dev", "найдено 23 · просмотрено 4 812", SR_HITS.map((x) => [x[1], x[2], x[3], x[4]]), 17, true, { srChip: "Поиск", srChipStyle, srBar: "position: absolute; top: 0; bottom: 0; left: 34%; width: 22%; background: " + t.a }, SR_MARK);
 pn.rows.forEach((r, i) => { r.srDir = SR_HITS[i][0]; r.srDirStyle = srDirSt(hcOn && !!SR_MARK[i]); }); return pn; };
-const srGrepPanel = () => { const pn = P({ srGrep: true, path: "«Lane::Bulk» в C:\\Dev\\urfin\\crates", info: "9 файлов · 0,6 с", pathStyle: actPath, srChip: "Поиск", srChipStyle, rows: rows(SR_GREP.map((x) => [x[1], "f", x[2], x[3]]), 5, SR_GMARK) });
+const srGrepPanel = () => { const pn = P({ srGrep: true, path: "«Lane::Bulk» в C:\\Dev\\urfin\\crates", info: "9 файлов · 0,6 с", pathStyle: actPath, srChip: "Поиск", srChipStyle, rows: rows(SR_GREP.map((x) => [x[1], "f", x[2], x[3]]), 5, {}) });
 pn.rows.forEach((r, i) => { const g = SR_GREP[i], m = hcOn && !!SR_GMARK[i]; Object.assign(r, { srDir: g[0], srDirStyle: srDirSt(m), srLn: g[4], srPre: g[5], srHit: "Lane::Bulk", hlStyle: r.hlStyle + (m ? "; box-shadow: 0 0 0 1px " + t.ct : ""), srPost: g[6], srLnStyle: "width: 34px; flex: none; text-align: right; font-family: " + mono + "; font-size: 12px; color: " + (m ? t.ct : t.s) }); }); return pn; };
 const ddOn = screen === "dragpanel" || screen === "dragfolder", ddFolder = screen === "dragfolder";
 const ddRowTop = 56 + 3 * rowH;
@@ -1338,7 +1339,7 @@ const segs = raw.map((s, j) => {
 let st = "color: " + s.c;
 if (hit) {
 st += "; background: " + t.hl + "; border-radius: " + (n === 1 ? "2px" : j === 0 ? "2px 0 0 2px" : j === n - 1 ? "0 2px 2px 0" : "0");
-if (cur) { const sh = ["inset 0 1px 0 " + t.a, "inset 0 -1px 0 " + t.a]; if (j === 0) sh.push("inset 1px 0 0 " + t.a); if (j === n - 1) sh.push("inset -1px 0 0 " + t.a); st += "; box-shadow: " + sh.join(", "); }
+if (cur) st += "; background: " + t.a + "; color: " + t.p;
 }
 return { x: s.x, style: st };
 });
@@ -1457,8 +1458,8 @@ vwEncScroll: "position: absolute; right: 4px; top: 8px; width: 2px; height: 128p
 const STATUS = {
 termsearch: ["pwsh 7.5 · интеграция с оболочкой","Скроллбэк 9 214 строк",""],
 termshell: ["pwsh 7.5 · интеграция с оболочкой","",""],
-searchpanel: ["Cargo.toml · 0,9 КБ · 21.10.26 09:30","Выделено 3 из 23 · 2,6 КБ","C: 214 ГБ свободно"],
-searchgrep: ["svfs.rs · 10,6 КБ · 21.10.26 09:30","Выделено 2 из 9 · 29,5 КБ","C: 214 ГБ свободно"],
+searchpanel: ["Cargo.toml · 0,9 КБ · 21.10.26 09:30","Выделено 0 из 23","C: 214 ГБ свободно"],
+searchgrep: ["svfs.rs · 10,6 КБ · 21.10.26 09:30","Выделено 0 из 9","C: 214 ГБ свободно"],
 cmdcomplete: ["Источники: pwsh · пути · PATH · история","2 из 8",""],
 cmdhistory: ["","9 из 412",""],
 firstrun: ["Cargo.toml · 1,2 КБ · 19.10.26 22:40","Выделено 0 из 16","Настройки: %APPDATA%\\Urfin"],
