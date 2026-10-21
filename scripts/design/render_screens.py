@@ -132,6 +132,7 @@ SHOTS = [
     ("screen-motion", {"screen": "motion"}),
     ("screen-a11yfocus", {"screen": "a11yfocus"}),
     ("screen-a11ysheet", {"screen": "a11ysheet"}),
+    ("screen-settings-a11y", {"screen": "settings-a11y"}),
     ("screen-extract", {"screen": "extract"}),
     ("screen-extractpw", {"screen": "extractpw"}),
     ("screen-link", {"screen": "link"}),
