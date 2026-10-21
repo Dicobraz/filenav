@@ -88,6 +88,9 @@ SHOTS = [
     ("screen-viewer", {"screen": "viewer"}),
     ("screen-editor", {"screen": "editor"}),
     ("screen-settings", {"screen": "settings"}),
+    ("screen-settings-panels", {"screen": "settings-panels"}),
+    ("screen-settings-keys", {"screen": "settings-keys"}),
+    ("screen-settings-editor", {"screen": "settings-editor"}),
     ("context-admin", {"context": "admin"}),
     ("density-20-color-icons", {"density": "20", "icons": "color"}),
 ]

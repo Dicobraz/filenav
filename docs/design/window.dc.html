@@ -267,6 +267,7 @@ body{margin:0}
 <button type="button" style="{{n.style}}">{{n.label}}</button>
 </sc-for>
 </div>
+<sc-if value="{{secView}}" hint-placeholder-val="{{ true }}">
 <div style="flex: 1; min-width: 0; padding: 24px 32px; display: flex; flex-direction: column; gap: 22px">
 <div style="display: flex; flex-direction: column; gap: 12px">
 <div style="display: flex; align-items: center; justify-content: space-between">
@@ -310,6 +311,44 @@ body{margin:0}
 </div>
 <div style="margin-top: auto; padding-top: 14px; border-top: 1px solid {{t.b}}; color: {{t.s}}; font-size: 12px">Политика организации: тема не зафиксирована · HKLM\Software\Policies\Aahz\Urfin</div>
 </div>
+</sc-if>
+<sc-if value="{{secForm}}" hint-placeholder-val="{{ false }}">
+<div style="flex: 1; min-width: 0; padding: 24px 32px; display: flex; flex-direction: column; gap: 24px">
+<sc-for list="{{form}}" as="g" hint-placeholder-count="2">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span style="font-size: 15px; font-weight: 500; margin-bottom: 4px">{{g.title}}</span>
+<sc-for list="{{g.rows}}" as="r" hint-placeholder-count="5">
+<div style="min-height: 36px; display: flex; align-items: center; gap: 24px; border-bottom: 1px solid {{t.b}}">
+<span style="width: 240px; flex: none">{{r.label}}</span>
+<sc-if value="{{r.seg}}" hint-placeholder-val="{{ false }}"><div style="display: flex; gap: 4px"><sc-for list="{{r.opts}}" as="o" hint-placeholder-count="3"><button type="button" style="{{o.style}}">{{o.label}}</button></sc-for></div></sc-if>
+<sc-if value="{{r.check}}" hint-placeholder-val="{{ false }}"><label style="display: flex; gap: 8px; align-items: center"><input type="checkbox" checked="{{r.on}}" readOnly="{{ true }}">{{r.text}}</label></sc-if>
+<sc-if value="{{r.select}}" hint-placeholder-val="{{ false }}"><select aria-label="{{r.label}}" style="min-width: 260px; {{inputStyle}}"><option>{{r.value}}</option></select></sc-if>
+<span style="margin-left: auto; color: {{t.s}}; font-size: 12px">{{r.note}}</span>
+</div>
+</sc-for>
+</div>
+</sc-for>
+</div>
+</sc-if>
+<sc-if value="{{secKeys}}" hint-placeholder-val="{{ false }}">
+<div style="flex: 1; min-width: 0; padding: 24px 32px; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; align-items: center; gap: 16px">
+<span style="font-size: 15px; font-weight: 500">Клавиатура</span>
+<div style="display: flex; gap: 4px"><sc-for list="{{presets}}" as="o" hint-placeholder-count="3"><button type="button" style="{{o.style}}">{{o.label}}</button></sc-for></div>
+<input aria-label="Найти команду или клавишу" placeholder="Команда или клавиша" style="margin-left: auto; width: 280px; {{inputStyle}}">
+</div>
+<div style="display: flex; flex-direction: column; border: 1px solid {{t.b}}; border-radius: 6px; overflow: hidden">
+<div style="height: 28px; display: flex; align-items: center; gap: 16px; padding: 0 12px; background: {{t.h}}; border-bottom: 1px solid {{t.b}}; color: {{t.s}}; font-size: 11.5px"><span style="flex: 1">Команда</span><span style="width: 260px">Клавиши</span><span style="width: 150px">Где</span></div>
+<sc-for list="{{keymap}}" as="km" hint-placeholder-count="12">
+<div style="{{km.style}}">
+<span style="flex: 1; display: flex; flex-direction: column"><span>{{km.cmd}}</span><sc-if value="{{km.warn}}" hint-placeholder-val="{{ false }}"><span style="color: {{t.rem}}; font-size: 12px">{{km.warn}}</span></sc-if></span>
+<span style="width: 260px; display: flex; gap: 6px; flex-wrap: wrap"><sc-for list="{{km.keys}}" as="k" hint-placeholder-count="1"><span style="{{k.style}}">{{k.label}}</span></sc-for></span>
+<span style="width: 150px; color: {{t.s}}; font-size: 12px">{{km.ctx}}</span>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-if>
 </div>
 </sc-if>
 <sc-if value="{{isCopy}}" hint-placeholder-val="{{ false }}">
@@ -455,7 +494,7 @@ body{margin:0}
 </sc-if>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark","blue","turquoise","grass","sepia"],"default":"light"},"screen":{"editor":"enum","options":["panels","terminal","termhalf","menu","context","select","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress","search","viewer","editor","settings"],"default":"panels"},"density":{"editor":"enum","options":["20","24","28"],"default":"24"},"icons":{"editor":"enum","options":["none","mono","color"],"default":"mono"},"context":{"editor":"enum","options":["none","admin","remote"],"default":"none"},"$preview":{"width":1280,"height":760}}'>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark","blue","turquoise","grass","sepia"],"default":"light"},"screen":{"editor":"enum","options":["panels","settings-panels","settings-keys","settings-editor","terminal","termhalf","menu","context","select","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress","search","viewer","editor","settings"],"default":"panels"},"density":{"editor":"enum","options":["20","24","28"],"default":"24"},"icons":{"editor":"enum","options":["none","mono","color"],"default":"mono"},"context":{"editor":"enum","options":["none","admin","remote"],"default":"none"},"$preview":{"width":1280,"height":760}}'>
 class Component extends DCLogic {
 renderVals() {
 const TH = {
@@ -470,7 +509,9 @@ const NAMES = [["light","Системная светлая"],["dark","Систе
 const st = this.state || {};
 const themeId = st.theme || this.props.theme || "light";
 const t = TH[themeId] || TH.light;
-const screen = this.props.screen || "panels";
+const screenRaw = this.props.screen || "panels";
+const sec = screenRaw.indexOf("settings-") === 0 ? screenRaw.slice(9) : "view";
+const screen = screenRaw.indexOf("settings") === 0 ? "settings" : screenRaw;
 const rowH = parseInt(st.density || this.props.density || "24", 10);
 const iconMode = st.icons || this.props.icons || "mono";
 const icons = iconMode !== "none";
@@ -627,7 +668,8 @@ const editLines = editAll.slice(0, 31);
 const foldCol = "width: 14px; flex: none; align-self: stretch; display: flex; align-items: center; justify-content: center; color: " + t.s + "; background: " + t.h + "; border-right: 1px solid " + t.b + "; font-size: 10px";
 const viewportStyle = "position: absolute; left: 4px; right: 4px; top: 4px; height: " + (31 * 4 + 4) + "px; border-radius: 3px; background: " + t.cl + "; border: 1px solid " + t.b + "; box-sizing: border-box";
 const NAV = ["Вид","Панели","Клавиатура","Редактор","Просмотр","Терминал","Операции","Политики"];
-const nav = NAV.map((label, i) => ({ label, style: "height: 32px; padding: 0 12px; text-align: left; border: 0; border-radius: 4px; background: " + (i === 0 ? t.c : "transparent") + "; color: " + (i === 0 ? t.ct : t.t) + "; font: inherit; font-weight: " + (i === 0 ? 500 : 400) }));
+const navSel = { view: 0, panels: 1, keys: 2, editor: 3 }[sec] || 0;
+const nav = NAV.map((label, j) => ({ label, i: j === navSel ? 0 : 1 })).map(({ label, i }) => ({ label, style: "height: 32px; padding: 0 12px; text-align: left; border: 0; border-radius: 4px; background: " + (i === 0 ? t.c : "transparent") + "; color: " + (i === 0 ? t.ct : t.t) + "; font: inherit; font-weight: " + (i === 0 ? 500 : 400) }));
 const followOs = st.followOs !== undefined ? st.followOs : false;
 const cards = NAMES.map(([id, name]) => {
 const x = TH[id], on = id === themeId;
@@ -661,7 +703,7 @@ errors: ["папка системная, скрытая","",""],
 search: ["Поиск «spawn_blocking» в C:\\Dev\\urfin\\crates","9 совпадений","готово за 0,4 с"],
 viewer: ["Стр 1–27 из 212 · 13 %","5 отметок «Исправлено»","9,4 КБ · UTF-8 · CRLF"],
 editor: ["Стр 6, Кол 18","41 строка","TOML · Пробелы: 4 · UTF-8 · LF · Вставка"],
-settings: ["%APPDATA%\\Urfin\\settings.toml","","Применяется сразу"],
+settings: [sec === "keys" ? "%APPDATA%\\Urfin\\keymap.toml" : "%APPDATA%\\Urfin\\settings.toml", sec === "keys" ? "1 конфликт" : "", "Применяется сразу"],
 delete: ["CHANGELOG.md · 9,4 КБ · 18.10.26 17:05","Выделено 2 из 16 · 67,7 КБ","C: 214 ГБ свободно"]
 };
 const KEYS = {
@@ -720,6 +762,29 @@ PS("Get-ChildItem target\\release\\urfin.exe | Select-Object Length"),
 [S("  ------", "s")],
 [S("12268544", "t")]
 ];
+})(),
+secView: sec === "view", secForm: sec === "panels" || sec === "editor", secKeys: sec === "keys",
+form: (() => {
+const segS = (on) => "height: 28px; padding: 0 12px; border: 1px solid " + (on ? t.a : t.b) + "; border-radius: 4px; background: " + (on ? t.c : t.p) + "; color: " + (on ? t.ct : t.t) + "; font: inherit";
+const SEG = (label, opts, on, note) => ({ label, seg: true, opts: opts.map((o, i) => ({ label: o, style: segS(i === on) })), note: note || "" });
+const CHK = (label, text, on, note) => ({ label, check: true, text, on, note: note || "" });
+const SEL = (label, value, note) => ({ label, select: true, value, note: note || "" });
+return sec === "editor" ? [
+{ title: "Текст", rows: [SEL("Шрифт", "Cascadia Mono, 13"), SEG("Табуляция", ["2","4","8"], 1), CHK("Отступы", "Пробелы вместо табов", true), CHK("Перенос строк", "Переносить длинные строки", false), CHK("Поля", "Номера строк, свёртка, мини-карта", true)] },
+{ title: "Файлы", rows: [SEL("Кодировка новых файлов", "UTF-8 без BOM"), SEG("Переводы строк", ["LF","CRLF","Как в файле"], 2), CHK("Подсветка синтаксиса", "Включена", true, "файлы больше 16 МБ — без подсветки"), SEL("Автосохранение", "Выключено")] }
+] : [
+{ title: "Вид панели", rows: [SEG("Режим по умолчанию", ["Full","Brief","Medium","Wide"], 0), SEL("Сортировка", "Имя ▲, папки сверху"), CHK("Скрытые и системные", "Показывать", false), CHK("Раскраска", "По типам и маскам", true)] },
+{ title: "Поведение", rows: [SEL("Enter на архиве", "Открыть как папку"), SEG("Быстрый поиск", ["Alt+буква","Печать в панели"], 0), CHK("Автообновление", "Следить за изменениями папки", true), SEL("Сетевые папки", "Обновлять раз в 5 с"), CHK("Размер папок", "Считать в фоне при входе", false, "нагружает сетевые диски")] }
+];
+})(),
+presets: ["Urfin","Far","DN"].map((l, i) => ({ label: l, style: "height: 28px; padding: 0 12px; border: 1px solid " + (i === 0 ? t.a : t.b) + "; border-radius: 4px; background: " + (i === 0 ? t.c : t.p) + "; color: " + (i === 0 ? t.ct : t.t) + "; font: inherit" })),
+keymap: (() => {
+const kb = "padding: 1px 7px; border: 1px solid " + t.b + "; border-bottom-width: 2px; border-radius: 4px; background: " + t.h + "; font-size: 12px; white-space: nowrap";
+const cap = "padding: 1px 9px; border: 1px solid " + t.a + "; border-radius: 4px; background: " + t.p + "; color: " + t.a + "; font-size: 12px";
+const K = [["Копировать",["F5"],"Панели"],["Переместить или переименовать",["F6"],"Панели"],["Создать папку",["F7"],"Панели"],["Удалить",["F8","Shift+Del"],"Панели"],["Отметить группу",["Num +"],"Панели"],["Сравнить каталоги",null,"Панели"],["Свойства",["Alt+Enter"],"Панели","конфликт: «Свойства тома» в том же месте"],["Свойства тома",["Alt+Enter"],"Панели","конфликт: «Свойства»"],["Быстрый поиск",["Alt+буква"],"Панели"],["Скрыть панели",["Ctrl+O"],"Окно"],["Левая панель",["Ctrl+F1"],"Окно"],["Поиск файлов",["Alt+F7"],"Окно"]];
+return K.map(([cmd, keys, ctx, warn], i) => ({ cmd, ctx, warn: warn || "",
+keys: keys ? keys.map((k) => ({ label: k, style: kb })) : [{ label: "Нажмите сочетание… Esc — отмена", style: cap }],
+style: "min-height: 34px; display: flex; align-items: center; gap: 16px; padding: 4px 12px; box-sizing: border-box; border-bottom: 1px solid " + t.b + "; background: " + (keys ? (warn ? t.h : "transparent") : t.cl) }));
 })(),
 isDelete: screen === "delete", isConflict: screen === "conflict", isMenu: screen === "menu", isCtx: screen === "context", isSelect: screen === "select",
 ctxItems: [["Открыть","Enter"],["Открыть с помощью","›"],["Просмотр","F3"],["Редактировать","F4"],null,["Копировать путь","Ctrl+Shift+C"],["Копировать имя",""],null,["Упаковать в архив",""],["Сравнить с файлом в другой панели",""],null,["Удалить","F8"],["Свойства","Alt+Enter"],null,["Меню Проводника","›"]].map((m, i) => m ? ({ item: true, sep: false, label: m[0], key: m[1], keyStyle: "font-size: 12px; color: " + (i === 3 ? t.ct : t.s), style: "height: 28px; display: flex; align-items: center; gap: 16px; padding: 0 10px; border: 0; border-radius: 4px; font: inherit; background: " + (i === 3 ? t.c : "transparent") + "; color: " + (i === 3 ? t.ct : t.t) }) : ({ item: false, sep: true })), isQuick: screen === "quick", tree, infoRows, drives,
