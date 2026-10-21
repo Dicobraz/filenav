@@ -217,6 +217,8 @@ URFIN_UPDATE_DOCS=1 cargo nextest run -p urfin-keymap keys_doc -->
 | Сочетание | Команда | ОС |
 |---|---|---|
 | `Enter` | `panel.enter` | W M L |
+| `Ctrl+D` | `ui.menu menu=bookmarks` | W M L |
+| `Shift+F10` | `ui.menu menu=context` | W M L |
 | `Backspace` | `panel.up` | W M L |
 | `Space` | `sel.toggle advance=true` | W M L |
 | `Ctrl+Insert` | `ui.copy_names full=false` | W M L |
@@ -558,6 +560,8 @@ URFIN_UPDATE_DOCS=1 cargo nextest run -p urfin-keymap keys_doc -->
 | Сочетание | Команда | ОС |
 |---|---|---|
 | `Enter` | `panel.enter` | W M L |
+| `Ctrl+D` | `ui.menu menu=bookmarks` | W M L |
+| `Shift+F10` | `ui.menu menu=context` | W M L |
 | `Backspace` | `panel.up` | W M L |
 | `Space` | `sel.toggle advance=true` | W M L |
 | `Ctrl+Insert` | `ui.copy_names full=false` | W M L |

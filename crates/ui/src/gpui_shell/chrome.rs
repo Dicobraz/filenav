@@ -330,6 +330,37 @@ pub(super) fn strip_keys(s: &AppState) -> Option<Vec<(String, String)>> {
         ]);
     }
     let ui = s.ext.get::<crate::UiState>();
+    // Открытое меню или «мешочек»: его клавиши.
+    if let Some(open) = ui
+        .and_then(crate::menu::open_id)
+        .filter(|id| *id != "drives")
+    {
+        let k = |key: &str, label: &str| (key.to_owned(), i18n.get(label));
+        return Some(match super::menu::Kind::of(open, s.active) {
+            super::menu::Kind::Bar => vec![
+                k("← →", "ui-keys-menu"),
+                k("↑ ↓", "ui-keys-item"),
+                k("Enter", "ui-keys-choose"),
+                k("Esc", "ui-keys-close"),
+            ],
+            super::menu::Kind::Sort(_) => vec![
+                k("↑ ↓", "ui-keys-item"),
+                k("Enter", "ui-keys-choose"),
+                k("Space", "ui-keys-toggle"),
+                k("Esc", "ui-keys-close"),
+            ],
+            super::menu::Kind::Bookmarks(_) | super::menu::Kind::History(_) => vec![
+                k("Enter", "ui-keys-go"),
+                k("Shift+Enter", "ui-keys-other-panel"),
+                k("Esc", "ui-keys-close"),
+            ],
+            super::menu::Kind::Context(_) => vec![
+                k("↑ ↓", "ui-keys-item"),
+                k("Enter", "ui-keys-choose"),
+                k("Esc", "ui-keys-close"),
+            ],
+        });
+    }
     // Переименование на месте: строки внизу нет — клавиши поля в keybar.
     if ui.is_some_and(|u| u.rename.is_some()) {
         return Some(vec![
