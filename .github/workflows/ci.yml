@@ -80,7 +80,11 @@ jobs:
 
       # `--all-targets` проверяет и бенчи (S1-14); их числа — на стенде (docs/perf/).
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      # Тесты с настоящей корзиной (S5-13) — только на раннере CI: на стенде
+      # владельца они клали бы файлы в его корзину.
       - run: cargo nextest run --workspace --locked --profile ci
+        env:
+          URFIN_TEST_RECYCLE: "1"
       - run: cargo test --doc --workspace --locked
 
       # Release (fat LTO, ~15 мин) — только на main: в PR хватает clippy и тестов

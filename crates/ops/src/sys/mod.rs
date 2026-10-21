@@ -1,6 +1,8 @@
 //! Платформенная часть ops. `unsafe` — только здесь (CLAUDE.md).
 
 #[cfg(windows)]
+pub(crate) mod trash_win;
+#[cfg(windows)]
 mod windows;
 
 pub(crate) mod fs;
