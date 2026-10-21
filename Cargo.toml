@@ -31,6 +31,8 @@ gpui-kit = "=0.7.3"
 # Сигнал воркеров Core в цикл GPUI (уже в графе через gpui).
 futures = { version = "0.3", default-features = false, features = ["std", "async-await"] }
 crossbeam-channel = "0.5.17"
+# VT-эмуляция терминала (S6 §0): только `Term` и `vte::ansi::Processor`; API 0.x — версия точно.
+alacritty_terminal = { version = "=0.26.0", default-features = false }
 rayon = "1.12"
 compact_str = { version = "0.10", features = ["serde"] }
 smallvec = { version = "1.16", features = ["serde", "union", "const_generics"] }

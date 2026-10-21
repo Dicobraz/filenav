@@ -9,6 +9,8 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
+alacritty_terminal.workspace = true
+crossbeam-channel.workspace = true
 compact_str = { workspace = true, features = ["serde"] }
 serde.workspace = true
 toml.workspace = true
@@ -30,8 +32,14 @@ windows-sys = { workspace = true, features = [
 ] }
 
 [dev-dependencies]
+criterion.workspace = true
+proptest.workspace = true
 insta.workspace = true
 tempfile.workspace = true
 
 [lints]
 workspace = true
+
+[[bench]]
+name = "pipeline"
+harness = false

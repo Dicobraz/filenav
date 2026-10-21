@@ -6,6 +6,7 @@
 //! S6-02…S6-22 (`docs/TASKS-M3.md`).
 
 pub mod config;
+pub mod session;
 pub mod shells;
 pub mod sys;
 pub mod vt;
@@ -238,6 +239,8 @@ static CMDLINE_COMMANDS: [CommandMeta; 26] = [
 #[derive(Debug, Default)]
 pub struct TermState {
     pub config: TermConfig,
+    /// События сеансов, пришедшие `Msg`, до разбора менеджером (S6-10).
+    pub inbox: Vec<(session::SessionId, session::SessionEvent)>,
 }
 
 fn not_yet(cmd: &Command) -> CmdError {
@@ -269,7 +272,10 @@ impl Handler for TermHandler {
 
     fn on_pump(&mut self, cx: &mut Cx<'_>) {
         if let Some(config) = self.pending.take() {
-            cx.state.ext.insert(TermState { config });
+            cx.state.ext.insert(TermState {
+                config,
+                inbox: Vec::new(),
+            });
         }
     }
 
