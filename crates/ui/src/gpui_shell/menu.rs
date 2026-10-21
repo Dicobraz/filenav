@@ -111,6 +111,8 @@ pub(super) struct Geo {
     pub head_h: f32,
     pub row_h: f32,
     pub panels: [Option<(f32, f32)>; 2],
+    /// Где вызвано контекстное меню мышью.
+    pub pointer: Option<(f32, f32)>,
 }
 
 /// Ширина текста размером `size`.
@@ -669,13 +671,22 @@ impl Menu {
                 let list_top = geo.top + geo.path_h + geo.head_h;
                 #[allow(clippy::cast_precision_loss, reason = "пунктов десяток")]
                 let h = rows.len() as f32 * H_ITEM + 40.0;
-                let mut y = list_top + (row + 1.0) * geo.row_h + 4.0;
-                if y + h > geo.win_h {
-                    y = (list_top + row * geo.row_h - h - 4.0).max(geo.top);
-                }
-                let x = (px0 + (pw * 0.3).min(200.0))
-                    .min(geo.win_w - W_CONTEXT)
-                    .max(0.0);
+                // Мышью — у указателя; Shift+F10 — под строкой курсора. Не влезает
+                // вниз — вверх.
+                let (x, below, above) = match geo.pointer {
+                    Some((mx, my)) => (mx + 2.0, my + 2.0, my - h - 2.0),
+                    None => (
+                        px0 + (pw * 0.3).min(200.0),
+                        list_top + (row + 1.0) * geo.row_h + 4.0,
+                        list_top + row * geo.row_h - h - 4.0,
+                    ),
+                };
+                let y = if below + h > geo.win_h {
+                    above.max(geo.top)
+                } else {
+                    below
+                };
+                let x = x.min(geo.win_w - W_CONTEXT).max(0.0);
                 pouch(theme, x, y, W_CONTEXT, None, body)
             }
         })

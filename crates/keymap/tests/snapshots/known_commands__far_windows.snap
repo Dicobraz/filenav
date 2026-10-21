@@ -185,7 +185,7 @@ expression: "effective(&km).join(\"\\n\")"
 [panel] Ctrl+Shift+D = tab.dup (Preset)
 [panel] F9 = ui.menu (Preset)
 [panel] F10 = app.quit (Preset)
-[panel] F11 = ui.palette (Preset)
+[panel] F11 = ui.jobs.toggle (Preset)
 [panel] F12 = ui.screens (Preset)
 [panel] Alt+Shift+F9 = ui.settings (Preset)
 [panel] Ctrl+B = ui.keybar.toggle (Preset)

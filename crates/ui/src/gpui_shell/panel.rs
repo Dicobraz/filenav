@@ -1042,6 +1042,8 @@ fn list(
     let move_lines = lines.clone();
     let move_hit = hit.clone();
     let right_lines = lines.clone();
+    let down_lines = lines.clone();
+    let down_hit = hit.clone();
     let mut d = div()
         .id(SharedString::from(format!("list-{side:?}")))
         .flex_1()
@@ -1052,10 +1054,23 @@ fn list(
         .on_scroll_wheel(cx.listener(move |h, ev: &ScrollWheelEvent, w, cx| {
             h.wheel(side, ev, w, cx);
         }))
+        // Shift+ЛКМ — пометка на нажатии и протяжка (S0 №74).
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(move |h, ev: &MouseDownEvent, w, cx| {
+                if ev.modifiers.shift
+                    && let Some(target) = down_hit(&down_lines, ev.position)
+                {
+                    h.row_mark_down(side, target.as_deref(), w, cx);
+                }
+            }),
+        )
         .on_mouse_up(
             MouseButton::Left,
             cx.listener(move |h, ev: &MouseUpEvent, w, cx| {
-                if let Some(target) = click_hit(&click_lines, ev.position) {
+                if ev.modifiers.shift || h.marking() {
+                    h.right_drag_end();
+                } else if let Some(target) = click_hit(&click_lines, ev.position) {
                     h.row_click(
                         side,
                         target.as_deref(),
@@ -1067,26 +1082,24 @@ fn list(
                 }
             }),
         )
+        // ПКМ — контекстное меню у мыши (S0 №74).
         .on_mouse_down(
             MouseButton::Right,
             cx.listener(move |h, ev: &MouseDownEvent, w, cx| {
                 if let Some(target) = hit(&right_lines, ev.position) {
-                    h.row_right_click(side, target.as_deref(), w, cx);
+                    let at = (f32::from(ev.position.x), f32::from(ev.position.y));
+                    h.row_context(side, target.as_deref(), at, w, cx);
                 }
             }),
         )
-        // Протяжка с зажатой ПКМ помечает строки под мышью (Far).
+        // Протяжка после Shift+ЛКМ помечает строки под мышью.
         .on_mouse_move(cx.listener(move |h, ev: &MouseMoveEvent, w, cx| {
-            if ev.pressed_button != Some(MouseButton::Right) {
+            if ev.pressed_button != Some(MouseButton::Left) {
                 h.right_drag_end();
             } else if let Some(target) = move_hit(&move_lines, ev.position) {
                 h.row_right_drag(side, target.as_deref(), w, cx);
             }
-        }))
-        .on_mouse_up(
-            MouseButton::Right,
-            cx.listener(|h, _: &MouseUpEvent, _, _| h.right_drag_end()),
-        );
+        }));
     // Переименование на месте (S2-16): поле поверх имени в строке курсора.
     if let Some(input) = rename
         && let Some(k) = lines.iter().position(|l| l.renaming)

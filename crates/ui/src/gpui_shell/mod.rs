@@ -158,6 +158,8 @@ pub struct CoreHost {
     prints: [[u64; 3]; 2],
     /// Протяжка с зажатой ПКМ (Far): панель, ставить или снимать пометку, последняя строка.
     rdrag: Option<(Side, bool, String)>,
+    /// Где вызвано контекстное меню мышью (окно, px); Shift+F10 — у строки курсора.
+    context_at: Option<(f32, f32)>,
     /// Эксперимент `slide`: где был курсор (таб, верх страницы, строка) и скольжение полосы.
     slot: [Option<(u32, u32, u32)>; 2],
     slide: [Option<Slide>; 2],
@@ -244,6 +246,7 @@ impl CoreHost {
             panel_w: [0.0; 2],
             prints: [[0; 3]; 2],
             rdrag: None,
+            context_at: None,
             slot: [None; 2],
             slide: [None, None],
             bottom,
@@ -650,8 +653,8 @@ impl CoreHost {
         self.pump(window, cx);
     }
 
-    /// Клик по строке: панель — активной, курсор — на строку; Ctrl — пометка;
-    /// двойной — вход (S2 §2.1).
+    /// Клик по строке: панель — активной, курсор — на строку; Ctrl — пометка (Shift —
+    /// на нажатии, [`Self::row_mark_down`]); двойной — вход (S2 §2.1, S0 №74).
     fn row_click(
         &mut self,
         side: Side,
@@ -671,8 +674,9 @@ impl CoreHost {
         self.run_all(cmds, window, cx);
     }
 
-    /// ПКМ — пометка строки (как в Far); `..` не помечается.
-    fn row_right_click(
+    /// Shift+ЛКМ — пометка строки (S0 №74, вместо ПКМ Far); `..` не помечается.
+    /// Протяжка с зажатой кнопкой ставит строкам то же состояние, что получила эта.
+    fn row_mark_down(
         &mut self,
         side: Side,
         name: Option<&str>,
@@ -684,10 +688,24 @@ impl CoreHost {
             cmds.push(Command::new("sel.toggle"));
         }
         self.run_all(cmds, window, cx);
-        // Дальше протяжка ставит строкам то же состояние, что получила эта.
         self.rdrag = name
             .zip(self.marked(side))
             .map(|(n, on)| (side, on, n.to_owned()));
+    }
+
+    /// ПКМ — курсор на строку и контекстное меню у мыши (S0 №74).
+    fn row_context(
+        &mut self,
+        side: Side,
+        name: Option<&str>,
+        at: (f32, f32),
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let mut cmds = self.focus_and_cursor(side, name);
+        cmds.push(Command::new("ui.menu").arg("menu", "context"));
+        self.run_all(cmds, window, cx);
+        self.context_at = Some(at);
     }
 
     /// Строка курсора панели помечена; `None` — на `..` или пусто.
@@ -699,7 +717,8 @@ impl CoreHost {
         }
     }
 
-    /// Мышь с зажатой ПКМ над строкой: курсор на неё, пометка — как у первой строки.
+    /// Мышь с зажатой ЛКМ после Shift+ЛКМ над строкой: курсор на неё, пометка — как у
+    /// первой строки.
     fn row_right_drag(
         &mut self,
         side: Side,
@@ -725,7 +744,12 @@ impl CoreHost {
         }
     }
 
-    /// ПКМ отпущена (или мышь вернулась без неё): протяжка кончилась.
+    /// Идёт протяжка пометки (Shift+ЛКМ).
+    fn marking(&self) -> bool {
+        self.rdrag.is_some()
+    }
+
+    /// ЛКМ отпущена (или мышь вернулась без неё): протяжка кончилась.
     fn right_drag_end(&mut self) {
         self.rdrag = None;
     }
@@ -1325,6 +1349,9 @@ impl Render for CoreHost {
             .and_then(crate::menu::open_id)
             .filter(|id| *id != "drives")
             .map(str::to_owned);
+        if open.as_deref() != Some("context") {
+            self.context_at = None;
+        }
         let dark = self.theme.generation();
         let widths = Self::layout(&self.theme, s, f32::from(window.viewport_size().width));
         // Ширина текста для корешков меню (D-05).
@@ -1575,6 +1602,7 @@ impl Render for CoreHost {
                     head_h: self.theme.m(Metric::HColHeader),
                     row_h: self.theme.m(Metric::HRow),
                     panels: Self::panel_spans(&self.theme, widths),
+                    pointer: self.context_at,
                 };
                 self.menu.flyout(
                     id,
