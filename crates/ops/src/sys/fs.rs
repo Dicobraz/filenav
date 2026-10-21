@@ -63,6 +63,11 @@ pub fn move_file(src: &Path, dst: &Path, replace: bool) -> io::Result<()> {
     imp::move_file(src, dst, replace)
 }
 
+/// Свободное место тома по пути (доступное вызывающему — с квотами) и его размер.
+pub fn free_space(p: &Path) -> io::Result<(u64, u64)> {
+    imp::free_space(p)
+}
+
 /// Атрибуты (`FILE_ATTRIBUTE_*`) по пути, без разыменования ссылки.
 pub fn attrs(p: &Path) -> io::Result<u32> {
     imp::attrs(p)
@@ -157,6 +162,25 @@ mod imp {
             Ok(true) => PROGRESS_CONTINUE,
             _ => PROGRESS_CANCEL,
         }
+    }
+
+    pub fn free_space(p: &Path) -> io::Result<(u64, u64)> {
+        use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+        let w = wide(p);
+        let (mut free, mut total) = (0u64, 0u64);
+        // SAFETY: строка с NUL живёт до конца вызова; выходные — локальные u64.
+        let ok = unsafe {
+            GetDiskFreeSpaceExW(
+                w.as_ptr(),
+                &raw mut free,
+                &raw mut total,
+                std::ptr::null_mut(),
+            )
+        };
+        if ok == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok((free, total))
     }
 
     /// Атрибуты, при которых свой путь не годится.

@@ -152,7 +152,19 @@ struct Info {
     tol_ns: i64,
     /// Перенос rename-ом (тот же том).
     rename: bool,
+    /// Наибольший файл на ФС назначения (FAT32 — 4 ГБ − 1), `None` — без предела.
+    max_file: Option<u64>,
+    /// Назначение — FAT/exFAT: имена с хвостовой точкой и зарезервированные туда
+    /// не положить (на NTFS verbatim-путь их создаёт — копируем как есть).
+    fat: bool,
+    /// Корень назначения: свободное место (S5-20).
+    root: PathBuf,
 }
+
+/// Наибольший файл FAT32.
+const FAT32_MAX_FILE: u64 = 0xFFFF_FFFF;
+/// Запас места сверх оставшегося объёма: max(1 % тома, 256 МБ) (S5 §4.12).
+const SPACE_FLOOR: u64 = 256 << 20;
 
 /// Ограничение одновременных копий (HDD — 1, USB — 2; 0 — без ограничения).
 #[derive(Debug, Default)]
@@ -222,6 +234,9 @@ pub(crate) struct Transfer {
     /// Тест: перед commit временного файла (гонка за имя).
     #[cfg(test)]
     before_commit: Option<fn(&Path)>,
+    /// Тест: свободное место и размер тома вместо ОС.
+    #[cfg(test)]
+    free_space: Option<fn() -> (u64, u64)>,
 }
 
 /// Параметры запуска.
@@ -327,6 +342,8 @@ pub(crate) fn start_retry(
         gate: Gate::default(),
         #[cfg(test)]
         before_commit: None,
+        #[cfg(test)]
+        free_space: None,
     };
     let workers = spec.opts.workers.map_or(WORKERS, |n| u16::from(n.get()));
     Some(eng.start(cx, spec_job, workers, t))
@@ -426,6 +443,8 @@ impl Transfer {
             gate: Gate::default(),
             #[cfg(test)]
             before_commit: None,
+            #[cfg(test)]
+            free_space: None,
         }
     }
 
@@ -533,6 +552,14 @@ impl Transfer {
         let mut dst = it.dst.clone();
         let mut rename = it.rename;
         let mut temp = it.temp.clone();
+        if !it.rename
+            && temp.is_none()
+            && it.kind == EntryKind::File
+            && let Some(issue) = self.space_issue(it, cx)
+        {
+            // Места не хватит на остаток job: новые файлы ждут ответа (S5 §4.12).
+            return ItemResult::Park(Box::new(issue), it.size);
+        }
         let mut waits = RETRY_WAITS.iter();
         // Конфликты (до 4 попыток) и автоповторы (до 3).
         for _ in 0..8 {
@@ -697,6 +724,38 @@ impl Transfer {
             return ItemResult::Failed(self.failed(&it.src, &msg, class(&e)));
         }
         ItemResult::Done
+    }
+
+    /// Места меньше, чем нужно на остаток job с запасом, — `LowSpace` до записи.
+    fn space_issue(&self, it: &Item, cx: &ExecCx<'_>) -> Option<Issue> {
+        let root = &self.info().root;
+        if root.as_os_str().is_empty() {
+            return None;
+        }
+        #[cfg(test)]
+        let space = self
+            .free_space
+            .map_or_else(|| sys::free_space(root).ok(), |f| Some(f()));
+        #[cfg(not(test))]
+        let space = sys::free_space(root).ok();
+        let (free, total) = space?;
+        let p = cx.progress();
+        let left = p
+            .bytes_total
+            .load(Ordering::Relaxed)
+            .saturating_sub(p.bytes_done.load(Ordering::Relaxed))
+            .max(it.size);
+        let need = left.saturating_add((total / 100).max(SPACE_FLOOR));
+        if free >= need {
+            return None;
+        }
+        let name = it.src.file_name().unwrap_or_default().to_string_lossy();
+        let mut issue = self.issue(&name, it.size, mtime_of(&it.src), &it.dst, None, None);
+        issue.kind = IssueKind::LowSpace;
+        issue.dst = None;
+        let (need, free) = (urfin_i18n::fmt::bytes(need), urfin_i18n::fmt::bytes(free));
+        issue.error = Some(tr("ops-low-space-detail", &[("need", &need), ("free", &free)]).into());
+        Some(issue)
     }
 
     /// Проблема «имя занято» для вопроса.
@@ -1178,6 +1237,27 @@ impl Planner<'_> {
         mut dst: PathBuf,
     ) -> Result<(), PlanError> {
         let rename = self.t.info().rename;
+        if let Some(kind) = self.t.precheck(e, &dst, rename) {
+            let mut issue = self.t.issue(&e.name, e.size, e.mtime, &dst, None, None);
+            issue.kind = kind;
+            issue.dst = None;
+            if kind == IssueKind::InvalidName {
+                let fixed =
+                    crate::names::fix_name(&dst.file_name().unwrap_or_default().to_string_lossy());
+                issue.error = Some(tr("ops-invalid-name-fix", &[("name", &fixed)]).into());
+            }
+            let item = Item {
+                src,
+                dst,
+                kind: e.kind,
+                size: e.size,
+                how: How::Create,
+                rename,
+                temp: None,
+            };
+            p.park(Some(parent), item, if rename { 0 } else { e.size }, issue)?;
+            return Ok(());
+        }
         let how = match ctx.existing(&dst, &e.name) {
             None => How::Create,
             // Ссылка-каталог поверх каталога — тоже «файл ↔ каталог».
@@ -1514,6 +1594,18 @@ impl OpExec for Transfer {
     }
 
     fn resolve(&self, mut it: Item, issue: &Issue, r: &Resolution) -> Resolved<Item> {
+        if issue.kind == IssueKind::InvalidName {
+            if *r != Resolution::RenameNew {
+                return Resolved::Done(ItemResult::Skipped);
+            }
+            let fixed =
+                crate::names::fix_name(&it.dst.file_name().unwrap_or_default().to_string_lossy());
+            it.dst.set_file_name(fixed);
+            return Resolved::Run(it);
+        }
+        if issue.kind == IssueKind::TooLarge {
+            return Resolved::Done(ItemResult::Skipped);
+        }
         if let IssueKind::Io(_) | IssueKind::LowSpace = issue.kind {
             if *r == Resolution::Retry {
                 return Resolved::Run(it);
@@ -1615,6 +1707,28 @@ impl OpExec for Transfer {
 }
 
 impl Transfer {
+    /// Предпроверки файла в плане (S5-20, S5 §4.11–4.12): больше предела ФС
+    /// назначения (FAT32) — `TooLarge`; имя, которое на Windows не создать или не
+    /// открыть, — `InvalidName`. Перенос rename-ом на том же томе — без проверок.
+    fn precheck(&self, e: &Entry, dst: &Path, rename: bool) -> Option<IssueKind> {
+        if rename {
+            return None;
+        }
+        if let Some(max) = self.info().max_file
+            && e.size > max
+        {
+            return Some(IssueKind::TooLarge);
+        }
+        let name = dst.file_name().unwrap_or_default().to_string_lossy();
+        match crate::names::check_name(&name) {
+            Ok(()) => None,
+            Err(
+                crate::names::NameIssue::Reserved | crate::names::NameIssue::TrailingDotOrSpace,
+            ) if !self.info().fat => None,
+            Err(_) => Some(IssueKind::InvalidName),
+        }
+    }
+
     /// Журнал job (S5-12): заголовок с запросом, корень назначения.
     fn open_journal(&self, root: &Path) {
         let Some(dir) = &self.journal_dir else {
@@ -1740,9 +1854,17 @@ impl Transfer {
             max_parallel = max,
             "transfer setup"
         );
+        let max_file =
+            matches!(vd.as_ref().map(|v| v.fs), Some(FsKind::Fat32)).then_some(FAT32_MAX_FILE);
         let _ = self.info.set(Info {
             tol_ns: tol,
             rename: same && self.mode == Mode::Move,
+            max_file,
+            fat: matches!(
+                vd.as_ref().map(|v| v.fs),
+                Some(FsKind::Fat32 | FsKind::ExFat)
+            ),
+            root: root.to_path_buf(),
         });
     }
 }

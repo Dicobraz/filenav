@@ -222,9 +222,14 @@ pub(super) fn ask_loop<E: OpExec>(sh: &Shared<E>) {
         }
         let kind = first.issue.kind;
         let mut batch = vec![first];
-        if reply.all {
+        // Нехватка места — одна причина на всех запаркованных: ответ (обычно
+        // «Повторить» после освобождения) — им всем, но не в `decided`: кончится
+        // место снова — спросим снова.
+        if reply.all || kind == IssueKind::LowSpace {
             let mut st = park.lock();
-            st.decided.insert(kind, r.clone());
+            if kind != IssueKind::LowSpace {
+                st.decided.insert(kind, r.clone());
+            }
             let (same, rest): (VecDeque<_>, VecDeque<_>) =
                 st.queue.drain(..).partition(|p| p.issue.kind == kind);
             st.queue = rest;
@@ -246,11 +251,13 @@ const NEWER: &str = "newer";
 const CANCEL: &str = "cancel";
 const RETRY: &str = "retry";
 const DELETE: &str = "delete";
+const FIX: &str = "fix";
 
 fn resolution(r: &Reply) -> Resolution {
     match r.choice.as_str() {
         OVERWRITE => Resolution::Overwrite,
-        RENAME => Resolution::RenameNew,
+        // «Исправить имя» — тоже новое имя (`fix_name`).
+        RENAME | FIX => Resolution::RenameNew,
         NEWER => Resolution::OverwriteIfNewer,
         CANCEL => Resolution::Abort,
         RETRY => Resolution::Retry,
@@ -289,6 +296,9 @@ pub(super) fn prompt(issue: &Issue, index: u64, total: u64) -> PromptSpec {
     }
     if issue.kind == IssueKind::NoTrash {
         return no_trash_prompt(issue, name, index, total);
+    }
+    if let IssueKind::TooLarge | IssueKind::InvalidName = issue.kind {
+        return name_prompt(issue, name, index, total);
     }
     let (title, cmp) = if issue.kind == IssueKind::Exists {
         choices.push(choice(OVERWRITE, "ops-choice-overwrite", 'r'));
@@ -415,6 +425,44 @@ fn no_trash_prompt(issue: &Issue, name: String, index: u64, total: u64) -> Promp
         body,
         choices,
         default: 1,
+        input: None,
+        allow_all: true,
+        detail: None,
+        secret: false,
+    }
+}
+
+/// Файл не положить на ФС назначения: больше предела (FAT32) — «Пропустить»,
+/// «Отмена»; недопустимое имя — ещё «Исправить имя» (`fix_name`). «Для всех».
+fn name_prompt(issue: &Issue, name: String, index: u64, total: u64) -> PromptSpec {
+    let mut choices: SmallVec<[Choice; 4]> = SmallVec::new();
+    let title = if issue.kind == IssueKind::InvalidName {
+        choices.push(choice(FIX, "ops-choice-fix-name", 'f'));
+        "ops-issue-invalid-name"
+    } else {
+        "ops-issue-too-large"
+    };
+    choices.push(choice(SKIP, "ops-choice-skip", 's'));
+    choices.push(choice(CANCEL, "ops-choice-cancel", 'c'));
+    let detail = match issue.kind {
+        IssueKind::TooLarge => urfin_i18n::current().get("ops-too-large-why"),
+        _ => issue.error.as_deref().unwrap_or_default().to_owned(),
+    };
+    let body = tr(
+        "ops-issue-body",
+        &[
+            ("index", index.to_string()),
+            ("total", total.to_string()),
+            ("name", name),
+            ("error", detail),
+        ],
+    );
+    PromptSpec {
+        anchor: Anchor::JobBar,
+        title: urfin_i18n::current().get(title),
+        body,
+        choices,
+        default: 0,
         input: None,
         allow_all: true,
         detail: None,

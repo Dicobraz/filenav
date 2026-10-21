@@ -11,7 +11,7 @@
 use std::collections::BTreeMap;
 use std::hash::{DefaultHasher, Hasher};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
 use compact_str::CompactString;
@@ -543,6 +543,7 @@ fn move_cross_volume_copies_and_deletes() {
         .set(Info {
             tol_ns: 0,
             rename: false,
+            ..Info::default()
         })
         .unwrap();
     let mut h = H::new(64);
@@ -734,6 +735,7 @@ fn kill_child() {
             .set(Info {
                 tol_ns: 0,
                 rename: false,
+                ..Info::default()
             })
             .unwrap();
         t
@@ -1228,6 +1230,7 @@ fn parked_child_keeps_source_dir() {
         .set(Info {
             tol_ns: 0,
             rename: false,
+            ..Info::default()
         })
         .unwrap();
     let mut h = H::new(64);
@@ -1931,4 +1934,128 @@ fn unbuffered_pause_within_100ms() {
     h.cmd("job.resume", id);
     assert!(matches!(h.wait_done(id), JobState::Done(_)));
     assert_eq!(hash(&dst.join("big.bin")), hash(&src.join("big.bin")));
+}
+
+// --- S5-20: место и предпроверки ---
+
+static FREE: AtomicU64 = AtomicU64::new(0);
+
+fn fake_space() -> (u64, u64) {
+    (FREE.load(Ordering::SeqCst), 100 << 30)
+}
+
+/// Приёмка S5-20: места не хватит → `LowSpace` до записи (назначение не
+/// тронуто); после освобождения «Повторить» продолжает.
+#[test]
+fn low_space_asks_before_writing_and_retry_continues() {
+    let d = tmp();
+    let (src, dst) = (d.path().join("s"), d.path().join("d"));
+    for n in ["a.bin", "b.bin"] {
+        write(&src.join(n), &bytes(2 << 20, 5), old(1_500_000_000));
+    }
+    std::fs::create_dir(&dst).unwrap();
+    FREE.store(100 << 20, Ordering::SeqCst);
+    let mut t = transfer(
+        Mode::Copy,
+        &src,
+        &["a.bin", "b.bin"],
+        &dst,
+        None,
+        OpOptions::default(),
+    );
+    t.free_space = Some(fake_space);
+    let mut h = H::new(64);
+    let id = h.start(1, t);
+    h.pump_until("low space question", has_prompt);
+    let spec = h.core.state().prompts.active().unwrap().spec.clone();
+    assert_eq!(spec.choices[0].id, "retry");
+    assert!(!spec.allow_all, "LowSpace: no answer for all");
+    assert!(
+        !dst.join("a.bin").exists() && !dst.join("b.bin").exists(),
+        "nothing written"
+    );
+    FREE.store(50 << 30, Ordering::SeqCst);
+    reply(&mut h, "retry", false);
+    assert_eq!(
+        finish(&mut h, id, "retry"),
+        0,
+        "one answer for all parked by low space"
+    );
+    match h.state(id) {
+        JobState::Done(s) => assert_eq!((s.items, s.errors), (2, 0)),
+        st => panic!("{st:?}"),
+    }
+    assert_eq!(hash(&dst.join("a.bin")), hash(&src.join("a.bin")));
+}
+
+/// S5-20: файл больше предела ФС назначения (FAT32) → `TooLarge` в плане.
+#[test]
+fn too_large_for_fat32_is_asked_in_plan() {
+    let d = tmp();
+    let (src, dst) = (d.path().join("s"), d.path().join("d"));
+    write(&src.join("big.iso"), &bytes(5000, 1), old(1_500_000_000));
+    write(&src.join("small.txt"), b"ok", old(1_500_000_000));
+    std::fs::create_dir(&dst).unwrap();
+    let t = transfer(
+        Mode::Copy,
+        &src,
+        &["big.iso", "small.txt"],
+        &dst,
+        None,
+        OpOptions::default(),
+    );
+    t.info
+        .set(Info {
+            max_file: Some(4000),
+            ..Info::default()
+        })
+        .unwrap();
+    let mut h = H::new(64);
+    let r = run(&mut h, t);
+    let s = done(&r);
+    assert_eq!((s.items, s.skipped, r.asked), (1, 1, 1));
+    assert!(!dst.join("big.iso").exists());
+    assert!(dst.join("small.txt").exists());
+}
+
+/// S5-20: имя, которое на FAT/exFAT не положить (`a.`, `CON.txt`), →
+/// `InvalidName` в плане; «Исправить имя» кладёт под `fix_name`. На NTFS такие
+/// имена копируются как есть (`copies_tree_byte_identical_with_times`).
+#[test]
+fn invalid_name_is_asked_and_fixed() {
+    let d = tmp();
+    let (src, dst) = (d.path().join("s"), d.path().join("d"));
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::create_dir(&dst).unwrap();
+    for n in ["bad.", "CON.txt"] {
+        std::fs::write(verbatim(&src.join(n)), b"x").unwrap();
+    }
+    let t = transfer(
+        Mode::Copy,
+        &src,
+        &["bad.", "CON.txt"],
+        &dst,
+        None,
+        OpOptions::default(),
+    );
+    t.info
+        .set(Info {
+            fat: true,
+            ..Info::default()
+        })
+        .unwrap();
+    let mut h = H::new(64);
+    let id = h.start(2, t);
+    h.pump_until("invalid name question", has_prompt);
+    let spec = reply(&mut h, "fix", true);
+    assert_eq!(spec.choices[0].id, "fix");
+    assert_eq!(finish(&mut h, id, "skip"), 0, "one answer for both");
+    assert!(dst.join("bad").exists(), "trailing dot removed");
+    assert!(
+        std::fs::metadata(verbatim(&dst.join("CON_.txt"))).is_ok(),
+        "reserved name fixed"
+    );
+    for n in ["bad.", "CON.txt"] {
+        let _ = std::fs::remove_file(verbatim(&src.join(n)));
+    }
 }
