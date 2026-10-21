@@ -80,6 +80,7 @@ ops-too-large-why = FAT32 не хранит файлы больше 4 ГБ; от
 ops-issue-invalid-name = Имя, которое Windows не откроет
 ops-invalid-name-fix = исправленное имя: { $name }
 ops-choice-fix-name = Исправить имя
+ops-job-gone = Задача уже завершена
 ops-choice-overwrite = Заменить
 ops-choice-skip = Пропустить
 ops-choice-rename = Переименовать

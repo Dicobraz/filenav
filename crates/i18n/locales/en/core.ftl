@@ -77,6 +77,7 @@ ops-too-large-why = FAT32 cannot store files over 4 GB; format the drive as exFA
 ops-issue-invalid-name = A name Windows cannot open
 ops-invalid-name-fix = fixed name: { $name }
 ops-choice-fix-name = Fix name
+ops-job-gone = The task has already finished
 ops-choice-overwrite = Replace
 ops-choice-skip = Skip
 ops-choice-rename = Rename

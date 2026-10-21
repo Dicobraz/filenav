@@ -11,9 +11,7 @@
 //! (256 МБ) — `CopyFileExW` с `COPY_FILE_NO_BUFFERING`: та же скорость, но кэш ОС
 //! не вытесняется гигабайтами копии.
 
-use std::collections::BTreeMap;
-
-use compact_str::CompactString;
+use urfin_vfs::volume::Media;
 
 use crate::api::Engine;
 
@@ -24,6 +22,8 @@ pub(crate) struct StrategyTable {
     pub small: Engine,
     /// От стольких байт — мимо кэша ОС.
     pub large: u64,
+    /// Job на одно устройство по классу носителя (`[ops.device_jobs]`, S5-19).
+    pub jobs: crate::config::DeviceJobs,
 }
 
 /// `[ops] large_file` по умолчанию.
@@ -34,6 +34,7 @@ impl Default for StrategyTable {
         StrategyTable {
             small: Engine::Os,
             large: LARGE_FILE,
+            jobs: crate::config::DeviceJobs::default(),
         }
     }
 }
@@ -41,12 +42,11 @@ impl Default for StrategyTable {
 impl StrategyTable {
     /// Из `[ops.strategy]`; неизвестные значения — умолчание и предупреждение
     /// в лог. Ключи вида `"ssd>ssd"` — S5-19, здесь не разбираются.
-    pub(crate) fn from_config(
-        map: &BTreeMap<CompactString, CompactString>,
-        large_file: u64,
-    ) -> StrategyTable {
+    pub(crate) fn from_config(cfg: &crate::config::OpsConfig) -> StrategyTable {
+        let map = &cfg.strategy;
         let mut t = StrategyTable {
-            large: large_file,
+            large: cfg.large_file,
+            jobs: cfg.device_jobs,
             ..StrategyTable::default()
         };
         if let Some(v) = map.get("small") {
@@ -60,18 +60,44 @@ impl StrategyTable {
     }
 }
 
+/// Стартовое число воркеров по носителю (S5 §3.3).
+pub(crate) fn workers_for(m: Media) -> usize {
+    match m {
+        Media::Nvme => 16,
+        Media::Ssd | Media::Net => 8,
+        Media::Hdd => 1,
+        Media::Usb => 2,
+        Media::Unknown => 4,
+    }
+}
+
+impl StrategyTable {
+    /// Сколько job одновременно на устройстве с таким носителем.
+    pub(crate) fn jobs_for(&self, m: Media) -> u8 {
+        match m {
+            Media::Hdd => self.jobs.hdd,
+            Media::Net => self.jobs.net,
+            Media::Usb => self.jobs.usb,
+            Media::Nvme | Media::Ssd | Media::Unknown => self.jobs.ssd,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn small_engine_from_config() {
-        let mut m = BTreeMap::new();
-        assert_eq!(StrategyTable::from_config(&m, 1).small, Engine::Os);
-        assert_eq!(StrategyTable::from_config(&m, 1).large, 1);
-        m.insert("small".into(), "own".into());
-        assert_eq!(StrategyTable::from_config(&m, 1).small, Engine::Small);
-        m.insert("small".into(), "turbo".into());
-        assert_eq!(StrategyTable::from_config(&m, 1).small, Engine::Os);
+        let mut cfg = crate::config::OpsConfig {
+            large_file: 1,
+            ..crate::config::OpsConfig::default()
+        };
+        assert_eq!(StrategyTable::from_config(&cfg).small, Engine::Os);
+        assert_eq!(StrategyTable::from_config(&cfg).large, 1);
+        cfg.strategy.insert("small".into(), "own".into());
+        assert_eq!(StrategyTable::from_config(&cfg).small, Engine::Small);
+        cfg.strategy.insert("small".into(), "turbo".into());
+        assert_eq!(StrategyTable::from_config(&cfg).small, Engine::Os);
     }
 }

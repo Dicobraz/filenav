@@ -17,6 +17,7 @@ use urfin_core::{
     Phase, Progress, msg,
 };
 
+use super::device::{DeviceGate, DeviceLease, JobCtl, Slot};
 use super::finalize::DirNode;
 use super::park::{self, Park, Resolved};
 use super::sched::{Lease, ThreadBudget};
@@ -195,7 +196,7 @@ pub(super) fn start<E: OpExec>(
     want: u16,
     exec: E,
 ) -> JobId {
-    let kind = spec.kind;
+    let (kind, spec_prio) = (spec.kind, spec.priority);
     let job = cx.state.jobs.start(spec, cx.rt.sink());
     let id = job.id();
     let span = tracing::info_span!("ops.job", job = id.0, kind);
@@ -217,6 +218,12 @@ pub(super) fn start<E: OpExec>(
         events: ev_tx,
         park: Park::new(),
     });
+    let ctl = Arc::new(JobCtl::default());
+    ctl.prio.store(spec_prio, Ordering::Relaxed);
+    eng.ctls
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .insert(id, Arc::clone(&ctl));
     let lease = eng.budget.try_take(want);
     let handles = worker::spawn(cx.rt, &eng.live, &sh, &rx, lease.n);
     let asker = {
@@ -234,6 +241,10 @@ pub(super) fn start<E: OpExec>(
         events: ev_rx,
         handles,
         asker: Some(asker),
+        gate: Arc::clone(&eng.gate),
+        ctl,
+        ctls: Arc::clone(&eng.ctls),
+        device: None,
         exited: 0,
         sink: cx.rt.sink(),
         live: Arc::clone(&eng.live),
@@ -256,6 +267,9 @@ pub(super) fn start<E: OpExec>(
     id
 }
 
+/// Управление живыми job (общая таблица движка).
+type Ctls = Arc<Mutex<std::collections::HashMap<JobId, Arc<JobCtl>>>>;
+
 /// Состояние координатора.
 struct Coord<E: OpExec> {
     sh: Arc<Shared<E>>,
@@ -266,6 +280,11 @@ struct Coord<E: OpExec> {
     handles: Vec<JoinHandle<()>>,
     /// Поток вопросов (S5-07).
     asker: Option<JoinHandle<()>>,
+    /// Очередь устройства (S5-19) и слоты, занятые job.
+    gate: Arc<DeviceGate>,
+    ctl: Arc<JobCtl>,
+    ctls: Ctls,
+    device: Option<DeviceLease>,
     exited: usize,
     sink: MsgSink,
     live: Arc<AtomicUsize>,
@@ -513,6 +532,11 @@ impl<E: OpExec> Coord<E> {
     /// панели должны увидеть результат.
     fn finish(mut self) {
         self.flush_touched(Instant::now());
+        drop(self.device.take());
+        self.ctls
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&self.sh.ctl.job.id());
         let ctl = &self.sh.ctl;
         let p = ctl.job.progress();
         let summary = JobSummary {
@@ -664,6 +688,30 @@ impl<E: OpExec> Plan<'_, E> {
             parent: parent.cloned(),
         };
         park::put(&sh, work, issue, bytes);
+        Ok(())
+    }
+
+    /// Слоты устройств (S5-19): ждёт очереди устройства (`Queued`), пока на нём
+    /// идёт столько job, сколько позволяет `[ops.device_jobs]`; держит до конца job.
+    pub(crate) fn device_slot(&mut self, slots: &[Slot]) -> Result<(), Cancelled> {
+        let co = &mut *self.co;
+        let job = &co.sh.ctl.job;
+        let mut queued = false;
+        let lease = co.gate.acquire(
+            job.id(),
+            slots,
+            &co.ctl,
+            job.cancel_token(),
+            &co.sh.ctl.stop,
+            &mut || {
+                queued = true;
+                job.set_state(JobState::Queued);
+            },
+        )?;
+        if queued {
+            job.set_state(JobState::Running);
+        }
+        co.device = Some(lease);
         Ok(())
     }
 

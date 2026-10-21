@@ -15,6 +15,7 @@
 //! `ops-wN-i`; все завершаются вместе с job, воркеров всех job не больше
 //! `ops.max_threads` ([`ThreadBudget`]).
 
+mod device;
 mod finalize;
 mod job;
 mod park;
@@ -33,6 +34,7 @@ use urfin_core::{Cancelled, Cx, JobId, JobRegistry, JobSpec, JobSummary, Level, 
 
 use crate::api::{FailedItem, Issue, Report, Resolution};
 
+pub(crate) use device::{JobCtl, Slot};
 pub(crate) use finalize::DirNode;
 pub(crate) use job::{ExecCx, Plan};
 pub(crate) use park::Resolved;
@@ -130,6 +132,10 @@ impl From<Cancelled> for PlanError {
 pub(crate) struct JobEngine {
     budget: Arc<ThreadBudget>,
     live: Arc<AtomicUsize>,
+    /// Job на физическое устройство (S5-19).
+    gate: Arc<device::DeviceGate>,
+    /// Приоритет и «запустить сейчас» живых job.
+    ctls: Arc<std::sync::Mutex<std::collections::HashMap<JobId, Arc<JobCtl>>>>,
 }
 
 impl JobEngine {
@@ -137,7 +143,37 @@ impl JobEngine {
         JobEngine {
             budget: ThreadBudget::new(max_threads),
             live: Arc::default(),
+            gate: Arc::default(),
+            ctls: Arc::default(),
         }
+    }
+
+    fn ctl(&self, id: JobId) -> Option<Arc<JobCtl>> {
+        self.ctls
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&id)
+            .cloned()
+    }
+
+    /// `ops.priority`: приоритет в очереди устройства (не вытесняет запущенные).
+    pub(crate) fn set_priority(&self, id: JobId, prio: u8) -> bool {
+        let Some(c) = self.ctl(id) else {
+            return false;
+        };
+        c.prio.store(prio, Ordering::Relaxed);
+        self.gate.poke();
+        true
+    }
+
+    /// `ops.run_now`: мимо очереди устройства.
+    pub(crate) fn run_now(&self, id: JobId) -> bool {
+        let Some(c) = self.ctl(id) else {
+            return false;
+        };
+        c.run_now.store(true, Ordering::Relaxed);
+        self.gate.poke();
+        true
     }
 
     /// Из handler (UI-поток, без I/O): регистрирует job и запускает координатор

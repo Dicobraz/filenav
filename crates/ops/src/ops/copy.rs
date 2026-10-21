@@ -60,8 +60,10 @@ use crate::engine::{
 use crate::journal::{self, Journal, Record};
 use crate::sys::fs as sys;
 
-/// Воркеров на job по умолчанию (носитель и AIMD — S5-19).
-const WORKERS: u16 = 8;
+/// Потоков воркеров на job: столько нужно `Nvme` (S5 §3.3); работают из них
+/// столько, сколько даёт носитель ([`crate::strategy::workers_for`]), остальные
+/// ждут в [`Gate`].
+const WORKERS: u16 = 16;
 /// Выход с прерыванием задач (вопрос при выходе, S5 §6.4): прерванные job
 /// оставляют журнал для «Продолжить».
 pub(crate) static QUITTING: AtomicBool = AtomicBool::new(false);
@@ -237,6 +239,9 @@ pub(crate) struct Transfer {
     /// Тест: свободное место и размер тома вместо ОС.
     #[cfg(test)]
     free_space: Option<fn() -> (u64, u64)>,
+    /// Тест: носитель обоих томов вместо ОС.
+    #[cfg(test)]
+    media: Option<urfin_vfs::volume::Media>,
 }
 
 /// Параметры запуска.
@@ -319,7 +324,7 @@ pub(crate) fn start_retry(
         },
         title: job_title(spec.mode, &names),
         lane: Lane::Bulk,
-        priority: 0,
+        priority: prio(spec.opts.priority),
         owner_ns: "ops",
     };
     let dir = |p: &Path| Location::local(shown(p.parent().unwrap_or(p)));
@@ -344,6 +349,8 @@ pub(crate) fn start_retry(
         before_commit: None,
         #[cfg(test)]
         free_space: None,
+        #[cfg(test)]
+        media: None,
     };
     let workers = spec.opts.workers.map_or(WORKERS, |n| u16::from(n.get()));
     Some(eng.start(cx, spec_job, workers, t))
@@ -361,12 +368,21 @@ pub(crate) fn start(eng: &JobEngine, cx: &mut Cx<'_>, s: Start) -> JobId {
         kind: if mode == Mode::Move { "move" } else { "copy" },
         title,
         lane: Lane::Bulk,
-        priority: 0,
+        priority: prio(s.req.opts.priority),
         owner_ns: "ops",
     };
     let workers = s.req.opts.workers.map_or(WORKERS, |n| u16::from(n.get()));
     let t = Transfer::new(mode, s);
     eng.start(cx, spec, workers, t)
+}
+
+/// Приоритет job в очереди устройства: больше — раньше.
+fn prio(p: crate::api::Priority) -> u8 {
+    match p {
+        crate::api::Priority::Low => 0,
+        crate::api::Priority::Normal => 1,
+        crate::api::Priority::High => 2,
+    }
 }
 
 fn job_title(mode: Mode, items: &[CompactString]) -> String {
@@ -445,6 +461,8 @@ impl Transfer {
             before_commit: None,
             #[cfg(test)]
             free_space: None,
+            #[cfg(test)]
+            media: None,
         }
     }
 
@@ -1473,7 +1491,8 @@ impl OpExec for Transfer {
                 PlanError::Failed(msg.into())
             })?;
         }
-        self.setup(&base, &root);
+        let slots = self.setup(&base, &root);
+        p.device_slot(&slots)?;
         self.open_journal(&root);
 
         let mut touch = SmallVec::new();
@@ -1769,7 +1788,8 @@ impl Transfer {
             x.parent()
                 .map_or_else(|| x.to_path_buf(), Path::to_path_buf)
         };
-        self.setup(&parent(src0), &parent(dst0));
+        let slots = self.setup(&parent(src0), &parent(dst0));
+        p.device_slot(&slots)?;
         let mut touch: SmallVec<[Location; 2]> = SmallVec::new();
         for (s, d) in &self.pairs {
             for l in [
@@ -1829,8 +1849,9 @@ impl Transfer {
         Ok(())
     }
 
-    /// Том и ФС: перенос rename-ом, допуск времени, ограничение параллельности.
-    fn setup(&self, base: &Path, root: &Path) {
+    /// Том и ФС: перенос rename-ом, допуск времени, число работающих воркеров по
+    /// носителю (S5 §3.3); слоты устройств источника и назначения (S5-19).
+    fn setup(&self, base: &Path, root: &Path) -> SmallVec<[crate::engine::Slot; 2]> {
         use urfin_vfs::volume::{FsKind, Media};
         let vs = urfin_vfs::volume::of(base).ok();
         let vd = urfin_vfs::volume::of(root).ok();
@@ -1839,23 +1860,39 @@ impl Transfer {
             Some(FsKind::Fat32 | FsKind::ExFat) => FAT_TOLERANCE_NS,
             _ => 0,
         };
-        let media = [&vs, &vd].map(|v| v.as_ref().map_or(Media::Unknown, |v| v.media));
-        let max = if media.contains(&Media::Hdd) {
-            1
-        } else if media.contains(&Media::Usb) {
-            2
-        } else {
-            0
+        #[allow(unused_mut, reason = "подмена носителя в тестах")]
+        let mut media = [&vs, &vd].map(|v| v.as_ref().map_or(Media::Unknown, |v| v.media));
+        #[cfg(test)]
+        if let Some(m) = self.media {
+            media = [m, m];
+        }
+        let n = media
+            .iter()
+            .map(|m| crate::strategy::workers_for(*m))
+            .min()
+            .unwrap_or(1);
+        self.gate.max.store(n, Ordering::Relaxed);
+        // Устройство: номер диска; нет — номер тома (сеть — по корню).
+        let key = |p: &Path, v: &Option<urfin_vfs::volume::VolumeInfo>| {
+            sys::device_key(p).unwrap_or_else(|| v.as_ref().map_or(0, |v| v.id))
         };
-        self.gate.max.store(max, Ordering::Relaxed);
+        let mut slots: SmallVec<[crate::engine::Slot; 2]> = SmallVec::new();
+        for (k, m) in [(key(base, &vs), media[0]), (key(root, &vd), media[1])] {
+            let lim = self.strategy.jobs_for(m);
+            match slots.iter_mut().find(|s| s.0 == k) {
+                Some(s) => s.1 = s.1.min(lim),
+                None => slots.push((k, lim)),
+            }
+        }
+        let max_file =
+            matches!(vd.as_ref().map(|v| v.fs), Some(FsKind::Fat32)).then_some(FAT32_MAX_FILE);
         tracing::debug!(
             same_volume = same,
             tol,
-            max_parallel = max,
+            workers = n,
+            ?slots,
             "transfer setup"
         );
-        let max_file =
-            matches!(vd.as_ref().map(|v| v.fs), Some(FsKind::Fat32)).then_some(FAT32_MAX_FILE);
         let _ = self.info.set(Info {
             tol_ns: tol,
             rename: same && self.mode == Mode::Move,
@@ -1866,6 +1903,7 @@ impl Transfer {
             ),
             root: root.to_path_buf(),
         });
+        slots
     }
 }
 

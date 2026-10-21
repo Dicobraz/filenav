@@ -241,10 +241,7 @@ impl OpsHandler {
             mask,
             small_file: u64::from(self.cfg.small_file),
             journal_dir: self.journal_dir.clone(),
-            strategy: crate::strategy::StrategyTable::from_config(
-                &self.cfg.strategy,
-                self.cfg.large_file,
-            ),
+            strategy: crate::strategy::StrategyTable::from_config(&self.cfg),
         };
         crate::ops::copy::start(&self.engine, cx, start);
         Ok(())
@@ -383,6 +380,7 @@ impl Handler for OpsHandler {
                 };
                 mkdir(cx, name)
             }
+            "ops.priority" | "job.priority" | "ops.run_now" => self.job_control(cmd),
             "ops.recover" => {
                 let path = std::path::PathBuf::from(a.str("journal").unwrap_or_default());
                 let go = a.str("action") == Some("continue");
@@ -664,6 +662,34 @@ fn next_banner(cx: &mut Cx<'_>) {
 }
 
 impl OpsHandler {
+    /// `ops.priority {id, prio}`, `job.priority {id, p}`, `ops.run_now {id}` (S5-19).
+    fn job_control(&self, cmd: &Command) -> Result<(), CmdError> {
+        let a = &cmd.args;
+        let id = a
+            .int("id")
+            .and_then(|v| u64::try_from(v).ok())
+            .map(urfin_core::JobId);
+        let ok = id.is_some_and(|id| match cmd.id.as_str() {
+            "ops.run_now" => self.engine.run_now(id),
+            "job.priority" => {
+                let p = a.int("p").and_then(|p| u8::try_from(p.clamp(0, 2)).ok());
+                self.engine.set_priority(id, p.unwrap_or(1))
+            }
+            _ => {
+                let p = match a.str("prio") {
+                    Some("high") => 2,
+                    Some("low") => 0,
+                    _ => 1,
+                };
+                self.engine.set_priority(id, p)
+            }
+        });
+        if !ok {
+            return Err(CmdError::Rejected(text("ops-job-gone", &[]).into()));
+        }
+        Ok(())
+    }
+
     /// «Продолжить» или «Очистить» прерванную job (S5 §6.3): журнал
     /// захватывается (занят — не трогаем), temp удаляются; «Продолжить» —
     /// тот же запрос заново, файлы, равные источнику, пропускаются.

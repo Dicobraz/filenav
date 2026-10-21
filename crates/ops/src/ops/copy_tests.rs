@@ -2059,3 +2059,55 @@ fn invalid_name_is_asked_and_fixed() {
         let _ = std::fs::remove_file(verbatim(&src.join(n)));
     }
 }
+
+// --- S5-19: очередь устройства ---
+
+/// Приёмка S5-19: две job на один HDD идут последовательно (вторая — `Queued`,
+/// пока первая не кончится), на SSD — параллельно.
+#[test]
+fn two_jobs_on_hdd_queue_on_ssd_run_together() {
+    use urfin_vfs::volume::Media;
+    for (media, parallel) in [(Media::Hdd, false), (Media::Ssd, true)] {
+        let d = tmp();
+        let mut ids = Vec::new();
+        let mut h = H::new(64);
+        for k in 0..2 {
+            let (src, dst) = (
+                d.path().join(format!("s{k}")),
+                d.path().join(format!("d{k}")),
+            );
+            for i in 0..20 {
+                write(
+                    &src.join(format!("t/f{i}.bin")),
+                    &bytes(200_000, i),
+                    old(1_500_000_000),
+                );
+            }
+            std::fs::create_dir(&dst).unwrap();
+            let mut t = transfer(Mode::Copy, &src, &["t"], &dst, None, OpOptions::default());
+            t.media = Some(media);
+            let id = h.start(2, t);
+            if k == 0 {
+                // Первая держит устройство: на паузе после захвата слота.
+                h.pump_until("first running", |h| snap(h, id).items_done > 0);
+                h.cmd("job.pause", id);
+            }
+            ids.push(id);
+        }
+        // Вторая: на HDD ждёт в очереди устройства, на SSD — идёт до конца.
+        let t0 = Instant::now();
+        while t0.elapsed() < Duration::from_millis(500) {
+            h.pump();
+        }
+        let second = h.state(ids[1]);
+        if parallel {
+            assert!(matches!(second, JobState::Done(_)), "{media:?}: {second:?}");
+        } else {
+            assert_eq!(second, JobState::Queued, "{media:?}");
+        }
+        h.cmd("job.resume", ids[0]);
+        for id in &ids {
+            assert!(matches!(h.wait_done(*id), JobState::Done(_)), "{media:?}");
+        }
+    }
+}
