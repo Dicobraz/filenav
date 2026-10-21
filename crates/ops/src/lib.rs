@@ -12,6 +12,7 @@ mod handler;
 mod journal;
 pub mod names;
 pub mod ops;
+mod strategy;
 pub mod sys;
 
 pub use api::{

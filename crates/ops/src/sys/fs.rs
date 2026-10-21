@@ -41,6 +41,20 @@ pub fn copy_file(
     imp::copy_file(src, dst, flags, progress)
 }
 
+/// Свой быстрый путь мелкого файла (S5 §4.2, S5-14): весь файл в `buf`, назначение
+/// `CREATE_NEW`, именованные потоки (Zone.Identifier), время изменения и атрибуты —
+/// последними. `Ok(false)` — файл не для этого пути (ссылка, облачный, с EA,
+/// шифрованный, разреженный, сжатый): взять [`copy_file`].
+pub fn copy_small(src: &Path, dst: &Path, buf: &mut Vec<u8>) -> io::Result<bool> {
+    imp::copy_small(src, dst, buf)
+}
+
+/// `CopyFile2` без колбэка (замер S5-14).
+#[cfg(test)]
+pub fn copy_file2(src: &Path, dst: &Path, excl: bool) -> io::Result<()> {
+    imp::copy_file2(src, dst, excl)
+}
+
 /// Переименование или перенос в пределах тома. Без `replace` занятое имя —
 /// `AlreadyExists`; другой том — [`ERR_NOT_SAME_DEVICE`].
 pub fn move_file(src: &Path, dst: &Path, replace: bool) -> io::Result<()> {
@@ -84,6 +98,7 @@ mod imp {
     use std::path::Path;
 
     use smallvec::SmallVec;
+    use windows_sys::Wdk::Storage::FileSystem::{FileEaInformation, NtQueryInformationFile};
     use windows_sys::Win32::Foundation::HANDLE;
     use windows_sys::Win32::Storage::FileSystem::{
         CALLBACK_CHUNK_FINISHED, COPY_FILE_COPY_SYMLINK, COPY_FILE_FAIL_IF_EXISTS, CopyFileExW,
@@ -92,7 +107,14 @@ mod imp {
         MAXIMUM_REPARSE_DATA_BUFFER_SIZE, MOVEFILE_REPLACE_EXISTING, MoveFileExW, PROGRESS_CANCEL,
         PROGRESS_CONTINUE, SetFileAttributesW,
     };
-    use windows_sys::Win32::System::IO::DeviceIoControl;
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_ATTRIBUTE_COMPRESSED, FILE_ATTRIBUTE_ENCRYPTED, FILE_ATTRIBUTE_OFFLINE,
+        FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS, FILE_ATTRIBUTE_RECALL_ON_OPEN,
+        FILE_ATTRIBUTE_REPARSE_POINT, FILE_ATTRIBUTE_SPARSE_FILE, FILE_BASIC_INFO,
+        FILE_FLAG_SEQUENTIAL_SCAN, FILE_SHARE_DELETE, FILE_SHARE_READ, FileBasicInfo,
+        FileStreamInfo, GetFileInformationByHandleEx, SetFileInformationByHandle,
+    };
+    use windows_sys::Win32::System::IO::{DeviceIoControl, IO_STATUS_BLOCK};
     use windows_sys::Win32::System::Ioctl::{FSCTL_GET_REPARSE_POINT, FSCTL_SET_REPARSE_POINT};
     use windows_sys::Win32::System::SystemInformation::GetLocalTime;
 
@@ -133,6 +155,189 @@ mod imp {
             Ok(true) => PROGRESS_CONTINUE,
             _ => PROGRESS_CANCEL,
         }
+    }
+
+    /// Атрибуты, при которых свой путь не годится.
+    const NOT_SMALL: u32 = FILE_ATTRIBUTE_REPARSE_POINT
+        | FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS
+        | FILE_ATTRIBUTE_RECALL_ON_OPEN
+        | FILE_ATTRIBUTE_OFFLINE
+        | FILE_ATTRIBUTE_ENCRYPTED
+        | FILE_ATTRIBUTE_SPARSE_FILE
+        | FILE_ATTRIBUTE_COMPRESSED;
+
+    fn basic(h: HANDLE) -> io::Result<FILE_BASIC_INFO> {
+        let mut b = FILE_BASIC_INFO {
+            CreationTime: 0,
+            LastAccessTime: 0,
+            LastWriteTime: 0,
+            ChangeTime: 0,
+            FileAttributes: 0,
+        };
+        // SAFETY: буфер — `FILE_BASIC_INFO` своего размера.
+        let ok = unsafe {
+            GetFileInformationByHandleEx(
+                h,
+                FileBasicInfo,
+                (&raw mut b).cast(),
+                u32::try_from(size_of::<FILE_BASIC_INFO>()).unwrap_or(0),
+            )
+        };
+        if ok == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(b)
+    }
+
+    /// Размер расширенных атрибутов (EA): WSL хранит в них метаданные.
+    fn ea_size(h: HANDLE) -> io::Result<u32> {
+        let mut io = IO_STATUS_BLOCK::default();
+        let mut size: u32 = 0;
+        // SAFETY: буфер — `FILE_EA_INFORMATION` (один `u32`).
+        let st = unsafe {
+            NtQueryInformationFile(h, &raw mut io, (&raw mut size).cast(), 4, FileEaInformation)
+        };
+        if st < 0 {
+            return Err(io::Error::other(format!("NtQueryInformationFile 0x{st:x}")));
+        }
+        Ok(size)
+    }
+
+    /// Имена именованных потоков (`:Zone.Identifier:$DATA` → `Zone.Identifier`).
+    fn named_streams(h: HANDLE) -> io::Result<SmallVec<[String; 1]>> {
+        let mut out = SmallVec::new();
+        let mut buf = vec![0u64; 512];
+        let len = u32::try_from(buf.len() * 8).unwrap_or(0);
+        // SAFETY: буфер своего размера, выровнен по 8.
+        let ok = unsafe {
+            GetFileInformationByHandleEx(h, FileStreamInfo, buf.as_mut_ptr().cast(), len)
+        };
+        if ok == 0 {
+            let e = io::Error::last_os_error();
+            // Нет потоков (ФС без них) — ERROR_HANDLE_EOF.
+            return if e.raw_os_error() == Some(38) {
+                Ok(out)
+            } else {
+                Err(e)
+            };
+        }
+        let base = buf.as_ptr().cast::<u8>();
+        let mut off = 0usize;
+        loop {
+            // SAFETY: записи `FILE_STREAM_INFO` внутри буфера по `NextEntryOffset`.
+            let (next, name) = unsafe {
+                let e = base.add(off);
+                let next = std::ptr::read_unaligned(e.cast::<u32>());
+                let name_len = std::ptr::read_unaligned(e.add(4).cast::<u32>()) as usize / 2;
+                #[allow(clippy::cast_ptr_alignment, reason = "читается через read_unaligned")]
+                let name_ptr = e.add(24).cast::<u16>();
+                let name: Vec<u16> = (0..name_len)
+                    .map(|i| std::ptr::read_unaligned(name_ptr.add(i)))
+                    .collect();
+                (next, String::from_utf16_lossy(&name))
+            };
+            if name != "::$DATA"
+                && let Some(n) = name
+                    .strip_prefix(':')
+                    .and_then(|n| n.strip_suffix(":$DATA"))
+            {
+                out.push(n.to_owned());
+            }
+            if next == 0 {
+                break;
+            }
+            off += next as usize;
+        }
+        Ok(out)
+    }
+
+    pub fn copy_small(src: &Path, dst: &Path, buf: &mut Vec<u8>) -> io::Result<bool> {
+        use std::io::{Read, Write};
+        let sp = crate::names::os_path(src);
+        let mut file = OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_DELETE)
+            .custom_flags(FILE_FLAG_SEQUENTIAL_SCAN | FILE_FLAG_OPEN_REPARSE_POINT)
+            .open(&sp)?;
+        let handle = file.as_raw_handle() as HANDLE;
+        let info = basic(handle)?;
+        if info.FileAttributes & NOT_SMALL != 0 || ea_size(handle)? != 0 {
+            return Ok(false);
+        }
+        let streams = named_streams(handle)?;
+        buf.clear();
+        file.read_to_end(buf)?;
+        drop(file);
+        let dp = crate::names::os_path(dst);
+        let mut out = OpenOptions::new().write(true).create_new(true).open(&dp)?;
+        let r = (|| -> io::Result<()> {
+            out.write_all(buf)?;
+            for n in &streams {
+                let mut si = OpenOptions::new()
+                    .read(true)
+                    .share_mode(FILE_SHARE_READ | FILE_SHARE_DELETE)
+                    .open(format!("{}:{n}", sp.display()))?;
+                buf.clear();
+                si.read_to_end(buf)?;
+                let mut so = OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(format!("{}:{n}", dp.display()))?;
+                so.write_all(buf)?;
+            }
+            // Время изменения и атрибуты — последними (S5 §6.1); создание — сейчас.
+            let set = FILE_BASIC_INFO {
+                CreationTime: 0,
+                LastAccessTime: 0,
+                LastWriteTime: info.LastWriteTime,
+                ChangeTime: 0,
+                FileAttributes: info.FileAttributes,
+            };
+            // SAFETY: буфер — `FILE_BASIC_INFO` своего размера, handle открыт на запись.
+            let ok = unsafe {
+                SetFileInformationByHandle(
+                    out.as_raw_handle() as HANDLE,
+                    FileBasicInfo,
+                    (&raw const set).cast(),
+                    u32::try_from(size_of::<FILE_BASIC_INFO>()).unwrap_or(0),
+                )
+            };
+            if ok == 0 {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(())
+        })();
+        drop(out);
+        if let Err(e) = r {
+            // Недописанное своё назначение — убрать.
+            let _ = std::fs::remove_file(&dp);
+            return Err(e);
+        }
+        Ok(true)
+    }
+
+    #[cfg(test)]
+    pub fn copy_file2(src: &Path, dst: &Path, excl: bool) -> io::Result<()> {
+        use windows_sys::Win32::Storage::FileSystem::{COPYFILE2_EXTENDED_PARAMETERS, CopyFile2};
+        let (s, d) = (wide(src), wide(dst));
+        let p = COPYFILE2_EXTENDED_PARAMETERS {
+            dwSize: u32::try_from(size_of::<COPYFILE2_EXTENDED_PARAMETERS>()).unwrap_or(0),
+            dwCopyFlags: if excl { COPY_FILE_FAIL_IF_EXISTS } else { 0 },
+            pfCancel: std::ptr::null_mut(),
+            pProgressRoutine: None,
+            pvCallbackContext: std::ptr::null_mut(),
+        };
+        // SAFETY: строки с NUL и параметры живут до конца вызова.
+        let hr = unsafe { CopyFile2(s.as_ptr(), d.as_ptr(), &raw const p) };
+        if hr < 0 {
+            // HRESULT_FROM_WIN32: младшие 16 бит — код Win32.
+            #[allow(clippy::cast_sign_loss, reason = "разбор HRESULT")]
+            let code = (hr as u32) & 0xFFFF;
+            return Err(io::Error::from_raw_os_error(
+                i32::try_from(code).unwrap_or(0),
+            ));
+        }
+        Ok(())
     }
 
     pub fn copy_file(
