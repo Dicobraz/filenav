@@ -69,6 +69,29 @@ pub fn read_chunks(p: &Path, uncached: bool, f: &mut dyn FnMut(&[u8])) -> io::Re
     imp::read_chunks(p, uncached, f)
 }
 
+/// Junction (точка монтирования) `link` → каталог `target` (абсолютный путь):
+/// прав администратора не нужно, в отличие от symlink.
+pub fn make_junction(link: &Path, target: &Path) -> io::Result<()> {
+    imp::make_junction(link, target)
+}
+
+/// Местные дата и время сейчас: `2026-10-21 23:18:05` (поле `ops.touch`).
+pub fn local_now_text() -> String {
+    imp::local_now_text()
+}
+
+/// Местное время → `SystemTime` (`ops.touch mtime=…`).
+pub fn local_time(
+    y: u16,
+    mo: u16,
+    d: u16,
+    h: u16,
+    mi: u16,
+    s: u16,
+) -> Option<std::time::SystemTime> {
+    imp::local_time(y, mo, d, h, mi, s)
+}
+
 /// Местная дата (год, месяц, день) по времени изменения (нс от эпохи Unix):
 /// `[Y][M][D]` группового переименования.
 pub fn local_ymd(ns: i64) -> Option<(u16, u8, u8)> {
@@ -110,6 +133,13 @@ pub fn set_dir_mtime(p: &Path, t: std::time::SystemTime) -> io::Result<()> {
 /// Местное время для имён `RenameScheme::Timestamp`: `2026-10-20 23-18-05`.
 pub fn local_stamp() -> String {
     imp::local_stamp()
+}
+
+/// Путь без `\\?\` (для имён в точке монтирования и сообщений).
+fn shown_path(p: &Path) -> String {
+    let s = p.to_string_lossy();
+    s.strip_prefix(r"\\?\")
+        .map_or_else(|| s.clone().into_owned(), str::to_owned)
 }
 
 #[cfg(windows)]
@@ -616,6 +646,87 @@ mod imp {
             return Err(io::Error::last_os_error());
         }
         Ok(())
+    }
+
+    pub fn make_junction(link: &Path, target: &Path) -> io::Result<()> {
+        /// `IO_REPARSE_TAG_MOUNT_POINT`.
+        const TAG: u32 = 0xA000_0003;
+        let shown = super::shown_path(target);
+        let subst: Vec<u16> = format!(r"\??\{shown}").encode_utf16().collect();
+        let print: Vec<u16> = shown.encode_utf16().collect();
+        let (sl, pl) = (subst.len() * 2, print.len() * 2);
+        // Имена с NUL; ReparseDataLength — 8 байт заголовка точки монтирования и имена.
+        let data_len = 8 + sl + 2 + pl + 2;
+        let mut buf: Vec<u8> = Vec::with_capacity(8 + data_len);
+        let u16le = |v: usize| u16::try_from(v).map(u16::to_le_bytes);
+        let too_long = |_| io::Error::from(io::ErrorKind::InvalidInput);
+        buf.extend_from_slice(&TAG.to_le_bytes());
+        buf.extend_from_slice(&u16le(data_len).map_err(too_long)?);
+        buf.extend_from_slice(&[0, 0]);
+        buf.extend_from_slice(&u16le(0).map_err(too_long)?);
+        buf.extend_from_slice(&u16le(sl).map_err(too_long)?);
+        buf.extend_from_slice(&u16le(sl + 2).map_err(too_long)?);
+        buf.extend_from_slice(&u16le(pl).map_err(too_long)?);
+        for c in subst.iter().chain(&[0]).chain(&print).chain(&[0]) {
+            buf.extend_from_slice(&c.to_le_bytes());
+        }
+        std::fs::create_dir(link)?;
+        set_reparse(link, &buf).inspect_err(|_| {
+            let _ = std::fs::remove_dir(link);
+        })
+    }
+
+    pub fn local_now_text() -> String {
+        use windows_sys::Win32::Foundation::SYSTEMTIME;
+        // SAFETY: POD; GetLocalTime заполняет структуру.
+        let mut t: SYSTEMTIME = unsafe { std::mem::zeroed() };
+        // SAFETY: указатель на локальную структуру.
+        unsafe { GetLocalTime(&raw mut t) };
+        format!(
+            "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+            t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond
+        )
+    }
+
+    pub fn local_time(
+        y: u16,
+        mo: u16,
+        d: u16,
+        h: u16,
+        mi: u16,
+        s: u16,
+    ) -> Option<std::time::SystemTime> {
+        use windows_sys::Win32::Foundation::{FILETIME, SYSTEMTIME};
+        use windows_sys::Win32::System::Time::{
+            SystemTimeToFileTime, TzSpecificLocalTimeToSystemTime,
+        };
+        let local = SYSTEMTIME {
+            wYear: y,
+            wMonth: mo,
+            wDayOfWeek: 0,
+            wDay: d,
+            wHour: h,
+            wMinute: mi,
+            wSecond: s,
+            wMilliseconds: 0,
+        };
+        // SAFETY: POD.
+        let mut utc: SYSTEMTIME = unsafe { std::mem::zeroed() };
+        let mut ft = FILETIME {
+            dwLowDateTime: 0,
+            dwHighDateTime: 0,
+        };
+        // SAFETY: указатели на локальные структуры; синхронные вызовы.
+        let ok = unsafe {
+            TzSpecificLocalTimeToSystemTime(std::ptr::null(), &raw const local, &raw mut utc) != 0
+                && SystemTimeToFileTime(&raw const utc, &raw mut ft) != 0
+        };
+        if !ok {
+            return None;
+        }
+        let ticks = (u64::from(ft.dwHighDateTime) << 32) | u64::from(ft.dwLowDateTime);
+        let unix = ticks.checked_sub(116_444_736_000_000_000)?;
+        std::time::UNIX_EPOCH.checked_add(std::time::Duration::from_nanos(unix.checked_mul(100)?))
     }
 
     pub fn copy_link(src: &Path, dst: &Path, dir: bool) -> io::Result<()> {

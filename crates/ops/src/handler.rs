@@ -394,6 +394,9 @@ impl Handler for OpsHandler {
             }
             "ops.priority" | "job.priority" | "ops.run_now" => self.job_control(cmd),
             "ops.multi_rename" => self.multi_rename(cx, cmd),
+            "ops.link" => self.link(cx, cmd),
+            "ops.attrs" => attrs(cx, cmd),
+            "ops.touch" => touch(cx, cmd),
             "ops.recover" => {
                 let path = std::path::PathBuf::from(a.str("journal").unwrap_or_default());
                 let go = a.str("action") == Some("continue");
@@ -599,6 +602,144 @@ fn dest_error(e: DestError) -> CmdError {
 }
 
 /// Черновик операции в окне (S0 v3 №15): строка с полем или кнопками.
+/// Черновик с начальным текстом поля (`ops.link`, `ops.touch`).
+fn draft_init(cx: &mut Cx<'_>, cmd: &Command, init: &str) {
+    cx.ui(UiEvent::Ext {
+        id: CommandId::from_static("ops.draft"),
+        args: Args::default()
+            .with("command", cmd.id.as_str())
+            .with("init", init),
+    });
+}
+
+/// Имена целей активного таба (выделение или строка курсора).
+fn target_names(cx: &Cx<'_>) -> Result<Vec<CompactString>, CmdError> {
+    let t = cx.state.panel(cx.state.active).tab();
+    t.targets()
+        .map(|tg| tg.items.iter().map(|e| e.name.clone()).collect::<Vec<_>>())
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| CmdError::Rejected(text("ops-nothing", &[]).into()))
+}
+
+/// `+r -h` или буквы: (поставить, снять) — маски `FILE_ATTRIBUTE_*`.
+pub(crate) fn parse_attrs(set: Option<&str>, clear: Option<&str>) -> Result<(u32, u32), String> {
+    let bit = |c: char| match c.to_ascii_lowercase() {
+        'r' => Some(crate::sys::fs::ATTR_READONLY),
+        'h' => Some(crate::sys::fs::ATTR_HIDDEN),
+        's' => Some(crate::sys::fs::ATTR_SYSTEM),
+        'a' => Some(crate::sys::fs::ATTR_ARCHIVE),
+        _ => None,
+    };
+    let (mut on, mut off) = (0u32, 0u32);
+    let mut sign = '+';
+    for c in set
+        .unwrap_or_default()
+        .chars()
+        .filter(|c| !c.is_whitespace())
+    {
+        match c {
+            '+' | '-' | '\u{2212}' => sign = if c == '+' { '+' } else { '-' },
+            _ => {
+                let b = bit(c).ok_or_else(|| c.to_string())?;
+                if sign == '+' { on |= b } else { off |= b }
+            }
+        }
+    }
+    for c in clear
+        .unwrap_or_default()
+        .chars()
+        .filter(|c| c.is_alphabetic())
+    {
+        off |= bit(c).ok_or_else(|| c.to_string())?;
+    }
+    Ok((on, off))
+}
+
+/// `ops.attrs {set?, clear?}` (S5-22): атрибуты целей; без аргументов — черновик.
+fn attrs(cx: &mut Cx<'_>, cmd: &Command) -> Result<(), CmdError> {
+    let a = &cmd.args;
+    if a.str("set").is_none() && a.str("clear").is_none() {
+        draft(cx, cmd, false);
+        return Ok(());
+    }
+    let (on, off) = parse_attrs(a.str("set"), a.str("clear"))
+        .map_err(|c| CmdError::Rejected(text("ops-attrs-bad", &[("what", &c)]).into()))?;
+    let names = target_names(cx)?;
+    quick(cx, "ops.attrs", move |dir| {
+        let mut errs = Vec::new();
+        for n in &names {
+            let p = crate::names::os_path(&dir.join(n.as_str()));
+            let r = crate::sys::fs::attrs(&p).and_then(|cur| {
+                // Каталог: бит каталога не пишется (`SetFileAttributesW` его не принимает).
+                let next = (cur | on) & !off & !0x10;
+                crate::sys::fs::set_attrs(&p, next)
+            });
+            if let Err(e) = r {
+                errs.push(format!("{n}: {}", io_text(&e)));
+            }
+        }
+        if errs.is_empty() {
+            Ok(None)
+        } else {
+            Err(errs.join("; "))
+        }
+    })
+}
+
+/// `2026-10-21`, `2026-10-21 18:05`, `2026-10-21T18:05:07`, `now` → время.
+pub(crate) fn parse_time(text: &str) -> Option<std::time::SystemTime> {
+    let text = text.trim();
+    if text.eq_ignore_ascii_case("now") || text.is_empty() {
+        return Some(std::time::SystemTime::now());
+    }
+    let (date, time) = text.split_once([' ', 'T']).unwrap_or((text, "00:00:00"));
+    let ymd: Vec<u16> = date
+        .split('-')
+        .map(str::parse::<u16>)
+        .collect::<Result<_, _>>()
+        .ok()?;
+    let hms: Vec<u16> = time
+        .split(':')
+        .map(str::parse::<u16>)
+        .collect::<Result<_, _>>()
+        .ok()?;
+    let [year, month, day] = ymd[..] else {
+        return None;
+    };
+    let (h, mi, sec) = match hms[..] {
+        [h, mi] => (h, mi, 0),
+        [h, mi, sec] => (h, mi, sec),
+        _ => return None,
+    };
+    crate::sys::fs::local_time(year, month, day, h, mi, sec)
+}
+
+/// `ops.touch {mtime?}` (S5-22): время изменения целей; без аргумента — черновик
+/// с текущими датой и временем.
+fn touch(cx: &mut Cx<'_>, cmd: &Command) -> Result<(), CmdError> {
+    let Some(m) = cmd.args.str("mtime") else {
+        draft_init(cx, cmd, &crate::sys::fs::local_now_text());
+        return Ok(());
+    };
+    let when = parse_time(m)
+        .ok_or_else(|| CmdError::Rejected(text("ops-touch-bad", &[("what", m)]).into()))?;
+    let names = target_names(cx)?;
+    quick(cx, "ops.touch", move |dir| {
+        let mut errs = Vec::new();
+        for n in &names {
+            let p = crate::names::os_path(&dir.join(n.as_str()));
+            if let Err(e) = crate::sys::fs::set_dir_mtime(&p, when) {
+                errs.push(format!("{n}: {}", io_text(&e)));
+            }
+        }
+        if errs.is_empty() {
+            Ok(None)
+        } else {
+            Err(errs.join("; "))
+        }
+    })
+}
+
 fn draft(cx: &mut Cx<'_>, cmd: &Command, permanent: bool) {
     let mut args = Args::default().with("command", cmd.id.as_str());
     if permanent {
@@ -763,6 +904,49 @@ impl OpsHandler {
         Ok(())
     }
 
+    /// `ops.link {kind?, dest?}` (S5-22, Alt+F6): ссылка на элемент под курсором;
+    /// без `dest` — черновик с путём другой панели и именем элемента.
+    fn link(&self, cx: &mut Cx<'_>, cmd: &Command) -> Result<(), CmdError> {
+        let a = &cmd.args;
+        let t = cx.state.panel(cx.state.active).tab();
+        let Some(Row::Entry { entry, .. }) = t.current() else {
+            return Err(CmdError::Rejected(text("ops-nothing", &[]).into()));
+        };
+        let other = cx.state.panel(cx.state.active.other()).tab();
+        if !t.loc.is_local() || !other.loc.is_local() {
+            return Err(CmdError::Rejected(
+                text("ops-not-yet", &[("what", "vfs")]).into(),
+            ));
+        }
+        let kind = match a.str("kind") {
+            None => None,
+            Some(k) => Some(crate::ops::link::Kind::parse(k).ok_or_else(|| {
+                CmdError::Rejected(text("ops-link-kind-bad", &[("what", k)]).into())
+            })?),
+        };
+        let src = t.loc.path.join(entry.name.as_str());
+        let Some(dest) = a.str("dest") else {
+            let init = other
+                .loc
+                .path
+                .join(entry.name.as_str())
+                .display()
+                .to_string();
+            draft_init(cx, cmd, &init);
+            return Ok(());
+        };
+        let dest = parse_dest(&t.loc, dest).map_err(dest_error)?;
+        let touch = [t.loc.clone(), other.loc.clone()];
+        let link = crate::ops::link::Link {
+            kind,
+            src,
+            dest: dest.path,
+            touch,
+        };
+        crate::ops::link::start(&self.engine, cx, link);
+        Ok(())
+    }
+
     /// `ops.priority {id, prio}`, `job.priority {id, p}`, `ops.run_now {id}` (S5-19).
     fn job_control(&self, cmd: &Command) -> Result<(), CmdError> {
         let a = &cmd.args;
@@ -913,5 +1097,42 @@ impl Handler for FileHandler {
                 }
             });
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod attr_time_tests {
+    use super::{parse_attrs, parse_time};
+    use crate::sys::fs::{ATTR_ARCHIVE, ATTR_HIDDEN, ATTR_READONLY, ATTR_SYSTEM};
+
+    #[test]
+    fn attrs_syntax() {
+        assert_eq!(
+            parse_attrs(Some("+R -h"), None),
+            Ok((ATTR_READONLY, ATTR_HIDDEN))
+        );
+        assert_eq!(
+            parse_attrs(Some("rs"), Some("a")),
+            Ok((ATTR_READONLY | ATTR_SYSTEM, ATTR_ARCHIVE))
+        );
+        assert_eq!(
+            parse_attrs(Some("+r\u{2212}a"), None),
+            Ok((ATTR_READONLY, ATTR_ARCHIVE))
+        );
+        assert_eq!(parse_attrs(Some("+x"), None), Err("x".into()));
+    }
+
+    #[test]
+    fn time_syntax() {
+        let t = |s: &str| {
+            parse_time(s).map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap().as_secs())
+        };
+        let day = t("2026-10-21").unwrap();
+        assert_eq!(t("2026-10-21 00:00"), Some(day));
+        assert_eq!(t("2026-10-21T00:00:30"), Some(day + 30));
+        assert_eq!(t("2026-10-21 18:05").unwrap() - day, 18 * 3600 + 5 * 60);
+        assert!(t("now").is_some());
+        assert_eq!(t("21.10.2026"), None);
+        assert_eq!(t("2026-10-21 25"), None);
     }
 }

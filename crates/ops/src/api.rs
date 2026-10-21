@@ -351,6 +351,8 @@ pub enum Resolution {
     Retry,
     NewName(String),
     DeletePermanently,
+    /// Вместо symlink без прав — junction (S5-22, только каталог).
+    Junction,
     Abort,
 }
 
