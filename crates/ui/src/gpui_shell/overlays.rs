@@ -4,7 +4,7 @@
 use std::time::{Duration, Instant};
 
 use gpui_kit::prelude::*;
-use gpui_kit::{App, ClickEvent, Div, SharedString, Window, div, px, relative};
+use gpui_kit::{App, ClickEvent, Div, SharedString, Window, div, px};
 use urfin_core::{AppState, Command, Entry, JobState, Level, Prompt, PromptDetail, Value};
 
 use super::theme::Theme;
@@ -168,105 +168,6 @@ pub(super) fn banner(s: &AppState, theme: &Theme, click: Click<'_>) -> Option<Di
 /// Идут ли задачи (job-бар виден, перерисовка ≤ 30 раз/с).
 pub(super) fn jobs_running(s: &AppState) -> bool {
     s.jobs.iter().any(|j| matches!(j.state, JobState::Running))
-}
-
-/// Job-бар: строка на задачу — заголовок, прогресс-полоса, проценты, отмена.
-pub(super) fn job_bar(s: &AppState, theme: &Theme, click: Click<'_>) -> Option<Div> {
-    let jobs: Vec<_> = s
-        .jobs
-        .iter()
-        .filter(|j| matches!(j.state, JobState::Running))
-        .collect();
-    if jobs.is_empty() {
-        return None;
-    }
-    let mut bar = div()
-        .flex_none()
-        .flex()
-        .flex_col()
-        .mx(px(theme.m(Metric::GapPanels)))
-        .mt(px(theme.m(Metric::GapPanels)))
-        .rounded(px(theme.m(Metric::RadiusOverlay)))
-        .border_1()
-        .border_color(theme.c(Role::StrokeCard))
-        .bg(theme.c(Role::LayerPanel));
-    for (n, j) in jobs.iter().enumerate() {
-        let p = j.progress.snapshot();
-        #[allow(clippy::cast_precision_loss, reason = "доля для полосы")]
-        let frac = if p.bytes_total > 0 {
-            (p.bytes_done as f64 / p.bytes_total as f64).clamp(0.0, 1.0)
-        } else if p.items_total > 0 {
-            (p.items_done as f64 / p.items_total as f64).clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
-        #[allow(clippy::cast_possible_truncation, reason = "доля 0…1")]
-        let frac = frac as f32;
-        bar = bar.child(
-            div()
-                .h(px(theme.m(Metric::HJobRow)))
-                .flex()
-                .items_center()
-                .gap_3()
-                .px(px(theme.m(Metric::PadRowX)))
-                .child(
-                    div()
-                        .text_color(theme.c(Role::TextSecondary))
-                        .child(SharedString::from(format!("#{}", n + 1))),
-                )
-                .child(
-                    div()
-                        .w(px(240.0))
-                        .flex_none()
-                        .overflow_hidden()
-                        .whitespace_nowrap()
-                        .text_ellipsis()
-                        .child(SharedString::from(j.title.clone())),
-                )
-                .child(
-                    div()
-                        .flex_1()
-                        .h(px(4.0))
-                        .rounded(px(2.0))
-                        .bg(theme.c(Role::FillControl))
-                        .child(
-                            div()
-                                .h_full()
-                                .w(relative(frac))
-                                .rounded(px(2.0))
-                                .bg(theme.c(Role::AccentFill)),
-                        ),
-                )
-                .child(
-                    div()
-                        .w(px(48.0))
-                        .flex()
-                        .justify_end()
-                        .text_color(theme.c(Role::TextSecondary))
-                        .child(SharedString::from(format!("{:.0}%", frac * 100.0))),
-                )
-                // Отмена задачи (`job.cancel`): посреди файла — тоже (S5-06).
-                .child(
-                    div()
-                        .id(SharedString::from(format!("job-cancel-{}", j.id.0)))
-                        .w(px(24.0))
-                        .h(px(24.0))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .rounded(px(theme.m(Metric::RadiusControl)))
-                        .font_family("Segoe Fluent Icons")
-                        .text_color(theme.c(Role::TextSecondary))
-                        .hover(|d| d.bg(theme.c(Role::FillSubtleHover)))
-                        .child(SharedString::from("\u{E711}"))
-                        .on_click(click(
-                            Command::new("job.cancel")
-                                .arg("id", i64::try_from(j.id.0).unwrap_or(i64::MAX)),
-                        )),
-                ),
-        );
-    }
-    Some(bar)
 }
 
 pub(super) fn prompt_id(p: &Prompt) -> Value {

@@ -138,6 +138,8 @@ pub fn run(launch: Launch) {
 
 /// `--screens`: обе панели — на демо-дерево (одно и то же на любой машине).
 fn open_demo_tree(core: &mut Core) {
+    // Задачи для job-бара (D-06): только у сцен.
+    urfin_ui::register_demo(core);
     match crate::demo_tree::create() {
         Ok(root) => {
             for (side, dir) in [("left", root.clone()), ("right", root.join("Projects"))] {

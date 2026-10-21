@@ -6,6 +6,7 @@ mod chrome;
 mod drives;
 mod field;
 pub(crate) mod input;
+mod jobs;
 mod menu;
 mod overlays;
 mod panel;
@@ -177,6 +178,9 @@ pub struct CoreHost {
     mask_preview: Option<String>,
     /// Выбранный вариант дополнения: (поколение списка, номер).
     complete_sel: (u64, usize),
+    /// Скорость задач по замерам и раскрытый список F11 (D-06).
+    rates: jobs::Rates,
+    jobs_list: jobs::List,
 }
 
 impl std::fmt::Debug for CoreHost {
@@ -257,6 +261,8 @@ impl CoreHost {
             strip_opts: field::StripOpts::default(),
             mask_preview: None,
             complete_sel: (0, 0),
+            rates: jobs::Rates::default(),
+            jobs_list: jobs::List::default(),
         }
     }
 
@@ -612,6 +618,7 @@ impl CoreHost {
             urfin_core::Waker::wake_after(&*self.signal, next - now);
         }
         if overlays::jobs_running(core.state()) {
+            self.rates.sample(core.state(), now);
             urfin_core::Waker::wake_after(&*self.signal, Duration::from_millis(33));
             cx.notify();
         }
@@ -1028,6 +1035,15 @@ impl CoreHost {
             let sel = drives::selected(self.drive_sel, d);
             let (cmds, next) = drives::key(d, sel, ks);
             self.drive_sel = Some(next);
+            self.out
+                .extend(cmds.into_iter().map(|c| c.from(urfin_core::Origin::Key)));
+            self.after_input(None, window, cx);
+            cx.notify();
+            return true;
+        }
+        // Раскрытый список задач (F11, D-06) разбирает свои клавиши.
+        if let Some(cmds) = jobs::key(core.state(), &mut self.jobs_list, ks) {
+            self.input.skip();
             self.out
                 .extend(cmds.into_iter().map(|c| c.from(urfin_core::Origin::Key)));
             self.after_input(None, window, cx);
@@ -1546,6 +1562,37 @@ impl Render for CoreHost {
         let toast_lift = cover
             .filter(|(scope, _)| scope.covers(Side::Right))
             .map_or(0.0, |(_, h)| h);
+        let toggle_done: overlays::Handler =
+            Box::new(cx.listener(|h: &mut CoreHost, _: &ClickEvent, _, cx| {
+                h.jobs_list.done_open = !h.jobs_list.done_open;
+                cx.notify();
+            }));
+        let clear_done: overlays::Handler =
+            Box::new(cx.listener(|h: &mut CoreHost, _: &ClickEvent, _, cx| {
+                if let Some(core) = h.core.as_ref() {
+                    h.jobs_list.cleared.extend(
+                        core.state()
+                            .jobs
+                            .iter()
+                            .filter(|j| !j.state.is_active())
+                            .map(|j| j.id.0),
+                    );
+                }
+                cx.notify();
+            }));
+        if let Some(list) = jobs::list(
+            s,
+            &self.jobs_list,
+            &self.rates,
+            &self.theme,
+            &click_all,
+            toggle_done,
+            clear_done,
+        ) {
+            panels = panels
+                .relative()
+                .child(div().absolute().bottom_0().left_0().right_0().child(list));
+        }
         if let (Some(el), Some((scope, _))) = (strip_el, cover) {
             let (x, w) = scope.bounds(widths, self.theme.m(Metric::WDivider));
             panels = panels
@@ -1560,7 +1607,13 @@ impl Render for CoreHost {
             .children(conflict_el)
             .children(overlays::toasts(&self.toasts, &self.theme, toast_lift))
             .children(overlays::banner(s, &self.theme, &click))
-            .children(overlays::job_bar(s, &self.theme, &click))
+            .children(jobs::bar(
+                s,
+                &self.jobs_list,
+                &self.rates,
+                &self.theme,
+                &click,
+            ))
             .child(
                 div()
                     .flex_none()

@@ -115,3 +115,17 @@ ops-job-trash = Moving to Recycle Bin
 ops-job-delete = Deleting
 ops-delete-failed = Not deleted: { $error }
 term-not-yet = Terminal: { $what } is not done yet (S6)
+
+## Task titles for the job bar (D-06): "what → where", the UI writes the kind
+ops-job-items = { $n ->
+    [one] { $name }
+   *[other] { $n } items
+}
+ops-job-transfer = { $n ->
+    [one] { $name }
+   *[other] { $n } items
+} → { $dest }
+ops-job-trash-what = { $n ->
+    [one] { $name }
+   *[other] { $n } items
+} → Recycle Bin

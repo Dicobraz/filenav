@@ -330,6 +330,15 @@ pub(super) fn strip_keys(s: &AppState) -> Option<Vec<(String, String)>> {
         ]);
     }
     let ui = s.ext.get::<crate::UiState>();
+    // Раскрытый список задач (F11, D-06).
+    if ui.is_some_and(|u| u.jobs_expanded) {
+        return Some(vec![
+            ("↑ ↓".into(), i18n.get("ui-keys-job")),
+            (i18n.get("ui-key-space"), i18n.get("ui-keys-pause-resume")),
+            ("Del".into(), i18n.get("ui-keys-cancel-job")),
+            ("F11".into(), i18n.get("ui-keys-collapse")),
+        ]);
+    }
     // Дополнение поля (№70): его клавиши.
     if ui.is_some_and(|u| u.complete.as_ref().is_some_and(|c| !c.items.is_empty())) {
         return Some(vec![
@@ -355,7 +364,7 @@ pub(super) fn strip_keys(s: &AppState) -> Option<Vec<(String, String)>> {
             super::menu::Kind::Sort(_) => vec![
                 k("↑ ↓", "ui-keys-item"),
                 k("Enter", "ui-keys-choose"),
-                k("Space", "ui-keys-toggle"),
+                (i18n.get("ui-key-space"), i18n.get("ui-keys-toggle")),
                 k("Esc", "ui-keys-close"),
             ],
             super::menu::Kind::Bookmarks(_) | super::menu::Kind::History(_) => vec![
