@@ -199,6 +199,8 @@ fn chain_of_10k() {
         .map(|(a, b)| (a.as_str(), b.as_str()))
         .collect();
     let mut h = H::new(8);
+    // 20k `MoveFileExW` (две фазы): ~20 с в одиночку, под нагрузкой — за 30 с.
+    h.deadline = Duration::from_secs(180);
     let st = job(&mut h, d.path(), &rows);
     assert!(
         matches!(&st, JobState::Done(s) if s.items == u64::from(n) && s.errors == 0),
