@@ -224,6 +224,18 @@ impl OpsHandler {
                 CmdError::Rejected(text("ops-conflict-bad", &[("what", c)]).into())
             })?;
         }
+        if let Some(v) = a.str("verify") {
+            req.opts.verify = match v {
+                "off" => crate::api::Verify::Off,
+                "size" => crate::api::Verify::Size,
+                "hash" => crate::api::Verify::Hash(crate::api::HashAlgo::Xxh3_128),
+                other => {
+                    return Err(CmdError::Rejected(
+                        text("ops-verify-bad", &[("what", other)]).into(),
+                    ));
+                }
+            };
+        }
         if let Some(f) = a.str("filter") {
             req.opts.filter = Some(f.into());
         }
