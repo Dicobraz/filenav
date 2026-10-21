@@ -2,7 +2,7 @@
 //!
 //! Грамматика: `[Mod+]*Key`, аккорд — сочетания через пробел, регистр не важен.
 //! Каноническая форма для показа — `Ctrl+Alt+Shift+Cmd+Key`; `parse(display(x)) == x`.
-//! Имена клавиш — `egui::Key::name()` (S0 v3 №13) и наши: `GrayPlus` (серый `+`
+//! Имена клавиш — `crate::ev::Key::name()` (S0 v3 №13) и наши: `GrayPlus` (серый `+`
 //! цифрового блока) отличается от `Plus`, `Num5` (центр цифрового блока) — от `5`.
 
 use std::fmt;
@@ -13,7 +13,7 @@ use smallvec::SmallVec;
 /// Клавиша: из egui или своя (цифровой блок, одиночное нажатие Alt/Ctrl).
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub enum KeyCode {
-    Key(egui::Key),
+    Key(crate::ev::Key),
     GrayPlus,
     GrayMinus,
     GrayStar,
@@ -41,7 +41,7 @@ impl KeyCode {
     /// Каноническое имя.
     pub fn name(self) -> &'static str {
         match self {
-            KeyCode::Key(egui::Key::Escape) => "Esc",
+            KeyCode::Key(crate::ev::Key::Escape) => "Esc",
             KeyCode::Key(k) => k.name(),
             own => OWN.iter().find(|(_, c)| *c == own).map_or("?", |(n, _)| n),
         }
@@ -52,11 +52,11 @@ impl KeyCode {
         if let Some((_, c)) = OWN.iter().find(|(n, _)| n.eq_ignore_ascii_case(s)) {
             return Some(*c);
         }
-        if let Some(k) = egui::Key::from_name(s) {
+        if let Some(k) = crate::ev::Key::from_name(s) {
             return Some(KeyCode::Key(k));
         }
         // egui сравнивает с учётом регистра: `esc`, `pageup`, `f5`.
-        egui::Key::ALL
+        crate::ev::Key::ALL
             .iter()
             .find(|k| k.name().eq_ignore_ascii_case(s))
             .or_else(|| {
@@ -70,15 +70,15 @@ impl KeyCode {
 }
 
 /// Синонимы egui, чьё каноническое имя другое (без учёта регистра).
-const ALIASES: [(&str, egui::Key); 8] = [
-    ("Esc", egui::Key::Escape),
-    ("Escape", egui::Key::Escape),
-    ("Return", egui::Key::Enter),
-    ("ArrowUp", egui::Key::ArrowUp),
-    ("ArrowDown", egui::Key::ArrowDown),
-    ("ArrowLeft", egui::Key::ArrowLeft),
-    ("ArrowRight", egui::Key::ArrowRight),
-    ("Del", egui::Key::Delete),
+const ALIASES: [(&str, crate::ev::Key); 8] = [
+    ("Esc", crate::ev::Key::Escape),
+    ("Escape", crate::ev::Key::Escape),
+    ("Return", crate::ev::Key::Enter),
+    ("ArrowUp", crate::ev::Key::ArrowUp),
+    ("ArrowDown", crate::ev::Key::ArrowDown),
+    ("ArrowLeft", crate::ev::Key::ArrowLeft),
+    ("ArrowRight", crate::ev::Key::ArrowRight),
+    ("Del", crate::ev::Key::Delete),
 ];
 
 bitflags::bitflags! {

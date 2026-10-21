@@ -80,7 +80,11 @@ jobs:
 
       # `--all-targets` проверяет и бенчи (S1-14); их числа — на стенде (docs/perf/).
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      # Тесты с настоящей корзиной (S5-13) — только на раннере CI: на стенде
+      # владельца они клали бы файлы в его корзину.
       - run: cargo nextest run --workspace --locked --profile ci
+        env:
+          URFIN_TEST_RECYCLE: "1"
       - run: cargo test --doc --workspace --locked
 
       # Release (fat LTO, ~15 мин) — только на main: в PR хватает clippy и тестов
@@ -90,11 +94,9 @@ jobs:
         run: $PY ci/release_features.py
       - if: github.event_name == 'push'
         run: cargo build --release -p urfin-app --locked
-      # Бюджет 25 МиБ (S0-decisions №54). До G-06 в бинаре и egui, и GPUI (~30 МиБ) —
-      # предупреждение (решение владельца 2026-10-20); G-06 возвращает блокировку.
+      # Бюджет 25 МиБ (S0-decisions №54), блокирующий (G-06: egui удалён).
       - name: Binary size ≤ 25 MB
         if: github.event_name == 'push'
-        continue-on-error: true
         run: $PY ci/size.py "$BIN" 25
       - name: Smoke
         if: github.event_name == 'push'

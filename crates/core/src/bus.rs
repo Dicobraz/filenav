@@ -24,6 +24,7 @@ use crate::prompt::PromptSpec;
 use crate::runtime::{Lane, Runtime};
 use crate::services::{Services, TabEvent};
 use crate::session::{Session, WindowGeom};
+use crate::settings::{self, Writer};
 use crate::state::{AppState, Focus, Level, Panel, UiEvent};
 use crate::tab::Tab;
 use crate::text::tr;
@@ -155,6 +156,11 @@ pub struct Core {
     session_seq: u64,
     #[cfg(test)]
     pub(crate) session_writes: u32,
+    /// Запись настроек из UI (S2-22).
+    settings: Arc<Writer>,
+    pub(crate) settings_debounce: Duration,
+    #[cfg(test)]
+    pub(crate) settings_flushes: u32,
 }
 
 /// Сессия пишется через столько после последнего изменения (S1 §2.8).
@@ -182,6 +188,7 @@ impl Core {
         if let Some(file) = &boot.crashed_last_time {
             state.set_crash_banner(file);
         }
+        let settings = Arc::new(Writer::new(boot.paths.config_file()));
         let mut core = Core {
             state,
             rt,
@@ -201,11 +208,15 @@ impl Core {
             session_seq: 0,
             #[cfg(test)]
             session_writes: 0,
+            settings: Arc::clone(&settings),
+            settings_debounce: settings::DEBOUNCE,
+            #[cfg(test)]
+            settings_flushes: 0,
         };
         core.register(Box::new(PanelHandler));
         core.register(Box::new(SelHandler));
         core.register(Box::new(TabHandler));
-        core.register(Box::new(AppHandler::new(boot.paths)));
+        core.register(Box::new(AppHandler::new(boot.paths, settings)));
         core.register(Box::new(JobHandler));
         core.register(Box::new(PromptHandler));
         let tabs: Vec<_> = core
@@ -344,6 +355,7 @@ impl Core {
             &mut self.queue,
         ));
         self.session_tick();
+        self.settings_tick();
         Pump {
             more: !self.queue.is_empty() || !self.inbox.is_empty() || !self.cmd_rx.is_empty(),
             changed: self.state.rev != rev0,
@@ -381,6 +393,31 @@ impl Core {
             None if force => self.write_session(),
             None => {}
         }
+    }
+
+    /// Настройки из UI — в файл через `settings_debounce` после последнего изменения:
+    /// очередь — здесь, запись — на Bulk-полосе.
+    fn settings_tick(&mut self) {
+        let Some(at) = self.state.settings.changed else {
+            return;
+        };
+        let left = self.settings_debounce.saturating_sub(at.elapsed());
+        if !left.is_zero() {
+            self.rt.waker().wake_after(left);
+            return;
+        }
+        self.settings.enqueue(self.state.settings.take());
+        #[cfg(test)]
+        {
+            self.settings_flushes += 1;
+        }
+        let w = Arc::clone(&self.settings);
+        self.rt
+            .spawn(Lane::Bulk, "settings.save", self.rt.token(), move |tcx| {
+                if let Err(e) = w.flush() {
+                    let _ = tcx.sink.send(settings::failed(w.file(), &e), &tcx.cancel);
+                }
+            });
     }
 
     fn write_session(&mut self) {
@@ -433,17 +470,19 @@ impl Core {
     }
 
     /// Отменяет задачи, останавливает Runtime (см. [`Runtime::shutdown`];
-    /// `CommandSender` после этого получает `Closed`) и синхронно пишет сессию.
-    /// Возвращает записанную сессию.
+    /// `CommandSender` после этого получает `Closed`) и синхронно пишет сессию и
+    /// отложенные настройки. Возвращает записанную сессию.
     pub fn shutdown(mut self, timeout: Duration) -> Session {
         // Токены задач не производны от корня Runtime: отменить явно.
         self.state.jobs.cancel_all();
         let session = Session::capture(&self.state, self.window);
+        let pending = self.state.settings.take();
         let Core {
             rt,
             inbox,
             paths,
             session_writer,
+            settings,
             ..
         } = self;
         let stuck = rt.shutdown(inbox, timeout);
@@ -456,6 +495,11 @@ impl Core {
             .unwrap_or_else(PoisonError::into_inner);
         if let Err(e) = session.save(&paths) {
             tracing::error!(error = %e, "cannot save session on exit");
+        }
+        // Отложенные настройки — сейчас; задача записи, если идёт, допишет первой.
+        settings.enqueue(pending);
+        if let Err(e) = settings.flush() {
+            tracing::error!(error = %e, "cannot save settings on exit");
         }
         session
     }

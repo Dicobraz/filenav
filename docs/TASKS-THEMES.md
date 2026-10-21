@@ -1,6 +1,6 @@
 # T-01 — темы оформления
 
-Решение владельца 2026-10-20 (S0-decisions №58–№60). Палитры и правила — `docs/THEMES.md`, эталон — холст «Урфин — темы оформления» (Claude Design). Делается на GPUI: в рамках G-05 (`docs/TASKS-GPUI.md`, ветка `g/05-…`) или сразу после — отдельным PR `g/05b-themes`. На egui не реализуем. Темы — только Урфина: у других приложений Pets свой дизайн, в `pets` не выносим.
+Решение владельца 2026-10-20 (S0-decisions №59–№61). Палитры и правила — `docs/THEMES.md`, эталон — холст «Урфин — темы оформления» (Claude Design). Делается на GPUI: в рамках G-05 (`docs/TASKS-GPUI.md`, ветка `g/05-…`) или сразу после — отдельным PR `g/05b-themes`. На egui не реализуем. Темы — только Урфина: у других приложений Pets свой дизайн, в `pets` не выносим.
 
 ## T-01-1 Модель темы (`ui::theme`, разбор TOML — без gpui)
 - `struct Theme { id, name, roles: Roles, syntax: Syntax }`; `Roles` — роли из THEMES.md + error/warning/success; `Syntax` — keyword, string, number, comment (под tree-sitter, №53).

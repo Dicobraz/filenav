@@ -1,0 +1,107 @@
+# Меню F9 (S2 §2.6, S2-14). Переопределяется файлом `menu.toml` в каталоге конфига.
+#
+# Меню: `id`, `title` — ключ Fluent заголовка, `side` — меню панели: перед командой
+# пункта панель становится активной (`panel.focus`).
+# Пункт: `cmd` — команда с аргументами (список и аргументы — docs/COMMANDS.md);
+# `label` — ключ Fluent подписи
+# (по умолчанию `cmd-<id>`); буква выбора — атрибут `.menu-key` подписи, иначе первая
+# буква. `sep = true` — разделитель. Пункт с незарегистрированной командой скрыт,
+# с предупреждением.
+
+[[menu]]
+id = "left"
+title = "menu-left"
+side = "left"
+items = [
+    { cmd = "panel.view_mode mode=brief", label = "menu-view-brief" },
+    { cmd = "panel.view_mode mode=medium", label = "menu-view-medium" },
+    { cmd = "panel.view_mode mode=full", label = "menu-view-full" },
+    { cmd = "panel.view_mode mode=wide", label = "menu-view-wide" },
+    { sep = true },
+    { cmd = "panel.sort key=name", label = "menu-sort-name" },
+    { cmd = "panel.sort key=ext", label = "menu-sort-ext" },
+    { cmd = "panel.sort key=mtime", label = "menu-sort-mtime" },
+    { cmd = "panel.sort key=size", label = "menu-sort-size" },
+    { sep = true },
+    { cmd = "panel.hidden.toggle" },
+    { cmd = "panel.refresh" },
+    { cmd = "ui.path_edit" },
+]
+
+[[menu]]
+id = "files"
+title = "menu-files"
+items = [
+    { cmd = "ui.rename" },
+    { cmd = "ops.multi_rename" },
+    { sep = true },
+    { cmd = "ui.draft command=sel.add arg=mask", label = "menu-sel-add" },
+    { cmd = "ui.draft command=sel.remove arg=mask", label = "menu-sel-remove" },
+    { cmd = "sel.invert" },
+    { cmd = "sel.all" },
+    { cmd = "sel.none" },
+    { cmd = "sel.restore" },
+]
+
+[[menu]]
+id = "commands"
+title = "menu-commands"
+items = [
+    { cmd = "panel.swap" },
+    { cmd = "ui.panels.toggle_all" },
+    { sep = true },
+    { cmd = "panel.back" },
+    { cmd = "panel.forward" },
+    { sep = true },
+    { cmd = "tab.new" },
+    { cmd = "tab.dup" },
+    { cmd = "tab.close" },
+    { sep = true },
+    { cmd = "vfs.dir_size" },
+    { cmd = "ops.compare" },
+    { cmd = "ops.sync dir=lr", label = "menu-sync-lr" },
+    { cmd = "ops.sync dir=rl", label = "menu-sync-rl" },
+]
+
+[[menu]]
+id = "options"
+title = "menu-options"
+items = [
+    { cmd = "ui.theme mode=system", label = "menu-theme-system" },
+    { cmd = "ui.theme mode=light", label = "menu-theme-light" },
+    { cmd = "ui.theme mode=dark", label = "menu-theme-dark" },
+    { sep = true },
+    { cmd = "ui.zoom delta=1", label = "menu-zoom-in" },
+    { cmd = "ui.zoom delta=-1", label = "menu-zoom-out" },
+    { cmd = "ui.zoom", label = "menu-zoom-reset" },
+    { sep = true },
+    { cmd = "ui.lang lang=en", label = "menu-lang-en" },
+    { cmd = "ui.lang lang=ru", label = "menu-lang-ru" },
+    { sep = true },
+    { cmd = "app.reload_config" },
+    { cmd = "app.save_session" },
+    { cmd = "keymap.reload" },
+    { cmd = "keymap.dump" },
+    { sep = true },
+    { cmd = "ui.about", label = "menu-about" },
+]
+
+[[menu]]
+id = "right"
+title = "menu-right"
+side = "right"
+items = [
+    { cmd = "panel.view_mode mode=brief", label = "menu-view-brief" },
+    { cmd = "panel.view_mode mode=medium", label = "menu-view-medium" },
+    { cmd = "panel.view_mode mode=full", label = "menu-view-full" },
+    { cmd = "panel.view_mode mode=wide", label = "menu-view-wide" },
+    { sep = true },
+    { cmd = "panel.sort key=name", label = "menu-sort-name" },
+    { cmd = "panel.sort key=ext", label = "menu-sort-ext" },
+    { cmd = "panel.sort key=mtime", label = "menu-sort-mtime" },
+    { cmd = "panel.sort key=size", label = "menu-sort-size" },
+    { sep = true },
+    { cmd = "panel.hidden.toggle" },
+    { cmd = "panel.refresh" },
+    { cmd = "ui.path_edit" },
+]

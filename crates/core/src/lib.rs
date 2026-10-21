@@ -31,6 +31,9 @@ pub mod services;
 pub mod session;
 #[cfg(test)]
 mod session_tests;
+pub mod settings;
+#[cfg(test)]
+mod settings_tests;
 pub mod state;
 pub mod tab;
 mod text;

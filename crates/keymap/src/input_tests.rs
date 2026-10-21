@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use egui::{Event, ImeEvent, Key, Modifiers};
+use crate::ev::{Event, ImeEvent, Key, Modifiers};
 use urfin_core::{AppState, ArgSpec, CommandMeta, CommandRegistry, Focus, OverlayKind, ValueKind};
 
 use super::vk;
@@ -105,10 +105,7 @@ struct Frame {
 }
 
 fn run_at(ki: &mut KeyInput, st: &AppState, now: Instant, events: Vec<Event>) -> Frame {
-    let mut raw = egui::RawInput {
-        events,
-        ..Default::default()
-    };
+    let mut raw = crate::ev::RawInput { events };
     let mut out = Vec::new();
     let o = ki.process(&mut raw, st, now, &mut out);
     assert!(out.iter().all(|c| c.origin == urfin_core::Origin::Key));
@@ -452,6 +449,16 @@ fn notes_numpad() {
     assert_eq!(run(&mut ki, &st, vec![]).cmds, ["a.center"]);
 }
 
+/// Сброшенная записка (нажатие разобрал не конвейер) сочетания не даёт.
+#[test]
+fn cleared_notes_are_dropped() {
+    let mut ki = input();
+    let st = state(Focus::Panel);
+    ki.notes().push(note(vk::CLEAR, Mods::empty()));
+    ki.notes().clear();
+    assert_eq!(run(&mut ki, &st, vec![]).cmds, [] as [String; 0]);
+}
+
 /// Сторона модификатора — из записки хука: `RCtrl+1`.
 #[test]
 fn modifier_side_from_notes() {
@@ -681,8 +688,8 @@ fn quick_search_paste_and_click() {
     let f = run(&mut ki, &st, vec![Event::Paste("abc".into())]);
     assert_eq!(f.cmds, ["keymap.qs.input text=abc"]);
     let click = Event::PointerButton {
-        pos: egui::pos2(1.0, 1.0),
-        button: egui::PointerButton::Primary,
+        pos: (1.0, 1.0),
+        button: crate::ev::PointerButton::Primary,
         pressed: true,
         modifiers: Modifiers::NONE,
     };

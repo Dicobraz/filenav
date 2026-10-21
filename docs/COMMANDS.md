@@ -144,6 +144,92 @@
 |---|---|---|---|---|---|
 | `vfs.dir_size` | `all?:bool` | Directory sizes | Размер папок | — | commands |
 
+## `ops` (15)
+
+| Команда | Аргументы | EN | RU | Клавиши (Far) | Меню F9 |
+|---|---|---|---|---|---|
+| `ops.copy` | `dest?:str`, `current?:bool`, `confirmed?:bool`, `conflict?:str`, `verify?:str`, `filter?:str`, `queue?:str` | Copy | Копировать | F5, Shift+F5 (current=true) | — |
+| `ops.move` | `dest?:str`, `current?:bool`, `confirmed?:bool`, `conflict?:str`, `verify?:str`, `filter?:str`, `queue?:str` | Move or rename | Перенести или переименовать | F6 | — |
+| `ops.delete` | `permanent?:bool`, `current?:bool`, `confirmed?:bool` | Delete | Удалить | F8, Shift+F8 (current=true) | — |
+| `ops.mkdir` | `name?:str`, `current?:bool` | Make folder | Создать папку | F7 | — |
+| `ops.rename` | `to?:str` | Rename | Переименовать | Shift+F6 | — |
+| `ops.multi_rename` | `pattern?:str`, `regex?:bool`, `apply?:bool` | Multi-rename | Групповое переименование | — | files |
+| `ops.attrs` | `set?:str`, `clear?:str` | Attributes | Атрибуты | — | — |
+| `ops.touch` | `mtime?:str` | Set time | Изменить время | — | — |
+| `ops.link` | `kind?:str`, `dest?:str` | Make link | Создать ссылку | Alt+F6 | — |
+| `ops.compare` | `mode?:str` | Compare folders | Сравнить папки | — | commands |
+| `ops.sync` | `dir?:str` | Synchronize folders | Синхронизировать папки | — | commands |
+| `ops.retry` | `id:int` | Retry failed | Повторить неудавшиеся | — | — |
+| `ops.priority` | `id:int`, `prio?:str` | Operation priority | Приоритет операции | — | — |
+| `ops.run_now` | `id:int` | Run now | Запустить сейчас | — | — |
+| `ops.recover` | `journal:str`, `action:str` | Recover operation | Восстановить операцию | — | — |
+
+## `file` (6)
+
+| Команда | Аргументы | EN | RU | Клавиши (Far) | Меню F9 |
+|---|---|---|---|---|---|
+| `file.open` | `elevated?:bool` | Open | Открыть | — | — |
+| `file.open_with` | — | Open with | Открыть с помощью | — | — |
+| `file.reveal` | — | Show in Explorer | Показать в Проводнике | — | — |
+| `file.clip.copy` | — | Copy to clipboard | Копировать в буфер | — | — |
+| `file.clip.cut` | — | Cut to clipboard | Вырезать в буфер | — | — |
+| `file.clip.paste` | `move?:bool` | Paste from clipboard | Вставить из буфера | — | — |
+
+## `term` (19)
+
+| Команда | Аргументы | EN | RU | Клавиши (Far) | Меню F9 |
+|---|---|---|---|---|---|
+| `term.toggle` | — | Show or hide panels | Показать или скрыть панели | — | — |
+| `term.shell` | `id:str` | Switch shell | Сменить shell | — | — |
+| `term.shell_menu` | — | Shell menu | Выбор shell | — | — |
+| `term.new` | `shell?:str` | New session | Новый сеанс | — | — |
+| `term.next` | — | Next session | Следующий сеанс | — | — |
+| `term.prev` | — | Previous session | Предыдущий сеанс | — | — |
+| `term.close` | `id?:int` | Close session | Закрыть сеанс | — | — |
+| `term.restart` | — | Restart session | Перезапустить сеанс | — | — |
+| `term.kill` | — | Kill process | Прервать процесс | — | — |
+| `term.focus` | — | Focus terminal | Перейти в терминал | — | — |
+| `term.input` | `text:str` | Send text | Отправить текст | — | — |
+| `term.key` | `key:str`, `mods?:str` | Send key | Отправить клавишу | — | — |
+| `term.scroll` | `lines?:int`, `pages?:int` | Scroll output | Прокрутить вывод | — | — |
+| `term.copy` | — | Copy selection | Копировать выделенное | — | — |
+| `term.paste` | — | Paste | Вставить | — | — |
+| `term.select_all` | — | Select all output | Выделить весь вывод | — | — |
+| `term.clear` | — | Clear output | Очистить вывод | — | — |
+| `term.open` | `path:str`, `verb?:str` | Open file | Открыть файл | — | — |
+| `term.exec` | `cmd:str`, `cwd?:str` | Run command | Выполнить команду | — | — |
+
+## `cmdline` (26)
+
+| Команда | Аргументы | EN | RU | Клавиши (Far) | Меню F9 |
+|---|---|---|---|---|---|
+| `cmdline.insert` | `text:str` | Insert text | Вставить текст | — | — |
+| `cmdline.cursor.left` | — | Cursor left | Курсор влево | — | — |
+| `cmdline.cursor.right` | — | Cursor right | Курсор вправо | — | — |
+| `cmdline.word.left` | — | Word left | Слово влево | — | — |
+| `cmdline.word.right` | — | Word right | Слово вправо | — | — |
+| `cmdline.home` | — | Line start | В начало строки | — | — |
+| `cmdline.end` | — | Line end | В конец строки | — | — |
+| `cmdline.backspace` | — | Delete left | Удалить слева | — | — |
+| `cmdline.delete` | — | Delete right | Удалить справа | — | — |
+| `cmdline.del.word_left` | — | Delete word left | Удалить слово слева | — | — |
+| `cmdline.del.word_right` | — | Delete word right | Удалить слово справа | — | — |
+| `cmdline.del.to_end` | — | Delete to end | Удалить до конца | — | — |
+| `cmdline.clear` | — | Clear line | Очистить строку | — | — |
+| `cmdline.undo` | — | Undo | Отменить | — | — |
+| `cmdline.redo` | — | Redo | Повторить | — | — |
+| `cmdline.exec` | `detached?:bool` | Run command | Выполнить команду | — | — |
+| `cmdline.history` | — | Command history | История команд | — | — |
+| `cmdline.history.prev` | — | Previous command | Предыдущая команда | — | — |
+| `cmdline.history.next` | — | Next command | Следующая команда | — | — |
+| `cmdline.complete` | — | Complete | Дополнить | — | — |
+| `cmdline.complete_native` | — | Shell completion | Дополнение shell | — | — |
+| `cmdline.insert_name` | `what:str`, `side?:str` | Insert name | Вставить имя | — | — |
+| `cmdline.insert_selection` | — | Insert selected names | Вставить имена выделенных | — | — |
+| `cmdline.apply` | — | Apply to selection | Применить к выделенным | — | — |
+| `cmdline.copy` | — | Copy command line | Копировать строку | — | — |
+| `cmdline.paste` | `text?:str` | Paste | Вставить | — | — |
+
 ## `keymap` (11)
 
 | Команда | Аргументы | EN | RU | Клавиши (Far) | Меню F9 |

@@ -48,6 +48,10 @@ menu-files = Файлы
 menu-commands = Команды
 menu-options = Параметры
 menu-right = Правая
+menu-sync-lr = Синхронизировать →
+    .menu-key = и
+menu-sync-rl = Синхронизировать ←
+    .menu-key = х
 menu-view-brief = Список
     .menu-key = с
 menu-view-medium = Средний
@@ -95,7 +99,17 @@ ui-prompt-more = ещё { $count } { $count ->
     [few] вопроса
    *[many] вопросов
 }
+ui-draft-ops-multi_rename = Новые имена:
+ui-mr-pattern-error = Шаблон: { $error }
+ui-mr-problem-invalid = недопустимое имя
+ui-mr-problem-duplicate = повтор
+ui-mr-problem-exists = имя занято
+ui-mr-summary = Изменится { $changed }, с проблемами { $problems } (их пропустим) · показано { $shown } · [N] имя, [E] расширение, [C:1:1:3] счётчик, [Y][M][D] дата, [U]/[L] регистр, «найти/заменить» — regex
+ui-draft-ops-link = Ссылка в:
+ui-draft-ops-attrs = Атрибуты (+R −H +S +A):
+ui-draft-ops-touch = Время изменения:
 ui-prompt-all = Для всех
+ui-prompt-all-hint = Пробел; Shift+клавиша — ответ для всех
 ui-prompt-new-name = Новое имя
 ui-button-apply = Применить
 ui-button-back = Назад
@@ -191,3 +205,4 @@ ui-info-kind-other = другое
 ui-qview-hint = F3 — просмотр
 ui-qview-binary = двоичный
 ui-qview-dir = Папка — её содержимое в панели
+ui-info-volume-local = Локальный диск

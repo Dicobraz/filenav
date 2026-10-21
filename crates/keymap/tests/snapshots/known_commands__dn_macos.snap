@@ -188,7 +188,7 @@ expression: "effective(&km).join(\"\\n\")"
 [panel] Alt+S = ui.panel.setup (Preset)
 [panel] Ctrl+Shift+GrayPlus = sel.same by=ext on=true (Preset)
 [panel] Ctrl+Shift+GrayMinus = sel.same by=ext on=false (Preset)
-[panel] Alt+F6 = ops.rename (Preset)
+[panel] Alt+F6 = ui.rename (Preset)
 [panel] Alt+E = ops.attrs (Preset)
 [panel] Ctrl+Alt+F6 = ops.multi_rename (Preset)
 [panel] Ctrl+C = ops.compare (Preset)

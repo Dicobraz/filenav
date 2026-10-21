@@ -55,7 +55,7 @@ extends = "base"
 "Ctrl+Shift+F3" = { cmd = "viewer.open", internal = true }
 "Ctrl+Shift+F4" = { cmd = "editor.open", internal = true }
 "Shift+F5" = { cmd = "ops.copy", current = true }
-"Shift+F6" = "ops.rename"
+"Shift+F6" = "ui.rename"
 "Alt+F6" = "ops.link"
 "Ctrl+Alt+Enter" = { cmd = "file.open", elevated = true }
 "Ctrl+G" = "cmdline.apply"

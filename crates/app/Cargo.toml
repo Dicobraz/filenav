@@ -13,43 +13,25 @@ name = "urfin"
 path = "src/main.rs"
 
 
-[features]
-# `--screens <dir>`: снимки экранов S2 §2 (S2-21). В обычной сборке нет — фикстуры
-# не нужны пользователю.
-screens = ["urfin-ui/screens"]
-
 [dependencies]
 anyhow.workspace = true
-eframe.workspace = true
 # FakeListing: настоящий листинг ФС — S4.
 urfin-core = { workspace = true, features = ["fake"] }
 urfin-i18n.workspace = true
 urfin-keymap.workspace = true
+urfin-ops.workspace = true
+urfin-term.workspace = true
 urfin-ui.workspace = true
 urfin-vfs.workspace = true
-raw-window-handle.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 tracing-appender.workspace = true
 tracing-subscriber.workspace = true
 
-# Бэкенды wgpu по ОС (ADR-0012).
-[target.'cfg(target_os = "macos")'.dependencies]
-wgpu = { workspace = true, features = ["metal"] }
-# Живой ресайз без дёрганья (presentsWithTransaction): у eframe с
-# `wgpu_no_default_features` эта фича egui-wgpu выключена.
-egui-wgpu = { workspace = true, features = ["macos-window-resize-jitter-fix"] }
-
-[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
-wgpu = { workspace = true, features = ["vulkan", "gles"] }
-
 [target.'cfg(windows)'.dependencies]
-wgpu = { workspace = true, features = ["vulkan", "dx12"] }
 windows-sys = { workspace = true, features = [
     "Win32_Foundation",
-    "Win32_Graphics_Dwm",
-    "Win32_Graphics_Gdi",
     "Win32_Security",
     "Win32_Security_Authorization",
     "Win32_Storage_FileSystem",
@@ -57,10 +39,8 @@ windows-sys = { workspace = true, features = [
     "Win32_System_IO",
     "Win32_System_Pipes",
     "Win32_System_Threading",
-    "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_WindowsAndMessaging",
 ] }
-winit.workspace = true
 
 # Ресурсы exe (ProductName, CompanyName) — build.rs, только при сборке под Windows.
 [target.'cfg(windows)'.build-dependencies]

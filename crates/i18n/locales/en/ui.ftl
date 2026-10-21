@@ -43,6 +43,10 @@ menu-files = Files
 menu-commands = Commands
 menu-options = Options
 menu-right = Right
+menu-sync-lr = Synchronize →
+    .menu-key = y
+menu-sync-rl = Synchronize ←
+    .menu-key = i
 menu-view-brief = Brief
     .menu-key = b
 menu-view-medium = Medium
@@ -89,7 +93,17 @@ ui-prompt-more = { $count ->
     [one] { $count } more question
    *[other] { $count } more questions
 }
+ui-draft-ops-multi_rename = New names:
+ui-mr-pattern-error = Pattern: { $error }
+ui-mr-problem-invalid = invalid name
+ui-mr-problem-duplicate = duplicate
+ui-mr-problem-exists = name taken
+ui-mr-summary = { $changed } will change, { $problems } with problems (skipped) · { $shown } shown · [N] name, [E] extension, [C:1:1:3] counter, [Y][M][D] date, [U]/[L] case, “find/replace” — regex
+ui-draft-ops-link = Link in:
+ui-draft-ops-attrs = Attributes (+R −H +S +A):
+ui-draft-ops-touch = Modified time:
 ui-prompt-all = For all
+ui-prompt-all-hint = Space; Shift+key answers for all
 ui-prompt-new-name = New name
 ui-button-apply = Apply
 ui-button-back = Back
@@ -180,3 +194,4 @@ ui-info-kind-other = other
 ui-qview-hint = F3 — viewer
 ui-qview-binary = binary
 ui-qview-dir = A folder — its contents are in the panel
+ui-info-volume-local = Local Disk

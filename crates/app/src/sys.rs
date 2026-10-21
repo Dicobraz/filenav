@@ -1,70 +1,21 @@
 //! Платформенный слой приложения (S0 v5 №5: `unsafe` разрешён только здесь).
 
 #[cfg(windows)]
-#[allow(unsafe_code, reason = "WinAPI: журнал событий, DWM")]
+#[allow(unsafe_code, reason = "WinAPI: журнал событий")]
 mod windows;
 
 #[cfg(windows)]
 #[allow(unsafe_code, reason = "WinAPI: mutex, named pipe, SID (S1-15)")]
 pub(crate) mod ipc_win;
 
-#[cfg(windows)]
-#[allow(unsafe_code, reason = "WinAPI: MSG хука, GetKeyState (S3-07)")]
-mod key_notes;
-
-/// Записки клавиш для keymap (S3-07): на Windows — хук сообщений цикла событий, на
-/// других ОС — ничего (их egui-winit различает и так или keymap даёт альтернативы).
-pub fn install_key_notes(
-    builder: &mut eframe::EventLoopBuilder<eframe::UserEvent>,
-    notes: urfin_keymap::KeyNotes,
-) {
-    #[cfg(windows)]
-    key_notes::install(builder, notes);
-    #[cfg(not(windows))]
-    let _ = (builder, notes);
-}
-
-use raw_window_handle::HasWindowHandle;
-
-/// Скрыть окно средствами DWM (cloak) или вернуть его. Скрытое так окно для
-/// системы видимо: разворачивается и рисуется, но на экран не выводится — старт
-/// без мигания. На других ОС — ничего.
-pub fn cloak(window: &impl HasWindowHandle, on: bool) {
-    #[cfg(windows)]
-    if let Ok(h) = window.window_handle()
-        && let raw_window_handle::RawWindowHandle::Win32(h) = h.as_raw()
-    {
-        windows::cloak(h.hwnd.get(), on);
+/// Программный Direct3D (WARP) для окна gpui: `GPUI_FORCE_WARP=1` читает патч
+/// `pets-gpui-windows` при создании устройства. Звать до запуска других потоков.
+pub fn force_warp() {
+    // SAFETY: ранний старт, других потоков ещё нет — гонки с чтением окружения нет.
+    #[allow(unsafe_code, reason = "set_var в edition 2024 — unsafe")]
+    unsafe {
+        std::env::set_var("GPUI_FORCE_WARP", "1");
     }
-    #[cfg(not(windows))]
-    let _ = (window, on);
-}
-
-/// Без анимации разворота/свёртывания для этого окна: DWM плавно смешивает старый
-/// и новый снимок окна ~250 мс, и текст панелей двоится. На других ОС — ничего.
-pub fn no_transitions(window: &impl HasWindowHandle) {
-    #[cfg(windows)]
-    if let Ok(h) = window.window_handle()
-        && let raw_window_handle::RawWindowHandle::Win32(h) = h.as_raw()
-    {
-        windows::no_transitions(h.hwnd.get());
-    }
-    #[cfg(not(windows))]
-    let _ = window;
-}
-
-/// Фон окна до первого кадра — цвет `rgb`: при развороте ОС заливает им новую
-/// область, пока не пришёл кадр нового размера (иначе — белым). На других ОС —
-/// ничего.
-pub fn set_background(window: &impl HasWindowHandle, rgb: [u8; 3]) {
-    #[cfg(windows)]
-    if let Ok(h) = window.window_handle()
-        && let raw_window_handle::RawWindowHandle::Win32(h) = h.as_raw()
-    {
-        windows::set_background(h.hwnd.get(), rgb);
-    }
-    #[cfg(not(windows))]
-    let _ = (window, rgb);
 }
 
 /// Коды событий Urfin в журнале Windows.

@@ -1,13 +1,13 @@
 # Urfin — инструкции для Claude Code
 
-Быстрый двухпанельный файловый менеджер (функции и раскладка DN/Far, визуал Windows Fluent). Rust stable, edition 2024. UI переезжает на GPUI + gpui-kit (ADR-0018, `docs/TASKS-GPUI.md`); egui/eframe/wgpu — в `crates/ui/legacy` до G-06, задачи M1 по ui/app заморожены (№55). **Только Windows** (решение владельца 2026-10-20, S0-decisions №57): Linux и macOS не собираются и не проверяются — ни на стенде, ни в CI; время на них не тратим.
+Быстрый двухпанельный файловый менеджер (функции и раскладка DN/Far, визуал Windows Fluent). Rust stable, edition 2024. UI — GPUI + gpui-kit (ADR-0018, `docs/TASKS-GPUI.md`); egui/eframe/wgpu удалены (G-06). **Только Windows** (решение владельца 2026-10-20, S0-decisions №57): Linux и macOS не собираются и не проверяются — ни на стенде, ни в CI; время на них не тратим.
 
 ## Где правда (по убыванию приоритета)
 1. docs/specs/S0-decisions.md — решения владельца
 2. docs/specs/S0-contracts-v5.md → v4 → v3 → v2 — изменения контрактов
 3. docs/specs/Sx.md — спецификации сессий
 4. docs/00-ARCHITECTURE.md, docs/01-ROADMAP.md
-Задачи: docs/TASKS-M1.md (текущий пакет; M0 — docs/TASKS-M0.md, закрыт). Читай только спеки, нужные задаче.
+Задачи: docs/TASKS-M3.md (текущий пакет, CLI S6); M2 — docs/TASKS-M2.md (операции S5, переходящие — в конце TASKS-M3); хвост M1 — docs/TASKS-M1.md; M0 — docs/TASKS-M0.md, закрыт. Читай только спеки, нужные задаче.
 
 ## Правила
 - Одна задача = ветка `sX/NN-кратко` = один PR. Выполняй критерии приёмки задачи дословно; тесты — cargo nextest; `cargo clippy --workspace --all-targets -- -D warnings` и `cargo fmt --check` зелёные перед PR.

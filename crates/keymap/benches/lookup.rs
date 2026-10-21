@@ -63,32 +63,47 @@ fn bench(c: &mut Criterion) {
         b.iter(|| black_box(km.lookup(Some(&pending), black_box(second), &st)).is_some_hit());
     });
     let mut input = KeyInput::new(km.clone(), &KeymapCfg::default());
-    let key = |k, m, pressed| egui::Event::Key {
+    let key = |k, m, pressed| urfin_keymap::ev::Event::Key {
         key: k,
         physical_key: Some(k),
         pressed,
         repeat: false,
         modifiers: m,
     };
-    let none = egui::Modifiers::NONE;
+    let none = urfin_keymap::ev::Modifiers::NONE;
     let frame = vec![
-        key(egui::Key::F5, none, true),
-        key(egui::Key::F5, none, false),
-        key(egui::Key::F6, egui::Modifiers::CTRL, true),
-        key(egui::Key::F6, egui::Modifiers::CTRL, false),
-        key(egui::Key::A, none, true),
-        egui::Event::Text("a".into()),
-        key(egui::Key::A, none, false),
-        key(egui::Key::Q, egui::Modifiers::CTRL, true),
-        key(egui::Key::Q, egui::Modifiers::CTRL, false),
-        egui::Event::PointerGone,
+        key(urfin_keymap::ev::Key::F5, none, true),
+        key(urfin_keymap::ev::Key::F5, none, false),
+        key(
+            urfin_keymap::ev::Key::F6,
+            urfin_keymap::ev::Modifiers::CTRL,
+            true,
+        ),
+        key(
+            urfin_keymap::ev::Key::F6,
+            urfin_keymap::ev::Modifiers::CTRL,
+            false,
+        ),
+        key(urfin_keymap::ev::Key::A, none, true),
+        urfin_keymap::ev::Event::Text("a".into()),
+        key(urfin_keymap::ev::Key::A, none, false),
+        key(
+            urfin_keymap::ev::Key::Q,
+            urfin_keymap::ev::Modifiers::CTRL,
+            true,
+        ),
+        key(
+            urfin_keymap::ev::Key::Q,
+            urfin_keymap::ev::Modifiers::CTRL,
+            false,
+        ),
+        urfin_keymap::ev::Event::PointerGone,
     ];
     let mut out = Vec::new();
     c.bench_function("process 10 events", |b| {
         b.iter(|| {
-            let mut raw = egui::RawInput {
+            let mut raw = urfin_keymap::ev::RawInput {
                 events: frame.clone(),
-                ..Default::default()
             };
             out.clear();
             black_box(input.process(&mut raw, &st, std::time::Instant::now(), &mut out));

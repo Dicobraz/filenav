@@ -9,8 +9,8 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use crate::ev::{Event, ImeEvent, Key};
 use compact_str::CompactString;
-use egui::{Event, ImeEvent, Key};
 use smallvec::SmallVec;
 use urfin_core::{AppState, Command, Focus, Origin, OverlayKind};
 
@@ -64,6 +64,15 @@ impl KeyNotes {
         q.push_back(n);
     }
 
+    /// Сбросить записки: нажатие разобрал не конвейер (поле ввода, меню, вопрос) —
+    /// иначе записка позже дала бы синтетическое сочетание.
+    pub fn clear(&self) {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clear();
+    }
+
     fn drain_into(&self, out: &mut Vec<(KeyNote, bool)>) {
         let mut q = self
             .0
@@ -88,7 +97,7 @@ struct ModTracker {
 }
 
 impl ModTracker {
-    fn set(&mut self, m: egui::Modifiers) {
+    fn set(&mut self, m: crate::ev::Modifiers) {
         self.held = mods_of(m);
         if !self.held.contains(Mods::CTRL) {
             self.sides.remove(Mods::LCTRL | Mods::RCTRL);
@@ -127,7 +136,7 @@ impl ModTracker {
     }
 }
 
-fn mods_of(m: egui::Modifiers) -> Mods {
+fn mods_of(m: crate::ev::Modifiers) -> Mods {
     let mut out = Mods::empty();
     out.set(Mods::CTRL, m.ctrl);
     out.set(Mods::ALT, m.alt);
@@ -240,7 +249,7 @@ impl KeyInput {
     /// (`Origin::Key`) добавляются в `out`.
     pub fn process(
         &mut self,
-        raw: &mut egui::RawInput,
+        raw: &mut crate::ev::RawInput,
         st: &AppState,
         now: Instant,
         out: &mut Vec<Command>,
@@ -383,7 +392,7 @@ impl KeyInput {
         &mut self,
         key: Key,
         physical: Option<Key>,
-        modifiers: egui::Modifiers,
+        modifiers: crate::ev::Modifiers,
         st: &AppState,
         now: Instant,
         out: &mut Vec<Command>,
@@ -628,7 +637,7 @@ impl KeyInput {
     /// `Ctrl+GrayStar`) — синтетическое сочетание.
     fn unpaired_notes(
         &mut self,
-        raw: &mut egui::RawInput,
+        raw: &mut crate::ev::RawInput,
         st: &AppState,
         now: Instant,
         out: &mut Vec<Command>,

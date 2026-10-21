@@ -1,0 +1,28 @@
+---
+source: crates/term/src/config.rs
+expression: "toml::to_string(&TermConfig::default()).unwrap()"
+---
+default_shell = "auto"
+conpty = "auto"
+integration = true
+sync_cwd = "both"
+auto_show_ms = 300
+return_to_panels = true
+scrollback = 10000
+background_scrollback = 2000
+cursor_blink = false
+osc52 = "copy"
+font_size = 14.0
+layout = "behind"
+shells = []
+
+[history]
+max = 5000
+ignore_space = true
+exclude = ["*password*", "*passwd*", "*token*", "*secret*"]
+import_native = true
+
+[complete]
+ghost = true
+pwsh_server = true
+timeout_ms = 300

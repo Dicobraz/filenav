@@ -10,15 +10,19 @@ use crate::config::Config;
 use crate::msg::{Cx, msg};
 use crate::paths::Paths;
 use crate::runtime::Lane;
+use crate::settings::{self, Writer};
 
 pub(crate) struct AppHandler {
     paths: Arc<Paths>,
+    /// Запись настроек: перед перечитыванием конфига отложенное пишется (S2-22).
+    settings: Arc<Writer>,
 }
 
 impl AppHandler {
-    pub(crate) fn new(paths: Paths) -> Self {
+    pub(crate) fn new(paths: Paths, settings: Arc<Writer>) -> Self {
         AppHandler {
             paths: Arc::new(paths),
+            settings,
         }
     }
 }
@@ -41,11 +45,18 @@ impl Handler for AppHandler {
 
     fn handle(&mut self, cmd: &Command, cx: &mut Cx<'_>) -> Result<(), CmdError> {
         if cmd.id.as_str() == "app.reload_config" {
-            // Чтение файла — не в UI-потоке.
-            let paths = self.paths.clone();
+            // Чтение файла — не в UI-потоке. Сначала отложенные настройки из UI: иначе
+            // перечитанный файл вернул бы их старые значения.
+            let (paths, settings) = (self.paths.clone(), Arc::clone(&self.settings));
+            settings.enqueue(cx.state.settings.take());
             cx.rt
                 .spawn(Lane::Bulk, "config.reload", cx.rt.token(), move |tcx| {
-                    let (config, warnings) = Config::load(&paths);
+                    let (saved, (config, warnings)) = settings.flush_then(|| Config::load(&paths));
+                    if let Err(e) = saved {
+                        let _ = tcx
+                            .sink
+                            .send(settings::failed(settings.file(), &e), &tcx.cancel);
+                    }
                     let apply = msg("config.loaded", move |cx| {
                         cx.state.set_config(Arc::new(config), &warnings);
                     });
