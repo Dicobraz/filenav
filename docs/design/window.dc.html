@@ -764,7 +764,8 @@ const kindColor = {up:t.t,d:t.t,f:t.t,m:t.k,x:t.ex,a:t.ar};
 const rows = (list, c, ex) => list.map((q, i) => {
 const xe = (ex && ex[i]) || {};
 const kind = q[1], isC = i === c, isM = (marked.indexOf(i) >= 0 && c >= 0) || !!xe.m;
-const col = isC ? t.ct : (isM ? t.a : kindColor[kind]);
+const col = isC ? t.ct : kindColor[kind];
+const selBg = "color-mix(in srgb, " + t.c + " 55%, transparent)";
 const iconCol = isC ? t.ct : (iconMode === "color" ? (kind === "d" || kind === "up" ? t.a : kindColor[kind]) : t.s);
 return {
 name: q[0], size: kind === "d" ? "<DIR>" : q[2], date: q[3], packed: q[4] || "",
@@ -774,10 +775,10 @@ tagStyle: "margin-left: 4px; padding: 0 6px; border-radius: 4px; border: 1px sol
 mvEdit: screen === "rename" && isC, mvBase: q[0].replace(/\.[^.]*$/, ""), mvExt: (q[0].match(/\.[^.]*$/) || [""])[0],
 hlStyle: "background: " + t.hl + "; color: " + t.t + "; border-radius: 2px",
 isUp: kind === "up", isDir: kind === "d", isFile: kind !== "up" && kind !== "d",
-weight: (kind === "d" || kind === "up" || isM) ? 500 : 400,
+weight: (kind === "d" || kind === "up") ? 500 : 400,
 iconColor: iconCol, dateColor: isC ? t.ct : t.s,
-rowStyle: "height: " + rowH + "px; display: flex; align-items: center; padding: 0 12px; background: " + (screen === "rename" && isC ? t.p + "; box-shadow: inset 0 0 0 1px " + t.b + ", inset 0 -2px 0 " + t.a : (isC ? t.c : "transparent") + (isM ? "; box-shadow: inset 3px 0 0 " + t.a : "")) + "; color: " + col,
-briefStyle: "height: " + rowH + "px; display: flex; align-items: center; gap: 8px; padding: 0 10px; overflow: hidden; white-space: nowrap; font-weight: " + ((kind === "d" || kind === "up") ? 500 : 400) + "; background: " + (isC ? t.c : "transparent") + "; color: " + col + (isM ? "; box-shadow: inset 3px 0 0 " + t.a : "")
+rowStyle: "height: " + rowH + "px; display: flex; align-items: center; padding: 0 12px; background: " + (screen === "rename" && isC ? t.p + "; box-shadow: inset 0 0 0 1px " + t.b + ", inset 0 -2px 0 " + t.a : (isC ? t.c : (isM ? selBg : "transparent"))) + "; color: " + col,
+briefStyle: "height: " + rowH + "px; display: flex; align-items: center; gap: 8px; padding: 0 10px; overflow: hidden; white-space: nowrap; font-weight: " + ((kind === "d" || kind === "up") ? 500 : 400) + "; background: " + (isC ? t.c : (isM ? selBg : "transparent")) + "; color: " + col
 };
 });
 const actPath = "color: " + t.t + "; border-bottom: 2px solid " + t.a + "; padding-bottom: 3px", pasPath = "color: " + t.s;
