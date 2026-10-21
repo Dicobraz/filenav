@@ -413,7 +413,7 @@ pub(super) fn prompt_bar(
             .when_some(reply(p, i, s.all), |d, c| d.on_click(click(c))),
         );
     }
-    row = row.child(div().flex_1());
+    // Кнопки и флажок — сразу за ответами, не у правого края (DESIGN.md).
     if p.spec.allow_all {
         row = row.child(
             check(

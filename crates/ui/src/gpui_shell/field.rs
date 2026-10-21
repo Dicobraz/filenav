@@ -661,7 +661,6 @@ pub(super) fn draft_bar(
                         .child(SharedString::new_static("\u{E74D}")),
                 )
                 .child(title(text))
-                .child(div().flex_1())
                 .child(
                     button(
                         theme,
