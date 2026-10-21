@@ -49,18 +49,6 @@ body{margin:0}
 <button type="button" aria-label="Закрыть" style="width: 46px; height: 32px; border: 0; background: transparent; color: {{t.s}}; font: inherit">✕</button>
 </div>
 </div>
-<sc-if value="{{showBanner}}" hint-placeholder-val="{{ false }}">
-<div style="height: 40px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 12px; background: {{t.h}}; border-top: 1px solid {{t.b}}; border-bottom: 1px solid {{t.b}}">
-<span style="display: inline-flex; color: {{t.rem}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.1"></circle><path d="M8 4.5V8l2.5 1.5" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></span>
-<span style="font-weight: 500">Прервано при выходе:</span>
-<span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">Копировать big.bin → D:\backup\b</span>
-<span style="color: {{t.s}}; white-space: nowrap">выполнено ≈ 62 %</span>
-<div style="margin-left: auto; display: flex; gap: 8px">
-<button type="button" style="{{btnPrimary}}">Продолжить</button>
-<button type="button" style="{{btn}}">Очистить</button>
-</div>
-</div>
-</sc-if>
 <div style="flex: 1; min-height: 0; display: flex; gap: 1px; background: {{t.b}}; position: relative">
 <sc-if value="{{showTerm}}" hint-placeholder-val="{{ false }}">
 <div style="position: absolute; left: 0; right: 0; top: 0; bottom: 0; padding: 8px 12px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: flex-end; background: {{t.p}}; font-family: 'Cascadia Mono', Consolas, monospace; font-size: 13px; overflow: hidden">
@@ -485,6 +473,19 @@ body{margin:0}
 </div>
 </sc-if>
 </div>
+<sc-if value="{{showBanner}}" hint-placeholder-val="{{ false }}">
+<div style="height: 40px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 12px; background: {{t.h}}; border-top: 2px solid {{t.rem}}">
+<span style="display: inline-flex; color: {{t.rem}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.1"></circle><path d="M8 4.5V8l2.5 1.5" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></span>
+<span style="font-weight: 500">Прервано при выходе:</span>
+<span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">Копировать big.bin → D:\backup\b</span>
+<span style="color: {{t.s}}; white-space: nowrap">выполнено ≈ 62 %</span>
+<span style="color: {{t.s}}; font-size: 12px; white-space: nowrap">· ещё 1</span>
+<div style="margin-left: auto; display: flex; gap: 8px">
+<button type="button" style="{{btnPrimary}}">Продолжить</button>
+<button type="button" style="{{btn}}">Очистить</button>
+</div>
+</div>
+</sc-if>
 <sc-if value="{{showJobs}}" hint-placeholder-val="{{ false }}">
 <div style="display: flex; flex-direction: column; padding: 2px 0; background: {{t.h}}; border-top: 1px solid {{t.b}}">
 <sc-for list="{{jobs}}" as="j" hint-placeholder-count="2">
@@ -516,7 +517,7 @@ body{margin:0}
 </sc-for>
 </div>
 <sc-if value="{{showToast}}" hint-placeholder-val="{{ false }}">
-<div style="position: absolute; top: 118px; right: 16px; width: 340px; box-sizing: border-box; padding: 10px 12px; background: {{t.p}}; border: 1px solid {{t.b}}; border-radius: 6px; font-size: 12.5px">
+<div style="position: absolute; {{toastPos}} right: 16px; width: 340px; box-sizing: border-box; padding: 10px 12px; background: {{t.p}}; border: 1px solid {{t.b}}; border-radius: 6px; font-size: 12.5px">
 <div style="color: {{t.t}}; margin-bottom: 3px">{{toast.title}}</div>
 <div style="color: {{t.s}}">{{toast.text}}</div>
 <sc-if value="{{toast.act}}" hint-placeholder-val="{{ false }}"><div style="display: flex; gap: 6px; margin-top: 8px"><sc-for list="{{toast.acts}}" as="ta" hint-placeholder-count="2"><button type="button" style="{{chipOff}}; white-space: nowrap">{{ta}}</button></sc-for></div></sc-if>
@@ -838,6 +839,7 @@ jobs: (screen === "conflict" ? [["Копирование","3 объекта → 
 isCopy, isSearch: screen === "search", isViewer: screen === "viewer", isEditor: screen === "editor", isSettings: screen === "settings",
 showCli: ["panels","journal","multirename","compare","terminal","termhalf","menu","context","select","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress","search"].indexOf(screen) >= 0,
 showToast: screen === "panels" || screen === "compare",
+toastPos: "bottom: " + (82 + 12 + (screen === "progress" ? 64 : (screen === "conflict" ? 34 : 0))) + "px;",
 toast: screen === "compare" ? { title: "Сравнение папок", text: "только слева 2 · только справа 1 · новее слева 1", act: true, acts: ["Синхронизировать →", "Синхронизировать ←"] } : { title: "Копирование завершено", text: "48 файлов · 1,9 ГБ · 6,2 с", act: false, acts: [] },
 showBanner: screen === "journal", isRename: screen === "multirename",
 inputStyle, chipOn: chip(true), chipOff: chip(false), btn, btnPrimary,
