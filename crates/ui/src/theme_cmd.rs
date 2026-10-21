@@ -18,6 +18,8 @@ use crate::theme::{self, AUTO, Themes};
 pub struct ThemeEnv {
     pub dir: Option<PathBuf>,
     pub policy: ThemePolicy,
+    /// История полей ввода (`<state_dir>/fields.toml`, №70).
+    pub fields: Option<PathBuf>,
 }
 
 fn tr(key: &str, args: &[(&str, &str)]) -> String {

@@ -126,6 +126,15 @@ const SCENES: &[Scene] = &[
         name: "screen-copy",
         steps: &["ui.cancel", "ops.copy"],
     },
+    // Дополнение пути (№70): Tab в поле «куда» — подкаталоги и история.
+    Scene {
+        name: "complete-path",
+        steps: &[
+            "ui.cancel",
+            "ui.draft command=ops.copy arg=dest init=P",
+            "ui.complete kind=path text=P",
+        ],
+    },
     Scene {
         name: "screen-move",
         steps: &["ui.cancel", "ops.move"],

@@ -107,10 +107,13 @@
 | `prompt.reply` | `id:int`, `choice:str`, `input?:str`, `all?:bool` | Answer | Ответить | — | — |
 | `prompt.cancel` | `id:int` | Dismiss | Закрыть | — | — |
 
-## `ui` (34)
+## `ui` (37)
 
 | Команда | Аргументы | EN | RU | Клавиши (Far) | Меню F9 |
 |---|---|---|---|---|---|
+| `ui.field.remember` | `kind:str`, `text:str` | Remember field input | Remember field input | — | — |
+| `ui.complete` | `kind:str`, `text:str`, `history?:bool` | Complete field | Complete field | — | — |
+| `ui.complete.close` | — | Close completion | Close completion | — | — |
 | `ui.menu.sort` | `side?:str` | Sort menu | Меню сортировки | Ctrl+F12 | — |
 | `ui.history.dirs` | — | Folder history | История папок | Alt+F12 | — |
 | `ui.menu` | `menu?:str`, `side?:str`, `path?:loc` | Menu | Меню | F9 | — |

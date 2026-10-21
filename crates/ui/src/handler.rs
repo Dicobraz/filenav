@@ -40,7 +40,29 @@ const fn meta(id: &'static str, title: &'static str, args: &'static [ArgSpec]) -
 const SIDE: ArgSpec = arg("side", ValueKind::Str, false);
 const ID: ArgSpec = arg("id", ValueKind::Int, false);
 
+/// Вариантов дополнения не больше.
+const COMPLETE_MAX: usize = 12;
+
 static COMMANDS: &[CommandMeta] = &[
+    // Поля ввода (№70): запомнить введённое, дополнить (Tab, Alt+↓ — история), закрыть.
+    meta(
+        "ui.field.remember",
+        "Remember field input",
+        &[
+            arg("kind", ValueKind::Str, true),
+            arg("text", ValueKind::Str, true),
+        ],
+    ),
+    meta(
+        "ui.complete",
+        "Complete field",
+        &[
+            arg("kind", ValueKind::Str, true),
+            arg("text", ValueKind::Str, true),
+            arg("history", ValueKind::Bool, false),
+        ],
+    ),
+    meta("ui.complete.close", "Close completion", &[]),
     // «Мешочки» D-05: сортировка от заголовка колонки, история папок от пути.
     meta("ui.menu.sort", "Sort menu", &[SIDE]),
     meta("ui.history.dirs", "Folder history", &[]),
@@ -223,6 +245,10 @@ impl Handler for UiHandler {
                 let st = ui_state(cx);
                 st.policy = env.policy;
                 st.themes_dir = env.dir;
+                st.fields_file.clone_from(&env.fields);
+                if let Some(file) = env.fields {
+                    fs_tasks::spawn_fields_load(cx.rt, file);
+                }
                 theme_cmd::reload(cx, true);
             }
             seed(ui_state(cx), &cfg);
@@ -250,6 +276,9 @@ impl Handler for UiHandler {
         let a = &cmd.args;
         match cmd.id.as_str() {
             "ui.menu" | "ui.menu.sort" | "ui.history.dirs" => self.menu(cx, cmd.id.as_str(), a),
+            "ui.field.remember" | "ui.complete" | "ui.complete.close" => {
+                self.field_cmd(cx, cmd.id.as_str(), a);
+            }
             // Быстрый поиск ведёт keymap (ADR-0016); здесь — синоним для меню.
             "ui.qsearch" => {
                 let mut c = Command::new("keymap.qs.start");
@@ -396,6 +425,84 @@ impl UiHandler {
             st.menu = Some(menu);
             st.menu_side = crumbs.then_some(side);
         });
+    }
+
+    /// Поля ввода (№70): `ui.field.remember`, `ui.complete`, `ui.complete.close`.
+    fn field_cmd(&mut self, cx: &mut Cx<'_>, id: &str, a: &Args) {
+        use crate::field_history::{FieldKind, matching};
+        use crate::state::{Cand, Complete};
+        let kind = a.str("kind").and_then(FieldKind::parse);
+        let text = a.str("text").unwrap_or_default().to_owned();
+        match (id, kind) {
+            ("ui.field.remember", Some(k)) => {
+                let st = ui_state(cx);
+                let save = st
+                    .fields
+                    .push(k, &text)
+                    .then(|| st.fields_file.clone().map(|f| (f, st.fields.to_text())))
+                    .flatten();
+                if let Some((file, body)) = save {
+                    fs_tasks::spawn_fields_save(cx.rt, file, body);
+                }
+                cx.keep_rev();
+            }
+            ("ui.complete", Some(k)) => {
+                let history_only = a.bool("history").unwrap_or(false);
+                let prefix = if history_only { "" } else { text.as_str() };
+                let mut items: Vec<Cand> = matching(ui_state(cx).fields.get(k), prefix)
+                    .map(|t| Cand {
+                        text: t.clone(),
+                        history: true,
+                    })
+                    .collect();
+                if !history_only && k == FieldKind::Name {
+                    // Имена в текущей папке, начинающиеся с набранного.
+                    let low = text.to_lowercase();
+                    let t = cx.state.active_tab();
+                    items.extend(
+                        t.listing
+                            .order
+                            .iter()
+                            .filter_map(|&i| t.listing.entries.get(i as usize))
+                            .filter(|e| {
+                                let n = e.name.to_lowercase();
+                                n.starts_with(&low) && n != low
+                            })
+                            .take(COMPLETE_MAX)
+                            .map(|e| Cand {
+                                text: e.name.to_string(),
+                                history: false,
+                            }),
+                    );
+                }
+                let generation = ui_state(cx).bump();
+                if !history_only && k == FieldKind::Path {
+                    // Подкаталоги набранного родителя — в Runtime.
+                    let base = cx.state.active_tab().loc.clone();
+                    if let Some((dir, _)) = fs_tasks::split_path_prefix(&text, &base) {
+                        let cancel = self.new_task(cx);
+                        fs_tasks::spawn_complete_dirs(
+                            cx.rt,
+                            Arc::clone(&self.vfs),
+                            dir,
+                            text.clone(),
+                            generation,
+                            cancel,
+                        );
+                    }
+                }
+                items.truncate(COMPLETE_MAX);
+                ui_state(cx).complete = Some(Complete {
+                    generation,
+                    kind: k,
+                    text,
+                    history_only,
+                    items,
+                });
+            }
+            ("ui.complete.close", _) => ui_state(cx).complete = None,
+            _ => cx.keep_rev(),
+        }
     }
 
     /// `ui.path_edit`: без `path` — открыть поле; с `path` — проверить и перейти.

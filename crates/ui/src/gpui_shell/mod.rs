@@ -173,6 +173,8 @@ pub struct CoreHost {
     strip_opts: field::StripOpts,
     /// Маска отметки группы, пока строка открыта: совпавшие имена подсвечены (D-04).
     mask_preview: Option<String>,
+    /// Выбранный вариант дополнения: (поколение списка, номер).
+    complete_sel: (u64, usize),
 }
 
 impl std::fmt::Debug for CoreHost {
@@ -251,12 +253,173 @@ impl CoreHost {
             drive_sel: None,
             strip_opts: field::StripOpts::default(),
             mask_preview: None,
+            complete_sel: (0, 0),
         }
     }
 
     /// Какие панели видны и их ширины: Ctrl+O — ни одной; узкое окно (< 720) — только
     /// активная; иначе — по `ui.split` (S2-07). Панели — во всю ширину окна, между
     /// ними линия 1 px (D-02).
+    /// Список дополнений поля (№70): плашка с тенью от поля — вниз у полей сверху
+    /// (путь панели), вверх у полей внизу окна (встроенные строки); общая часть —
+    /// `highlight`, справа — источник.
+    #[allow(clippy::too_many_lines, reason = "строка варианта слева направо")]
+    #[allow(clippy::many_single_char_names, reason = "геометрия списка")]
+    fn completion_list(&self, window: &Window, cx: &mut Context<Self>) -> Option<gpui_kit::Div> {
+        let c = self.completion()?;
+        let b = self.field.as_ref()?.bounds.get()?;
+        if c.items.is_empty() {
+            return None;
+        }
+        let i18n = urfin_i18n::current();
+        let theme = &self.theme;
+        let win = window.viewport_size();
+        let (fx, fy, fw, fh) = (
+            f32::from(b.origin.x),
+            f32::from(b.origin.y),
+            f32::from(b.size.width),
+            f32::from(b.size.height),
+        );
+        let w = fw.max(COMPLETE_W).min(f32::from(win.width));
+        let x = fx.min(f32::from(win.width) - w).max(0.0);
+        #[allow(clippy::cast_precision_loss, reason = "вариантов десяток")]
+        let h = c.items.len() as f32 * pouch::H_ITEM + 8.0;
+        let up = fy > f32::from(win.height) / 2.0;
+        let y = if up { fy - h - 2.0 } else { fy + fh + 2.0 };
+        let sel = if self.complete_sel.0 == c.generation {
+            self.complete_sel.1
+        } else {
+            0
+        };
+        let typed = c.text.clone();
+        let kind = c.kind;
+        let mut body = div().flex().flex_col();
+        for (i, cand) in c.items.iter().enumerate() {
+            let glyph = if cand.history {
+                "\u{E81C}"
+            } else if kind == crate::field_history::FieldKind::Path {
+                "\u{E8B7}"
+            } else {
+                "\u{E8A5}"
+            };
+            let source = i18n.get(if cand.history {
+                "ui-complete-history"
+            } else if kind == crate::field_history::FieldKind::Path {
+                "ui-complete-folder"
+            } else {
+                "ui-complete-here"
+            });
+            // Общая часть с набранным — `highlight`.
+            let common = if !c.history_only
+                && cand.text.to_lowercase().starts_with(&typed.to_lowercase())
+                && cand.text.is_char_boundary(typed.len())
+            {
+                typed.len()
+            } else {
+                0
+            };
+            let pick = cand.text.clone();
+            body = body.child(
+                div()
+                    .id(SharedString::from(format!("complete-{i}")))
+                    .h(px(pouch::H_ITEM))
+                    .px(px(10.0))
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
+                    .rounded(px(4.0))
+                    .when(i == sel, |d| d.bg(theme.c(Role::FillCursor)))
+                    .when(i != sel, |d| {
+                        d.hover(|d| d.bg(theme.c(Role::FillSubtleHover)))
+                    })
+                    .child(
+                        div()
+                            .flex_none()
+                            .font_family("Segoe Fluent Icons")
+                            .text_size(px(12.0))
+                            .text_color(theme.c(Role::TextSecondary))
+                            .child(SharedString::new_static(glyph)),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .overflow_hidden()
+                            .whitespace_nowrap()
+                            .font_family("Cascadia Mono")
+                            .text_size(px(12.5))
+                            .when(common > 0, |d| {
+                                d.child(
+                                    div()
+                                        .bg(theme.c(Role::Highlight))
+                                        .child(SharedString::from(cand.text[..common].to_owned())),
+                                )
+                            })
+                            .child(SharedString::from(cand.text[common..].to_owned())),
+                    )
+                    .child(
+                        div()
+                            .flex_none()
+                            .text_size(px(12.0))
+                            .text_color(theme.c(Role::TextSecondary))
+                            .child(SharedString::from(source)),
+                    )
+                    .on_click(cx.listener(move |h, _: &ClickEvent, window, cx| {
+                        let cmds = h.complete_insert(&pick, kind, window, cx);
+                        for c in cmds {
+                            h.run(c, window, cx);
+                        }
+                    })),
+            );
+        }
+        Some(pouch::pouch(theme, x, y, w, None, body))
+    }
+
+    /// Список «Если файл есть» строки F5/F6: плашка над кнопкой, ✓ у выбранного.
+    fn conflict_list(&self, cx: &mut Context<Self>) -> Option<gpui_kit::Div> {
+        if !self.strip_opts.dropdown {
+            return None;
+        }
+        let b = self.field.as_ref()?.drop.get()?;
+        let i18n = urfin_i18n::current();
+        let theme = &self.theme;
+        #[allow(clippy::cast_precision_loss, reason = "четыре пункта")]
+        let h = field::CONFLICT.len() as f32 * pouch::H_ITEM + 8.0;
+        let (x, y) = (f32::from(b.origin.x), f32::from(b.origin.y) - h - 2.0);
+        let mut body = div().flex().flex_col();
+        for (i, (_, label)) in field::CONFLICT.iter().enumerate() {
+            let on = self.strip_opts.conflict == i;
+            body = body.child(
+                div()
+                    .id(SharedString::from(format!("ifexists-{i}")))
+                    .h(px(pouch::H_ITEM))
+                    .px(px(10.0))
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
+                    .rounded(px(4.0))
+                    .when(on, |d| d.bg(theme.c(Role::FillCursor)))
+                    .when(!on, |d| d.hover(|d| d.bg(theme.c(Role::FillSubtleHover))))
+                    .child(
+                        div()
+                            .w(px(14.0))
+                            .flex_none()
+                            .font_family("Segoe Fluent Icons")
+                            .text_size(px(11.0))
+                            .child(SharedString::new_static(if on { "\u{E73E}" } else { "" })),
+                    )
+                    .child(SharedString::from(i18n.get(label)))
+                    .on_click(cx.listener(move |h, _: &ClickEvent, _, cx| {
+                        h.strip_opts.conflict = i;
+                        h.strip_opts.dropdown = false;
+                        cx.notify();
+                    })),
+            );
+        }
+        Some(pouch::pouch(theme, x, y, CONFLICT_W, None, body))
+    }
+
     /// Левый край и ширина панелей по их ширинам (линия между ними — `WDivider`).
     fn panel_spans(theme: &Theme, widths: [Option<f32>; 2]) -> [Option<(f32, f32)>; 2] {
         let left = widths[0].map(|w| (0.0, w));
@@ -807,9 +970,21 @@ impl CoreHost {
         if editing {
             // Ниже клавиши разбирает не keymap: записки subclass этого нажатия не нужны.
             self.input.skip();
+            // Дополнение поля (№70) — раньше Enter/Esc поля.
+            if let Some(cmds) = self.completion_key(ks, window, cx) {
+                self.out
+                    .extend(cmds.into_iter().map(|c| c.from(urfin_core::Origin::Key)));
+                self.after_input(None, window, cx);
+                cx.notify();
+                return true;
+            }
             let cmds = match ks.key.as_str() {
                 "escape" => vec![Command::new("ui.cancel")],
-                "enter" => self.field_commit(ks.modifiers.shift, cx),
+                "enter" => {
+                    let mut c: Vec<Command> = self.field_remember(cx).into_iter().collect();
+                    c.extend(self.field_commit(ks.modifiers.shift, cx));
+                    c
+                }
                 "tab" if self.field_tab(cx) => return true,
                 _ => return false,
             };
@@ -1115,6 +1290,9 @@ impl Render for CoreHost {
             return root;
         };
         let s = core.state();
+        // Дополнение поля (№70) — до обработчиков кликов (им нужен `cx`).
+        let completion_el = self.completion_list(window, cx);
+        let conflict_el = self.conflict_list(cx);
         let click = |cmd: Command| -> overlays::Handler {
             Box::new(cx.listener(move |h: &mut CoreHost, _: &ClickEvent, w, cx| {
                 h.run(cmd.clone(), w, cx);
@@ -1281,14 +1459,14 @@ impl Render for CoreHost {
             .filter(|f| matches!(f.key, field::Key::Draft(_)))
             .map(|f| f.input.read(cx).value().to_string())
             .unwrap_or_default();
-        // Опции строк: 0 — «Если файл есть», 1 — хэш, 2 — несколько папок, 10…13 —
+        // Опции строк: 0 — список «Если файл есть», 1 — хэш, 2 — несколько папок, 10…13 —
         // атрибуты, 20 — «сейчас» в поле времени.
         let toggle = |what: u8| -> overlays::Handler {
             Box::new(
                 cx.listener(move |h: &mut CoreHost, _: &ClickEvent, window, cx| {
                     let o = &mut h.strip_opts;
                     match what {
-                        0 => o.conflict = (o.conflict + 1) % field::CONFLICT.len(),
+                        0 => o.dropdown = !o.dropdown,
                         1 => o.verify = !o.verify,
                         2 => o.many = !o.many,
                         10..=13 => {
@@ -1351,6 +1529,8 @@ impl Render for CoreHost {
         // строка-вопрос или баннер; тосты — справа над ней.
         let root = root
             .child(panels)
+            .children(completion_el)
+            .children(conflict_el)
             .children(overlays::toasts(&self.toasts, &self.theme, toast_lift))
             .children(overlays::banner(s, &self.theme, &click))
             .children(overlays::job_bar(s, &self.theme, &click))
@@ -1449,6 +1629,10 @@ fn fxhash(s: &str) -> u64 {
 const CONTEXT_BAR: f32 = 3.0;
 
 /// Полоса захвата сплиттера по обе стороны линии, px.
+/// Ширина списка дополнений не меньше.
+const COMPLETE_W: f32 = 360.0;
+/// Ширина списка «Если файл есть».
+const CONFLICT_W: f32 = 240.0;
 const SPLITTER_GRAB: f32 = 3.0;
 
 /// Окно GPUI с Core; возвращается после выхода из цикла (сессия уже сохранена).

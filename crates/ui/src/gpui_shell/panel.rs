@@ -517,7 +517,7 @@ fn path_bar(
         .border_b_1()
         .border_color(theme.c(Role::StrokeDivider));
     if let Some(input) = super::field::path_input(field, side) {
-        return bar.child(div().flex_1().child(input));
+        return bar.child(input);
     }
     let name = super::chrome::side_name(side);
     let color = theme.c(if active {

@@ -12,6 +12,7 @@ pub mod color;
 pub mod commands_doc;
 pub mod config;
 pub mod drives;
+pub mod field_history;
 pub mod fmt_cell;
 mod fs_tasks;
 pub mod gpui_shell;
