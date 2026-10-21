@@ -15,39 +15,39 @@ modified="#B5402F" exec="#2E7D32" archive="#7B4FB0" context_admin="#B5402F" cont
 syntax = { keyword="#1F5FA8", string="#8A4B12", number="#6A3FA0", comment="#5F6B76" }
 
 [system-dark]
-frame="#1C1C1C" panel="#262626" header="#2B2B2B" text="#F2F2F2" secondary="#B8B8B8"
+frame="#1C1C1C" panel="#262626" header="#2B2B2B" text="#F2F2F2" secondary="#C6C6C6"
 accent="#6CC4F2" cursor="#24557A" cursor_text="#FFFFFF" border="#3C3C3C"
 current_line="#2E2E2E" highlight="#5C4A1C"
 modified="#FF8A7A" exec="#8FD98A" archive="#C9B4FF" context_admin="#FF8A7A" context_remote="#FFC46B" warning_bg="#3D3220" danger_bg="#402622"
 syntax = { keyword="#7FB8F0", string="#E3B07A", number="#C9B4FF", comment="#949494" }
 
 [blue]
-frame="#E1E9F1" panel="#EEF3F8" header="#E8EEF4" text="#1E2A36" secondary="#5E6B78"
+frame="#E1E9F1" panel="#EEF3F8" header="#E8EEF4" text="#1E2A36" secondary="#576470"
 accent="#3A6EA5" cursor="#D4E3F2" cursor_text="#1E2A36" border="#D3DDE8"
 current_line="#E6EDF4" highlight="#F0E2A6"
-modified="#B0452F" exec="#2E7D4A" archive="#7A4FA8" context_admin="#B0452F" context_remote="#A86A12" warning_bg="#F5EAD6" danger_bg="#F4E2DE"
+modified="#B0452F" exec="#2D7A49" archive="#7A4FA8" context_admin="#B0452F" context_remote="#A86A12" warning_bg="#F5EAD6" danger_bg="#F4E2DE"
 syntax = { keyword="#2F5F96", string="#8A4B12", number="#6A3FA0", comment="#5E6B78" }
 
 [turquoise]
-frame="#DFEDEB" panel="#EDF5F4" header="#E6F1EF" text="#1D2E2D" secondary="#5A7270"
-accent="#2C8C86" cursor="#CFE9E6" cursor_text="#1D2E2D" border="#CFE1DE"
+frame="#DFEDEB" panel="#EDF5F4" header="#E6F1EF" text="#1D2E2D" secondary="#526866"
+accent="#267A75" cursor="#CFE9E6" cursor_text="#1D2E2D" border="#CFE1DE"
 current_line="#E4F0EE" highlight="#F0E2A6"
-modified="#B0502F" exec="#3A7D2E" archive="#7A4FA8" context_admin="#B0502F" context_remote="#A86A12" warning_bg="#F4EAD6" danger_bg="#F4E2DC"
+modified="#B0502F" exec="#397C2E" archive="#7A4FA8" context_admin="#B0502F" context_remote="#A86A12" warning_bg="#F4EAD6" danger_bg="#F4E2DC"
 syntax = { keyword="#1F6F6A", string="#8A4B12", number="#6A3FA0", comment="#5A7270" }
 
 [grass]
-frame="#E3ECDD" panel="#EEF4EA" header="#E8F0E3" text="#222D1C" secondary="#5F6D57"
-accent="#4E8A3A" cursor="#DCEBCF" cursor_text="#222D1C" border="#D5E0CC"
+frame="#E3ECDD" panel="#EEF4EA" header="#E8F0E3" text="#222D1C" secondary="#5C6A54"
+accent="#457933" cursor="#DCEBCF" cursor_text="#222D1C" border="#D5E0CC"
 current_line="#E6EEE1" highlight="#F0E2A6"
 modified="#A84A2C" exec="#2C6E8F" archive="#7A4FA8" context_admin="#A84A2C" context_remote="#A86A12" warning_bg="#F3E9D4" danger_bg="#F3E1DA"
 syntax = { keyword="#3E6E2E", string="#8A4B12", number="#2C5F8F", comment="#5F6D57" }
 # exec не зелёный — не сливается с акцентом
 
 [sepia]
-frame="#E7DECF" panel="#F2ECE1" header="#ECE4D7" text="#3A3128" secondary="#7A6C5C"
-accent="#9A6A3A" cursor="#E8DCC6" cursor_text="#3A3128" border="#DACFBC"
+frame="#E7DECF" panel="#F2ECE1" header="#ECE4D7" text="#3A3128" secondary="#6A5E50"
+accent="#8C6035" cursor="#E8DCC6" cursor_text="#3A3128" border="#DACFBC"
 current_line="#EBE3D6" highlight="#EAD49A"
-modified="#A8432F" exec="#4F7A2E" archive="#7A4F8F" context_admin="#A8432F" context_remote="#7A6A00" warning_bg="#EFDDBE" danger_bg="#EED5CB"
+modified="#A8432F" exec="#4B742C" archive="#7A4F8F" context_admin="#A8432F" context_remote="#7A6A00" warning_bg="#EFDDBE" danger_bg="#EED5CB"
 syntax = { keyword="#7A4A1F", string="#5E6A2E", number="#6A3F7A", comment="#7A6C5C" }
 ```
 
