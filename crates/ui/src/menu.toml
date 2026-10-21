@@ -58,6 +58,9 @@ items = [
     { cmd = "tab.close" },
     { sep = true },
     { cmd = "vfs.dir_size" },
+    { cmd = "ops.compare" },
+    { cmd = "ops.sync dir=lr", label = "menu-sync-lr" },
+    { cmd = "ops.sync dir=rl", label = "menu-sync-rl" },
 ]
 
 [[menu]]

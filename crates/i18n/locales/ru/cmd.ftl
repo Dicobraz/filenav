@@ -119,6 +119,7 @@ cmd-ops-attrs = Атрибуты
 cmd-ops-touch = Изменить время
 cmd-ops-link = Создать ссылку
 cmd-ops-compare = Сравнить папки
+    .menu-key = а
 cmd-ops-sync = Синхронизировать папки
 cmd-ops-retry = Повторить неудавшиеся
 cmd-ops-priority = Приоритет операции
