@@ -56,6 +56,10 @@ pub(crate) struct H {
     tx: Sender<Run>,
     pub(crate) eng: Arc<JobEngine>,
     listing: Arc<FakeListing>,
+    /// Сторож зависания `pump_until`, не бюджет: тестам с массовым I/O на
+    /// диске (10k переименований) нужно больше — под антивирусом и соседями
+    /// по nextest один `MoveFileExW` стоит около миллисекунды.
+    pub(crate) deadline: Duration,
 }
 
 fn dir() -> Location {
@@ -82,6 +86,7 @@ impl H {
             tx,
             eng: Arc::new(JobEngine::new(max_threads)),
             listing,
+            deadline: Duration::from_secs(30),
         }
     }
 
@@ -112,7 +117,7 @@ impl H {
     pub(crate) fn pump_until(&mut self, what: &str, done: impl Fn(&H) -> bool) {
         let t0 = Instant::now();
         while !done(self) {
-            assert!(t0.elapsed() < Duration::from_secs(30), "timeout: {what}");
+            assert!(t0.elapsed() < self.deadline, "timeout: {what}");
             self.pump();
         }
     }
