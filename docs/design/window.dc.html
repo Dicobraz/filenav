@@ -776,8 +776,8 @@ hlStyle: "background: " + t.hl + "; color: " + t.t + "; border-radius: 2px",
 isUp: kind === "up", isDir: kind === "d", isFile: kind !== "up" && kind !== "d",
 weight: (kind === "d" || kind === "up" || isM) ? 500 : 400,
 iconColor: iconCol, dateColor: isC ? t.ct : t.s,
-rowStyle: "height: " + rowH + "px; display: flex; align-items: center; padding: 0 12px; background: " + (isC ? t.c : "transparent") + "; color: " + col,
-briefStyle: "height: " + rowH + "px; display: flex; align-items: center; gap: 8px; padding: 0 10px; overflow: hidden; white-space: nowrap; font-weight: " + ((kind === "d" || kind === "up") ? 500 : 400) + "; background: " + (isC ? t.c : "transparent") + "; color: " + col
+rowStyle: "height: " + rowH + "px; display: flex; align-items: center; padding: 0 12px; background: " + (isC ? t.c : "transparent") + "; color: " + col + (isM ? "; box-shadow: inset 3px 0 0 " + t.a : ""),
+briefStyle: "height: " + rowH + "px; display: flex; align-items: center; gap: 8px; padding: 0 10px; overflow: hidden; white-space: nowrap; font-weight: " + ((kind === "d" || kind === "up") ? 500 : 400) + "; background: " + (isC ? t.c : "transparent") + "; color: " + col + (isM ? "; box-shadow: inset 3px 0 0 " + t.a : "")
 };
 });
 const actPath = "color: " + t.t + "; border-bottom: 2px solid " + t.a + "; padding-bottom: 3px", pasPath = "color: " + t.s;
