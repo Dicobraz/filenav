@@ -228,6 +228,9 @@ pub(crate) struct Transfer {
     tag: String,
     /// Каталог журналов (`None` — без журнала: повтор, тесты).
     journal_dir: Option<PathBuf>,
+    /// Корни копии «источник → назначение» (план): цели junction внутри дерева
+    /// переписываются на копию (S5-22).
+    roots: Mutex<Vec<(PathBuf, PathBuf)>>,
     strategy: crate::strategy::StrategyTable,
     journal: OnceLock<Journal>,
     ticks: AtomicU64,
@@ -343,6 +346,7 @@ pub(crate) fn start_retry(
         pairs,
         tag: new_tag(),
         journal_dir: None,
+        roots: Mutex::default(),
         strategy: crate::strategy::StrategyTable::default(),
         journal: OnceLock::new(),
         ticks: AtomicU64::new(0),
@@ -457,6 +461,7 @@ impl Transfer {
             pairs: Vec::new(),
             tag: new_tag(),
             journal_dir: s.journal_dir,
+            roots: Mutex::default(),
             strategy: s.strategy,
             journal: OnceLock::new(),
             ticks: AtomicU64::new(0),
@@ -800,6 +805,18 @@ impl Transfer {
         Some(issue)
     }
 
+    /// Цель junction `link` внутри одного из копируемых каталогов → то же место в
+    /// копии; `None` — не junction или цель снаружи (копируется как есть).
+    fn junction_inside(&self, link: &Path) -> Option<PathBuf> {
+        let target = sys::junction_target(link)?;
+        let roots = self.roots.lock().unwrap_or_else(PoisonError::into_inner);
+        roots.iter().find_map(|(src, dst)| {
+            let src = PathBuf::from(shown(src));
+            let rest = strip_prefix_ci(&target, &src)?;
+            Some(PathBuf::from(shown(dst)).join(rest))
+        })
+    }
+
     /// Проблема «имя занято» для вопроса.
     fn issue(
         &self,
@@ -842,6 +859,10 @@ impl Transfer {
         if is_link(it.kind) {
             let dir = it.kind == EntryKind::LinkDir
                 || sys::attrs(&it.src).is_ok_and(|a| a & ATTR_DIRECTORY != 0);
+            // Junction внутрь копируемого дерева — на то же место в копии (S5-22).
+            if dir && let Some(t) = self.junction_inside(&it.src) {
+                return sys::make_junction(to, &t);
+            }
             return sys::copy_link(&it.src, to, dir);
         }
         if it.size >= self.small {
@@ -862,6 +883,10 @@ impl Transfer {
             excl,
             symlink: false,
             no_buffering: it.size >= self.strategy.large,
+            // Разреженный (образы ВМ, базы): только данные — проверка атрибута
+            // для заметных файлов.
+            sparse: it.size >= self.small
+                && sys::attrs(&it.src).is_ok_and(|a| a & ATTR_SPARSE != 0),
         };
         let r = sys::copy_file(&it.src, to, flags, &mut |done| {
             if done > last {
@@ -925,6 +950,18 @@ fn verify(src: &Path, dst: &Path) -> io::Result<()> {
     Err(io::Error::other(tr("ops-verify-mismatch", &[])))
 }
 
+/// `path` внутри `base` (без учёта регистра, по компонентам) → остаток.
+fn strip_prefix_ci(path: &Path, base: &Path) -> Option<PathBuf> {
+    let mut p = path.components();
+    for b in base.components() {
+        let c = p.next()?;
+        if !c.as_os_str().eq_ignore_ascii_case(b.as_os_str()) {
+            return None;
+        }
+    }
+    Some(p.as_path().to_path_buf())
+}
+
 /// Удалить временный файл, если он есть.
 fn drop_temp(temp: &mut Option<PathBuf>, kind: EntryKind) {
     if let Some(t) = temp.take() {
@@ -948,6 +985,8 @@ fn rename_one(src: &Path, dst: &Path, how: How, scheme: RenameScheme) -> io::Res
 }
 
 const ATTR_DIRECTORY: u32 = 0x10;
+/// `FILE_ATTRIBUTE_SPARSE_FILE`.
+const ATTR_SPARSE: u32 = 0x200;
 
 fn is_link(k: EntryKind) -> bool {
     matches!(
@@ -1579,6 +1618,12 @@ impl OpExec for Transfer {
                 .unwrap_or_else(|| root.join(Walker::os_name(&e)));
             let descend = e.kind == EntryKind::Dir
                 || (e.kind == EntryKind::LinkDir && self.opts.links == LinkMode::Follow);
+            if descend {
+                self.roots
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .push((src.clone(), target.clone()));
+            }
             if same_path(&src, &target) {
                 // Перенос со сменой только регистра — rename; иначе «сам в себя».
                 if self.mode == Mode::Move && src != target {

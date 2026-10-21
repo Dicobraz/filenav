@@ -5,7 +5,7 @@
 #![allow(unsafe_code)]
 
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Отмена `CopyFileExW` из колбэка (`ERROR_REQUEST_ABORTED`).
 pub const ERR_ABORTED: i32 = 1235;
@@ -19,6 +19,10 @@ pub const ATTR_SYSTEM: u32 = 0x4;
 pub const ATTR_ARCHIVE: u32 = 0x20;
 
 /// Как копировать файл.
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "независимые флаги CopyFileEx"
+)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct CopyFlags {
     /// Назначение не должно существовать (`AlreadyExists`).
@@ -27,6 +31,9 @@ pub struct CopyFlags {
     pub symlink: bool,
     /// Мимо кэша ОС (`COPY_FILE_NO_BUFFERING`): крупные файлы (S5-16).
     pub no_buffering: bool,
+    /// Разреженный источник: копировать только данные (`COPY_FILE_ENABLE_SPARSE_COPY`,
+    /// Windows 11 22H2+; старые системы флаг не знают — копия обычная).
+    pub sparse: bool,
 }
 
 /// Копирует данные, альтернативные потоки, атрибуты и время изменения (как
@@ -67,6 +74,23 @@ pub fn move_file(src: &Path, dst: &Path, replace: bool) -> io::Result<()> {
 /// буфер выровнен по странице), чтобы проверка копии читала диск, а не память.
 pub fn read_chunks(p: &Path, uncached: bool, f: &mut dyn FnMut(&[u8])) -> io::Result<()> {
     imp::read_chunks(p, uncached, f)
+}
+
+/// Цель junction (точки монтирования) — `None` для symlink и прочих ссылок.
+pub fn junction_target(p: &Path) -> Option<PathBuf> {
+    imp::junction_target(p)
+}
+
+/// Сделать файл разреженным (тест S5-22).
+#[cfg(test)]
+pub fn make_sparse(p: &Path) -> io::Result<()> {
+    imp::make_sparse(p)
+}
+
+/// Занято на диске (`GetCompressedFileSizeW`; тест разреженной копии).
+#[cfg(test)]
+pub fn disk_size(p: &Path) -> io::Result<u64> {
+    imp::disk_size(p)
 }
 
 /// Junction (точка монтирования) `link` → каталог `target` (абсолютный путь):
@@ -527,6 +551,14 @@ mod imp {
         if flags.no_buffering {
             f |= windows_sys::Win32::Storage::FileSystem::COPY_FILE_NO_BUFFERING;
         }
+        if flags.sparse {
+            // Разреженная копия — только у `CopyFile2`; старая система флаг не
+            // примет (`ERROR_INVALID_PARAMETER`) — обычная копия ниже.
+            match copy_file2_with(&s, &d, f | COPY_FILE_ENABLE_SPARSE_COPY, &mut progress) {
+                Err(e) if e.raw_os_error() == Some(87) => {}
+                r => return r,
+            }
+        }
         let data: *mut Progress<'_> = &raw mut progress;
         // SAFETY: строки с NUL живут до конца вызова; `data` указывает на
         // локальную переменную, переживающую вызов.
@@ -542,6 +574,63 @@ mod imp {
         };
         if ok == 0 {
             return Err(io::Error::last_os_error());
+        }
+        Ok(())
+    }
+
+    /// `COPY_FILE_ENABLE_SPARSE_COPY` (Windows 11 22H2+, только `CopyFile2`).
+    const COPY_FILE_ENABLE_SPARSE_COPY: u32 = 0x2000_0000;
+
+    /// Колбэк `CopyFile2`: байты основного потока по чанкам, отмена.
+    unsafe extern "system" fn on_chunk2(
+        m: *const windows_sys::Win32::Storage::FileSystem::COPYFILE2_MESSAGE,
+        data: *const c_void,
+    ) -> windows_sys::Win32::Storage::FileSystem::COPYFILE2_MESSAGE_ACTION {
+        use windows_sys::Win32::Storage::FileSystem::{
+            COPYFILE2_CALLBACK_CHUNK_FINISHED, COPYFILE2_PROGRESS_CANCEL,
+            COPYFILE2_PROGRESS_CONTINUE,
+        };
+        // SAFETY: `m` — сообщение `CopyFile2` на время колбэка.
+        let m = unsafe { &*m };
+        if m.Type != COPYFILE2_CALLBACK_CHUNK_FINISHED {
+            return COPYFILE2_PROGRESS_CONTINUE;
+        }
+        // SAFETY: тип сообщения — ChunkFinished, поле союза — его.
+        let info = unsafe { m.Info.ChunkFinished };
+        if info.dwStreamNumber != 1 {
+            return COPYFILE2_PROGRESS_CONTINUE;
+        }
+        // SAFETY: `data` — `Progress` из `copy_file2_with`, живой всё время вызова.
+        let f = unsafe { &mut *data.cast::<Progress<'_>>().cast_mut() };
+        match catch_unwind(AssertUnwindSafe(|| f(info.uliStreamBytesTransferred))) {
+            Ok(true) => COPYFILE2_PROGRESS_CONTINUE,
+            _ => COPYFILE2_PROGRESS_CANCEL,
+        }
+    }
+
+    fn copy_file2_with(
+        s: &[u16],
+        d: &[u16],
+        flags: u32,
+        progress: &mut Progress<'_>,
+    ) -> io::Result<()> {
+        use windows_sys::Win32::Storage::FileSystem::{COPYFILE2_EXTENDED_PARAMETERS, CopyFile2};
+        let data: *mut Progress<'_> = progress;
+        let p = COPYFILE2_EXTENDED_PARAMETERS {
+            dwSize: u32::try_from(size_of::<COPYFILE2_EXTENDED_PARAMETERS>()).unwrap_or(0),
+            dwCopyFlags: flags,
+            pfCancel: std::ptr::null_mut(),
+            pProgressRoutine: Some(on_chunk2),
+            pvCallbackContext: data.cast(),
+        };
+        // SAFETY: строки с NUL и параметры живут до конца вызова; колбэк — в этом потоке.
+        let hr = unsafe { CopyFile2(s.as_ptr(), d.as_ptr(), &raw const p) };
+        if hr < 0 {
+            #[allow(clippy::cast_sign_loss, reason = "разбор HRESULT")]
+            let code = (hr as u32) & 0xFFFF;
+            return Err(io::Error::from_raw_os_error(
+                i32::try_from(code).unwrap_or(0),
+            ));
         }
         Ok(())
     }
@@ -646,6 +735,73 @@ mod imp {
             return Err(io::Error::last_os_error());
         }
         Ok(())
+    }
+
+    pub fn junction_target(p: &Path) -> Option<std::path::PathBuf> {
+        /// `IO_REPARSE_TAG_MOUNT_POINT`.
+        const TAG: u32 = 0xA000_0003;
+        let data = reparse_data(p).ok()?;
+        let u16at = |i: usize| data.get(i..i + 2).map(|b| u16::from_le_bytes([b[0], b[1]]));
+        let tag = data
+            .get(..4)
+            .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))?;
+        if tag != TAG {
+            return None;
+        }
+        // Заголовок 8 байт, затем смещения и длины имён, имена — с байта 16.
+        let (off, len) = (usize::from(u16at(8)?), usize::from(u16at(10)?));
+        let start = 16 + off;
+        let units: Vec<u16> = data
+            .get(start..start + len)?
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|c| u16::from_le_bytes(*c))
+            .collect();
+        let s = String::from_utf16(&units).ok()?;
+        Some(std::path::PathBuf::from(
+            s.strip_prefix(r"\??\").unwrap_or(&s),
+        ))
+    }
+
+    #[cfg(test)]
+    pub fn make_sparse(p: &Path) -> io::Result<()> {
+        use windows_sys::Win32::System::Ioctl::FSCTL_SET_SPARSE;
+        let f = OpenOptions::new().write(true).open(p)?;
+        let mut got = 0u32;
+        // SAFETY: хэндл открыт на запись; без буферов; синхронно.
+        let ok = unsafe {
+            DeviceIoControl(
+                f.as_raw_handle() as HANDLE,
+                FSCTL_SET_SPARSE,
+                std::ptr::null(),
+                0,
+                std::ptr::null_mut(),
+                0,
+                &raw mut got,
+                std::ptr::null_mut(),
+            )
+        };
+        if ok == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub fn disk_size(p: &Path) -> io::Result<u64> {
+        use windows_sys::Win32::Storage::FileSystem::GetCompressedFileSizeW;
+        let w = wide(p);
+        let mut high = 0u32;
+        // SAFETY: строка с NUL; выходной — локальный u32.
+        let low = unsafe { GetCompressedFileSizeW(w.as_ptr(), &raw mut high) };
+        if low == u32::MAX {
+            let e = io::Error::last_os_error();
+            if e.raw_os_error() != Some(0) {
+                return Err(e);
+            }
+        }
+        Ok((u64::from(high) << 32) | u64::from(low))
     }
 
     pub fn make_junction(link: &Path, target: &Path) -> io::Result<()> {
@@ -879,6 +1035,7 @@ mod tests {
             excl: true,
             symlink: false,
             no_buffering: false,
+            sparse: false,
         };
         let e = copy_file(&src, &dst, flags, &mut |_| true).unwrap_err();
         assert_eq!(e.kind(), io::ErrorKind::AlreadyExists);
