@@ -4,7 +4,7 @@
 
 **Одна информация — одно место** (№61): имя файла — во вкладке; путь — в заголовке экрана; размер, кодировка, переводы строк, тип — в статус-строке; переключатели режимов — в заголовке; действия по клавишам — в панели клавиш; действия встроенной строки (поиск, подтверждение, конфликт) — на её кнопках с подписью клавиши, в панели клавиш не повторяются.
 
-Роли: frame (каркас/заголовок), panel, header (статус-строка, плашки, подложка номеров строк), text, secondary, accent (акцент ОС в light/dark), cursor, cursor_text, border, current_line (строка редактора), highlight (совпадения поиска), modified, exec, archive, context_admin, context_remote, warning_bg (подложка вопроса/предупреждения — баннер журнала, конфликт), danger_bg (подложка опасного действия — F8); syntax: keyword, string, number, comment. Контраст text-ролей и syntax к panel ≥4,5:1, text и secondary к warning_bg/danger_bg — тоже; exec не совпадает по тону с accent.
+Роли: frame (каркас/заголовок), panel, header (статус-строка, плашки, подложка номеров строк), text, secondary, accent (акцент ОС в light/dark), cursor, cursor_text, border, current_line (строка редактора), highlight (совпадения поиска), modified, exec, archive, context_admin, context_remote, warning_bg (подложка вопроса/предупреждения — баннер журнала, конфликт), danger_bg (подложка опасного действия — F8); shadow (тень всплывающих объектов: чёрный 16 % в светлых темах, 55 % в тёмной; в высокой контрастности — нет); syntax: keyword, string, number, comment. Контраст text-ролей и syntax к panel ≥4,5:1, text и secondary к warning_bg/danger_bg — тоже; exec не совпадает по тону с accent.
 
 ```toml
 [system-light]
@@ -47,7 +47,7 @@ syntax = { keyword="#3E6E2E", string="#8A4B12", number="#2C5F8F", comment="#5F6D
 frame="#E7DECF" panel="#F2ECE1" header="#ECE4D7" text="#3A3128" secondary="#7A6C5C"
 accent="#9A6A3A" cursor="#E8DCC6" cursor_text="#3A3128" border="#DACFBC"
 current_line="#EBE3D6" highlight="#EAD49A"
-modified="#A8432F" exec="#4F7A2E" archive="#7A4F8F" context_admin="#A8432F" context_remote="#9A6212" warning_bg="#EFDDBE" danger_bg="#EED5CB"
+modified="#A8432F" exec="#4F7A2E" archive="#7A4F8F" context_admin="#A8432F" context_remote="#7A6A00" warning_bg="#EFDDBE" danger_bg="#EED5CB"
 syntax = { keyword="#7A4A1F", string="#5E6A2E", number="#6A3F7A", comment="#7A6C5C" }
 ```
 
