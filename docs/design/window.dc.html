@@ -432,6 +432,19 @@ body{margin:0}
 </div>
 </div>
 </sc-if>
+<sc-if value="{{isCmp}}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; left: 0; right: 0; bottom: 0; padding: 10px 14px; display: flex; align-items: center; gap: 10px; background: {{t.h}}; border-top: 2px solid {{t.a}}">
+<span style="display: inline-flex; color: {{t.a}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3" width="5.5" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.1"></rect><rect x="9" y="3" width="5.5" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.1"></rect><path d="M3.5 6h2 M11 6h2 M3.5 9h2" stroke="currentColor" stroke-width="1.1"></path></svg></span>
+<span style="font-weight: 500; white-space: nowrap">Сравнение папок:</span>
+<span style="white-space: nowrap">только слева 2 · только справа 1 · новее слева 1</span>
+<span style="color: {{t.s}}; white-space: nowrap">· одинаковых 1</span>
+<div style="margin-left: auto; display: flex; gap: 8px">
+<button type="button" style="{{btnPrimary}}">Синхронизировать → <span style="opacity: 0.8; font-size: 11px">Enter</span></button>
+<button type="button" style="{{btn}}">Синхронизировать ← <span style="color: {{t.s}}; font-size: 11px">Shift+Enter</span></button>
+<button type="button" style="{{btn}}">Закрыть <span style="color: {{t.s}}; font-size: 11px">Esc</span></button>
+</div>
+</div>
+</sc-if>
 <sc-if value="{{isQuick}}" hint-placeholder-val="{{ false }}">
 <div style="position: absolute; left: 0; right: calc(50% + 0.5px); bottom: 0; height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: {{t.h}}; border-top: 2px solid {{t.a}}">
 <span style="display: inline-flex; color: {{t.s}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.5" fill="none" stroke="currentColor" stroke-width="1.2"></circle><path d="M10 10l4 4" stroke="currentColor" stroke-width="1.2"></path></svg></span>
@@ -753,6 +766,7 @@ menu: [["← →","Меню"],["↑ ↓","Пункт"],["Enter","Выбрать"
 terminal: [["Ctrl+O","Панели"],["Ctrl+F1","Левая"],["Ctrl+F2","Правая"],["Ctrl+Shift+F","Поиск в выводе"],["Ctrl+Break","Прервать"]],
 context: [["↑ ↓","Пункт"],["→","Подменю"],["Enter","Выбрать"],["Esc","Закрыть"]],
 select: [["Tab","Следующее поле"],["Alt+↓","История масок"]],
+compare: [["Tab","Следующая кнопка"],["Ins","Изменить отметку"]],
 multirename: [["Tab","Шаблон ↔ список"],["F1","Справка по шаблону"]],
 drives: [["Enter","Открыть"],["Del","Извлечь или отключить"],["Alt+Enter","Свойства тома"],["Esc","Закрыть"]],
 quick: [["Ctrl+Enter","Следующее"],["Ctrl+Shift+Enter","Предыдущее"],["Enter","Открыть"],["Esc","Закрыть"]],
@@ -838,7 +852,7 @@ showJobs: screen === "progress" || screen === "conflict",
 jobs: (screen === "conflict" ? [["Копирование","3 объекта → \\\\fs01\\share\\presale",35,"ждёт ответа: конфликт 4 из 12",t.rem,"Пауза"]] : [["Копирование","48 файлов → \\\\fs01\\share\\presale",35,"1,2 из 3,4 ГБ · 48 МБ/с · ещё 47 с",t.a,"Пауза"],["Удаление","target\\debug → Корзина",70,"9 012 из 12 870 · ещё 4 с",t.a,"Пауза"]]).map(([name, what, pct, info, col, act]) => ({ name, what, info, act, infoColor: col === t.a ? t.s : col, bar: "height: 100%; width: " + pct + "%; background: " + col })),
 isCopy, isSearch: screen === "search", isViewer: screen === "viewer", isEditor: screen === "editor", isSettings: screen === "settings",
 showCli: ["panels","journal","multirename","compare","terminal","termhalf","menu","context","select","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress","search"].indexOf(screen) >= 0,
-showToast: screen === "panels" || screen === "compare",
+showToast: screen === "panels", isCmp: screen === "compare",
 toastPos: "bottom: " + (82 + 12 + (screen === "progress" ? 64 : (screen === "conflict" ? 34 : 0))) + "px;",
 toast: screen === "compare" ? { title: "Сравнение папок", text: "только слева 2 · только справа 1 · новее слева 1", act: true, acts: ["Синхронизировать →", "Синхронизировать ←"] } : { title: "Копирование завершено", text: "48 файлов · 1,9 ГБ · 6,2 с", act: false, acts: [] },
 showBanner: screen === "journal", isRename: screen === "multirename",
