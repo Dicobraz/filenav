@@ -74,6 +74,8 @@ menu-sel-remove = Снять выделение…
     .menu-key = н
 menu-theme-system = Тема как в системе
     .menu-key = с
+menu-theme-next = Следующая тема
+    .menu-key = д
 menu-theme-light = Светлая тема
     .menu-key = е
 menu-theme-dark = Тёмная тема
@@ -206,3 +208,17 @@ ui-qview-hint = F3 — просмотр
 ui-qview-binary = двоичный
 ui-qview-dir = Папка — её содержимое в панели
 ui-info-volume-local = Локальный диск
+
+## Темы (T-01, №59)
+ui-theme-auto = Как в Windows
+ui-theme-system-light = Системная светлая
+ui-theme-system-dark = Системная тёмная
+ui-theme-blue = Голубая
+ui-theme-turquoise = Бирюза
+ui-theme-grass = Травяная
+ui-theme-sepia = Сепия
+ui-theme-locked = Тема задана политикой организации
+ui-theme-unknown = Неизвестная тема «{ $id }»
+ui-theme-error = Тема не загружена: { $error }
+ui-context-admin = Администратор
+ui-context-remote = Удалённый сеанс

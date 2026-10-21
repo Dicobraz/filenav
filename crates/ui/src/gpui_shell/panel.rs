@@ -163,7 +163,7 @@ pub(super) fn fingerprint(
     side: Side,
     piece: Piece,
     grid: (u32, u32),
-    dark: bool,
+    look: u64,
     field: Option<&super::field::Field>,
     anim: u64,
 ) -> u64 {
@@ -171,7 +171,7 @@ pub(super) fn fingerprint(
     let mut h = std::hash::DefaultHasher::new();
     let t = s.panel(side).tab();
     let active = s.active == side;
-    (side == Side::Right, dark, urfin_i18n::epoch(), t.id.0).hash(&mut h);
+    (side == Side::Right, look, urfin_i18n::epoch(), t.id.0).hash(&mut h);
     format!("{:?}{:?}", t.view_mode, t.mode).hash(&mut h);
     if let Some(f) = field {
         format!("{:?}{}", f.key, f.input.entity_id()).hash(&mut h);

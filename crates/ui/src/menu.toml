@@ -67,9 +67,10 @@ items = [
 id = "options"
 title = "menu-options"
 items = [
-    { cmd = "ui.theme mode=system", label = "menu-theme-system" },
-    { cmd = "ui.theme mode=light", label = "menu-theme-light" },
-    { cmd = "ui.theme mode=dark", label = "menu-theme-dark" },
+    { cmd = "ui.theme.follow_os", label = "menu-theme-system" },
+    { cmd = "ui.theme.next", label = "menu-theme-next" },
+    { cmd = "ui.theme.set id=system-light", label = "menu-theme-light" },
+    { cmd = "ui.theme.set id=system-dark", label = "menu-theme-dark" },
     { sep = true },
     { cmd = "ui.zoom delta=1", label = "menu-zoom-in" },
     { cmd = "ui.zoom delta=-1", label = "menu-zoom-out" },

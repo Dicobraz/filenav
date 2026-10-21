@@ -158,7 +158,7 @@ pub(super) fn titlebar(content: Div, theme: &Theme, maximized: bool) -> Div {
     let gap = px(theme.m(Metric::GapPanels));
     let hover = theme.c(Role::FillSubtleHover);
     let primary = theme.c(Role::TextPrimary);
-    let white: Hsla = rgb(0x00ff_ffff).into();
+    let white: Hsla = rgb(0x00ff_ffff).into(); // colors: allow «Закрыть» Windows: белый на красном
     div()
         .h(px(theme.m(Metric::HTitlebar)))
         .flex_none()
@@ -313,10 +313,10 @@ impl Render for ChromeView {
 }
 
 /// Отпечаток низа: путь активной панели, подписи F-клавиш, модификаторы, тема.
-pub(super) fn bottom_print(s: &AppState, items: &[Item], mods: Mods, dark: bool) -> u64 {
+pub(super) fn bottom_print(s: &AppState, items: &[Item], mods: Mods, look: u64) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::hash::DefaultHasher::new();
-    (dark, urfin_i18n::epoch(), format!("{mods:?}")).hash(&mut h);
+    (look, urfin_i18n::epoch(), format!("{mods:?}")).hash(&mut h);
     s.panel(s.active).tab().loc.path.hash(&mut h);
     for it in items {
         (it.n, &it.label, it.enabled).hash(&mut h);

@@ -103,6 +103,8 @@ pub struct Launch {
     pub bench: Option<crate::bench::Bench>,
     /// `--screens <каталог>`: снимки сцен для проверки дизайна.
     pub screens: Option<std::path::PathBuf>,
+    /// Повышенные права или удалённый сеанс (T-01-5): полоса сверху и метка.
+    pub context: Option<crate::sys::Context>,
 }
 
 impl std::fmt::Debug for Launch {
@@ -159,6 +161,9 @@ pub struct CoreHost {
     /// Низ окна (cmdline, F-клавиши) — кэшируемая view, отпечаток как у панелей.
     bottom: Entity<chrome::ChromeView>,
     bottom_print: u64,
+    /// Акцент и контрастность ОС на лету (`sys::watch`, T-01-2).
+    looks: std::sync::mpsc::Receiver<crate::sys::Look>,
+    context: Option<crate::sys::Context>,
 }
 
 impl std::fmt::Debug for CoreHost {
@@ -181,8 +186,12 @@ impl CoreHost {
             first_frame,
             bench,
             screens,
+            context,
         } = launch;
         listen(wake, cx);
+        let (look_tx, looks) = std::sync::mpsc::channel();
+        let waker = signal.clone();
+        crate::sys::watch(move || urfin_core::Waker::wake(&*waker), look_tx);
         let registered = crate::keybar::registered(core.registry());
         let menu = menu::Menu::new(core.registry(), None);
         let host = cx.entity().downgrade();
@@ -228,6 +237,8 @@ impl CoreHost {
             slide: [None, None],
             bottom,
             bottom_print: 0,
+            looks,
+            context,
         }
     }
 
@@ -561,30 +572,25 @@ impl CoreHost {
         );
     }
 
-    /// Тема: `ui.theme` или, при «системной», светлая/тёмная ОС (gpui следит за ней).
+    /// Тема кадра (T-01): выбор `ui.theme.*`, светлая/тёмная ОС (gpui следит за окном),
+    /// акцент и контрастность из `sys::watch`, свои темы, высота строки.
     fn sync_theme(&mut self, window: &Window) {
-        let mode = self
+        while let Ok(look) = self.looks.try_recv() {
+            self.theme.set_look(&look);
+        }
+        let os_dark = matches!(
+            window.appearance(),
+            gpui_kit::WindowAppearance::Dark | gpui_kit::WindowAppearance::VibrantDark
+        );
+        let Some(st) = self
             .core
             .as_ref()
             .and_then(|c| c.state().ext.get::<crate::UiState>())
-            .and_then(|u| u.theme)
-            .unwrap_or_default();
-        let dark = match mode {
-            crate::ThemeMode::Dark => true,
-            crate::ThemeMode::Light => false,
-            crate::ThemeMode::System => matches!(
-                window.appearance(),
-                gpui_kit::WindowAppearance::Dark | gpui_kit::WindowAppearance::VibrantDark
-            ),
+        else {
+            return;
         };
-        let want = if dark {
-            crate::color::Theme::Dark
-        } else {
-            crate::color::Theme::Light
-        };
-        if self.theme.tokens.theme() != want {
-            self.theme.tokens.set_theme(want);
-        }
+        self.theme
+            .sync(&st.theme, os_dark, &st.user_themes, st.density);
     }
 
     /// Шаг сценария `--bench` на кадре: команды, размер окна, простой или отчёт и выход.
@@ -840,6 +846,12 @@ impl CoreHost {
 
     fn activation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if window.is_window_active() {
+            // Свои темы правили снаружи — перечитать, если mtime каталога изменился (T-01-4).
+            self.run(
+                Command::new("ui.theme.reload").arg("if_changed", true),
+                window,
+                cx,
+            );
             return;
         }
         if let Some(core) = self.core.as_ref() {
@@ -1050,12 +1062,31 @@ impl Render for CoreHost {
             .get::<crate::UiState>()
             .and_then(crate::menu::open_id)
             .map(str::to_owned);
-        let dark = self.theme.tokens.theme() == crate::color::Theme::Dark;
+        let dark = self.theme.generation();
         let content = match &open {
             Some(id) => self.menu.bar(id, &self.theme, &click),
             // Табы — без кэша: в их пустом месте зона перетаскивания окна, а кэш gpui
             // `WindowControlArea` не повторяет.
             None => chrome::panel_tabs(s, &self.theme, &click),
+        };
+        // Контекст (T-01-5): полоса 3 px сверху окна и метка в заголовке; не отключается.
+        let content = match self.context {
+            Some(ctx) => {
+                let (role, key) = match ctx {
+                    crate::sys::Context::Admin => (Role::ContextAdmin, "ui-context-admin"),
+                    crate::sys::Context::Remote => (Role::ContextRemote, "ui-context-remote"),
+                };
+                root = root.child(div().h(px(3.0)).flex_none().bg(self.theme.c(role)));
+                content.child(
+                    div()
+                        .flex_none()
+                        .px(px(8.0))
+                        .text_size(px(self.theme.m(Metric::TypeCaption)))
+                        .text_color(self.theme.c(role))
+                        .child(i18n.get(key)),
+                )
+            }
+            None => content,
         };
         root = root.child(chrome::titlebar(
             content,

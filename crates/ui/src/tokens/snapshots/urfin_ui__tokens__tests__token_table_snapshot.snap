@@ -2,43 +2,50 @@
 source: crates/ui/src/tokens/tests.rs
 expression: table(&t)
 ---
-accent.fill            #0061AD    #5BABFF
-accent.fill.hover      #E60061AD  #E65BABFF
-accent.fill.pressed    #CC0061AD  #CC5BABFF
-accent.text            #004B87    #90C5FF
-accent.on              #FFFFFF    #000000
-accent.subtle          #1F0078D4  #295BABFF
-text.primary           #E4000000  #FFFFFF
-text.secondary         #9E000000  #C5FFFFFF
-text.tertiary          #72000000  #8BFFFFFF
-text.disabled          #5C000000  #5DFFFFFF
-bg.base                #F3F3F3    #202020
-bg.base.alt            #EEEEEE    #1C1C1C
-layer.panel            #FFFFFF    #272727
-layer.overlay          #F9F9F9    #2C2C2C
-fill.subtle.hover      #09000000  #0FFFFFFF
-fill.subtle.pressed    #06000000  #0AFFFFFF
-fill.cursor            #0F000000  #15FFFFFF
-fill.cursor.passive    #06000000  #0AFFFFFF
-fill.control           #B3FFFFFF  #0FFFFFFF
-fill.control.input     #FFFFFF    #1E1E1E
-stroke.card            #0F000000  #19000000
-stroke.control         #0F000000  #12FFFFFF
-stroke.control.bottom  #72000000  #8BFFFFFF
-stroke.strong          #72000000  #8BFFFFFF
-stroke.divider         #14000000  #15FFFFFF
-shadow.overlay         #24000000  #42000000
-critical.fg            #C42B1C    #FF99A4
-critical.bg            #FDE7E9    #442726
-caution.fg             #9D5D00    #FCE100
-caution.bg             #FFF4CE    #433519
-success.fg             #0F7B0F    #6CCB5F
-success.bg             #DFF6DD    #393D1B
-info.bg                #80F6F6F6  #08FFFFFF
-type.archive           #8764B8    #C6B1E8
-type.exec              #0F7B0F    #6CCB5F
-type.temp              #9D5D00    #FCE100
-type.muted             #72000000  #8BFFFFFF
+accent.fill            #0061AD
+accent.fill.hover      #E60061AD
+accent.fill.pressed    #CC0061AD
+accent.text            #0061AD
+accent.on              #FFFFFF
+accent.subtle          #1F0061AD
+text.primary           #1B1B1B
+text.secondary         #5F5F5F
+text.tertiary          #5F5F5F
+text.disabled          #9B9B9B
+bg.base                #E9E9E9
+bg.base.alt            #EEEEEE
+layer.panel            #F4F4F4
+layer.overlay          #F4F4F4
+fill.subtle.hover      #0A1B1B1B
+fill.subtle.pressed    #0F1B1B1B
+fill.cursor            #C8DAE7
+fill.cursor.passive    #80C8DAE7
+fill.control           #F4F4F4
+fill.control.input     #F4F4F4
+stroke.card            #DCDCDC
+stroke.control         #DCDCDC
+stroke.control.bottom  #5F5F5F
+stroke.strong          #5F5F5F
+stroke.divider         #DCDCDC
+shadow.overlay         #24000000
+critical.fg            #B5402F
+critical.bg            #EBDBD8
+caution.fg             #9C6311
+caution.bg             #E8E0D4
+success.fg             #2E7D32
+success.bg             #D8E3D9
+info.bg                #EEEEEE
+type.archive           #7B4FB0
+type.exec              #2E7D32
+type.temp              #9C6311
+type.muted             #5F5F5F
+header                 #EEEEEE
+cursor.text            #1B1B1B
+current_line           #ECECEC
+highlight              #F2E3A0
+modified               #B5402F
+context.admin          #B5402F
+context.remote         #A86A12
 space.xxs              2
 space.xs               4
 space.s                8

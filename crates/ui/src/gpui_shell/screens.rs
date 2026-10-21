@@ -28,9 +28,38 @@ const SCENES: &[Scene] = &[
         name: "files",
         steps: &[],
     },
+    // Темы (D-01, №59): имена — как у снимков docs/design/screens/theme-*.png.
+    Scene {
+        name: "theme-system-light",
+        steps: &["ui.theme.set id=system-light"],
+    },
+    Scene {
+        name: "theme-system-dark",
+        steps: &["ui.theme.set id=system-dark"],
+    },
+    Scene {
+        name: "theme-blue",
+        steps: &["ui.theme.set id=blue"],
+    },
+    Scene {
+        name: "theme-turquoise",
+        steps: &["ui.theme.set id=turquoise"],
+    },
+    Scene {
+        name: "theme-grass",
+        steps: &["ui.theme.set id=grass"],
+    },
+    Scene {
+        name: "theme-sepia",
+        steps: &["ui.theme.set id=sepia"],
+    },
     Scene {
         name: "marked",
-        steps: &["sel.add mask=\"*.md;*.pdf;*.jpg\"", "panel.cursor.down n=3"],
+        steps: &[
+            "ui.theme.follow_os",
+            "sel.add mask=\"*.md;*.pdf;*.jpg\"",
+            "panel.cursor.down n=3",
+        ],
     },
     Scene {
         name: "brief",
@@ -81,12 +110,12 @@ const SCENES: &[Scene] = &[
         steps: &["panel.mode mode=tree"],
     },
     Scene {
-        name: "dark",
-        steps: &["panel.mode mode=files", "ui.theme mode=dark"],
-    },
-    Scene {
         name: "narrow",
-        steps: &["ui.theme mode=light", "resize 720x600"],
+        steps: &[
+            "panel.mode mode=files",
+            "ui.theme.set id=system-light",
+            "resize 720x600",
+        ],
     },
     Scene {
         name: "multi-rename",

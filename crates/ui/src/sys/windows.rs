@@ -13,16 +13,23 @@ use windows_sys::Win32::Graphics::Gdi::{
     COLOR_GRAYTEXT, COLOR_HIGHLIGHT, COLOR_HIGHLIGHTTEXT, COLOR_HOTLIGHT, COLOR_WINDOW,
     COLOR_WINDOWTEXT, GetSysColor,
 };
+use windows_sys::Win32::Security::{
+    GetTokenInformation, TOKEN_ELEVATION, TOKEN_QUERY, TokenElevation,
+};
 use windows_sys::Win32::System::Registry::{
     HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_NOTIFY, REG_NOTIFY_CHANGE_LAST_SET,
     RRF_RT_REG_BINARY, RRF_RT_REG_DWORD, RRF_RT_REG_SZ, RegGetValueW, RegNotifyChangeKeyValue,
     RegOpenKeyExW,
 };
-use windows_sys::Win32::System::Threading::{CreateEventW, INFINITE, WaitForMultipleObjects};
+use windows_sys::Win32::System::Threading::{
+    CreateEventW, GetCurrentProcess, INFINITE, OpenProcessToken, WaitForMultipleObjects,
+};
 use windows_sys::Win32::UI::Accessibility::{HCF_HIGHCONTRASTON, HIGHCONTRASTW};
-use windows_sys::Win32::UI::WindowsAndMessaging::{SPI_GETHIGHCONTRAST, SystemParametersInfoW};
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    GetSystemMetrics, SM_REMOTESESSION, SPI_GETHIGHCONTRAST, SystemParametersInfoW,
+};
 
-use super::{BackdropCaps, FontFiles, HcColors, Look};
+use super::{Context, FontFiles, HcColors, Look, ThemePolicyRaw};
 use crate::accent::AccentPalette;
 
 const PERSONALIZE: &str = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
@@ -30,9 +37,6 @@ const ACCENT: &str = r"Software\Microsoft\Windows\CurrentVersion\Explorer\Accent
 const DWM: &str = r"Software\Microsoft\Windows\DWM";
 const HIGH_CONTRAST: &str = r"Control Panel\Accessibility\HighContrast";
 const FONTS: &str = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts";
-const VERSION: &str = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion";
-/// Первая сборка Windows 11 с `DWMWA_SYSTEMBACKDROP_TYPE` (22H2).
-const MICA_BUILD: u32 = 22_621;
 
 fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
@@ -96,8 +100,6 @@ fn reg_string(root: HKEY, key: &str, value: &str) -> Option<String> {
 pub(super) fn look() -> Look {
     let light =
         reg_dword(HKEY_CURRENT_USER, PERSONALIZE, "AppsUseLightTheme").is_none_or(|v| v != 0);
-    let transparency =
-        reg_dword(HKEY_CURRENT_USER, PERSONALIZE, "EnableTransparency").is_none_or(|v| v != 0);
     let accent = reg_raw(
         HKEY_CURRENT_USER,
         ACCENT,
@@ -115,10 +117,50 @@ pub(super) fn look() -> Look {
             crate::color::Theme::Dark
         }),
         accent,
-        transparency,
         high_contrast,
         hc: high_contrast.then(hc_colors),
     }
+}
+
+/// Политика тем (T-01-5): `HKLM\Software\Policies\Aahz\Urfin`, `Theme` и `ThemeLocked`.
+pub(super) fn theme_policy() -> ThemePolicyRaw {
+    const KEY: &str = r"Software\Policies\Aahz\Urfin";
+    ThemePolicyRaw {
+        theme: reg_string(HKEY_LOCAL_MACHINE, KEY, "Theme").filter(|t| !t.trim().is_empty()),
+        locked: reg_dword(HKEY_LOCAL_MACHINE, KEY, "ThemeLocked").is_some_and(|v| v != 0),
+    }
+}
+
+/// Контекст окна (T-01-5): повышенные права важнее удалённого сеанса.
+pub(super) fn context() -> Option<Context> {
+    if elevated() {
+        return Some(Context::Admin);
+    }
+    // SAFETY: без указателей.
+    (unsafe { GetSystemMetrics(SM_REMOTESESSION) } != 0).then_some(Context::Remote)
+}
+
+fn elevated() -> bool {
+    let mut token: HANDLE = std::ptr::null_mut();
+    // SAFETY: псевдохэндл текущего процесса; выходной — локальный.
+    if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &raw mut token) } == 0 {
+        return false;
+    }
+    let mut e = TOKEN_ELEVATION { TokenIsElevated: 0 };
+    let mut len = 0u32;
+    // SAFETY: структура своего размера, токен открыт выше.
+    let ok = unsafe {
+        GetTokenInformation(
+            token,
+            TokenElevation,
+            (&raw mut e).cast(),
+            u32::try_from(size_of::<TOKEN_ELEVATION>()).unwrap_or(0),
+            &raw mut len,
+        )
+    };
+    // SAFETY: токен открыт выше и больше не нужен.
+    unsafe { windows_sys::Win32::Foundation::CloseHandle(token) };
+    ok != 0 && e.TokenIsElevated != 0
 }
 
 fn hc_colors() -> HcColors {
@@ -148,15 +190,6 @@ fn high_contrast() -> bool {
     let ok =
         unsafe { SystemParametersInfoW(SPI_GETHIGHCONTRAST, hc.cbSize, (&raw mut hc).cast(), 0) };
     ok != 0 && hc.dwFlags & HCF_HIGHCONTRASTON != 0
-}
-
-pub(super) fn backdrop() -> BackdropCaps {
-    let build = reg_string(HKEY_LOCAL_MACHINE, VERSION, "CurrentBuildNumber")
-        .and_then(|b| b.trim().parse::<u32>().ok())
-        .unwrap_or(0);
-    BackdropCaps {
-        mica: build >= MICA_BUILD,
-    }
 }
 
 fn fonts_dir() -> PathBuf {
@@ -377,7 +410,14 @@ mod tests {
 
     #[test]
     fn registry_reads() {
-        assert!(reg_string(HKEY_LOCAL_MACHINE, VERSION, "CurrentBuildNumber").is_some());
+        assert!(
+            reg_string(
+                HKEY_LOCAL_MACHINE,
+                r"SOFTWARE\Microsoft\Windows NT\CurrentVersion",
+                "CurrentBuildNumber"
+            )
+            .is_some()
+        );
         assert_eq!(
             reg_dword(HKEY_CURRENT_USER, PERSONALIZE, "NoSuchValue"),
             None

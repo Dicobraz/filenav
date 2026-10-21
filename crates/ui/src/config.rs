@@ -8,15 +8,92 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-/// Плотность строк и контролов.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Default, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Density {
-    /// 24 px.
+/// Высота строки списка (`ui.density`, №59): 20 / 24 / 28 px. В TOML — число;
+/// старые `compact`/`standard` (S2) читаются как 24/28.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct Density(u8);
+
+impl Density {
+    pub const VALUES: [u8; 3] = [20, 24, 28];
+
+    /// Ближайшая допустимая высота.
+    pub fn new(px: i64) -> Density {
+        let px = Self::VALUES
+            .into_iter()
+            .min_by_key(|v| (i64::from(*v) - px).abs())
+            .unwrap_or(24);
+        Density(px)
+    }
+
+    pub fn px(self) -> u8 {
+        self.0
+    }
+}
+
+impl Default for Density {
+    fn default() -> Self {
+        Density(24)
+    }
+}
+
+impl<'de> Deserialize<'de> for Density {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Raw {
+            Px(i64),
+            Name(String),
+        }
+        match Raw::deserialize(d)? {
+            Raw::Px(px) => Ok(Density::new(px)),
+            Raw::Name(n) => match n.to_ascii_lowercase().as_str() {
+                "compact" => Ok(Density(24)),
+                "standard" => Ok(Density(28)),
+                other => other
+                    .parse::<i64>()
+                    .map(Density::new)
+                    .map_err(|_| serde::de::Error::custom(format!("density: {other:?}"))),
+            },
+        }
+    }
+}
+
+/// Иконки файлов (`ui.icons`, №59): `mono` — Segoe Fluent моно (умолч.), `color` —
+/// цветные по ролям типов, `none` — без иконок. `fluent` (S2) — то же, что `mono`.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
+pub enum IconMode {
     #[default]
-    Compact,
-    /// 32 px.
-    Standard,
+    Mono,
+    Color,
+    None,
+}
+
+impl IconMode {
+    pub const ALL: [IconMode; 3] = [IconMode::Mono, IconMode::Color, IconMode::None];
+
+    pub fn parse(s: &str) -> Option<IconMode> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "mono" | "fluent" => Some(IconMode::Mono),
+            "color" => Some(IconMode::Color),
+            "none" => Some(IconMode::None),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            IconMode::Mono => "mono",
+            IconMode::Color => "color",
+            IconMode::None => "none",
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for IconMode {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        IconMode::parse(&s).ok_or_else(|| serde::de::Error::custom(format!("icons: {s:?}")))
+    }
 }
 
 /// Переопределения цветов `[ui.tokens.light]` / `[ui.tokens.dark]`: роль → `#RRGGBB`.
@@ -44,12 +121,11 @@ pub struct ColorRule {
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct UiCfg {
-    /// `system | light | dark`.
+    /// Тема (№59): `auto` — как в ОС, или id (`system-light`, `sepia`, своя из
+    /// `themes/*.toml`); `system`/`light`/`dark` (S2) — синонимы auto/system-*.
     pub theme: String,
     /// `system | "#RRGGBB"`.
     pub accent: String,
-    /// `auto` (Mica, если прозрачность ОС включена) | `mica` | `solid` (S2-06).
-    pub backdrop: String,
     /// `auto | dx12 | warp | vulkan` (S0-decisions №50; Windows). Действует при
     /// следующем запуске окна.
     pub renderer: String,
@@ -60,8 +136,7 @@ pub struct UiCfg {
     pub font_mono: String,
     pub font_mono_size: f32,
     pub fallback_fonts: Vec<String>,
-    /// `fluent | none` (S2-04).
-    pub icons: String,
+    pub icons: IconMode,
     pub density: Density,
     /// `auto | iso` (S2-08).
     pub date_format: String,
@@ -81,17 +156,16 @@ pub struct UiCfg {
 impl Default for UiCfg {
     fn default() -> Self {
         Self {
-            theme: "system".into(),
+            theme: "auto".into(),
             accent: "system".into(),
-            backdrop: "auto".into(),
             renderer: "auto".into(),
             font_ui: "system".into(),
             font_ui_size: 14.0,
             font_mono: "system".into(),
             font_mono_size: 13.0,
             fallback_fonts: Vec::new(),
-            icons: "fluent".into(),
-            density: Density::Compact,
+            icons: IconMode::Mono,
+            density: Density::default(),
             date_format: "auto".into(),
             keybar: true,
             animations: false,
@@ -123,7 +197,13 @@ fg = "@accent.text"
 "##;
         let cfg: UiCfg = toml::from_str(text).unwrap();
         assert_eq!(cfg.theme, "dark");
-        assert_eq!(cfg.density, Density::Standard);
+        assert_eq!(cfg.density.px(), 28, "standard (S2) → 28");
+        let d = |t: &str| toml::from_str::<UiCfg>(t).unwrap().density.px();
+        assert_eq!((d("density = 20"), d("density = 27"), d("")), (20, 28, 24));
+        let i = |t: &str| toml::from_str::<UiCfg>(t).unwrap().icons;
+        assert_eq!(i("icons = \"fluent\""), IconMode::Mono);
+        assert_eq!(i("icons = \"color\""), IconMode::Color);
+        assert!(toml::from_str::<UiCfg>("icons = \"neon\"").is_err());
         assert_eq!(cfg.tokens.light["accent.fill"], "#0067C0");
         assert_eq!(cfg.colors.len(), 1, "`highlight` — синоним `colors`");
         assert_eq!(cfg.font_ui_size, 14.0);

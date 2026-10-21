@@ -290,8 +290,13 @@ pub(crate) fn vfs_services(config: &Config) -> Services {
 
 /// Handlers сессий поверх core: ui, vfs, ops (keymap регистрируется последним — ему
 /// нужен полный реестр команд).
-pub(crate) fn register_handlers(core: &mut Core, config: &Config, paths: Option<&Paths>) {
-    urfin_ui::register(core);
+pub(crate) fn register_handlers(
+    core: &mut Core,
+    config: &Config,
+    paths: Option<&Paths>,
+    ui_env: urfin_ui::ThemeEnv,
+) {
+    urfin_ui::register_with(core, ui_env);
     urfin_vfs::register(core, Arc::new(VfsRegistry::with_local()), vfs_cfg(config));
     let (ops, warning) = config.section::<urfin_ops::OpsConfig>("ops");
     if let Some(w) = warning {
@@ -392,7 +397,12 @@ fn smoke(
     boot.crashed_last_time = crashed;
     let smoke_config = boot.config.clone();
     let mut core = Core::new(boot, demo_services(), Arc::new(NoWake));
-    register_handlers(&mut core, &smoke_config, None);
+    register_handlers(
+        &mut core,
+        &smoke_config,
+        None,
+        urfin_ui::ThemeEnv::default(),
+    );
     let _ = urfin_keymap::register(
         &mut core,
         Paths::in_dir(scratch.join("keymap")),

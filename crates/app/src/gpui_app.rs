@@ -38,13 +38,16 @@ pub fn run(launch: Launch) {
     let services = crate::vfs_services(&boot.config);
     let (config, paths) = (boot.config.clone(), boot.paths.clone());
     let (signal, wake) = Signal::new();
+    // Тема, акцент, шрифты, политика и контекст ОС — до окна (S2 §1.5, T-01).
+    let probe = urfin_ui::sys::probe_system();
+    let ui_env = theme_env(&probe, &paths, screens.is_some());
     let mut core = {
         let _s = tracing::info_span!("startup.core").entered();
         let t = Instant::now();
         let mut core = Core::new(boot, services, signal.clone());
         // `--screens`: без журналов job — сцены не должны зависеть от прошлых прогонов.
         let jpaths = screens.is_none().then_some(&paths);
-        crate::register_handlers(&mut core, &config, jpaths);
+        crate::register_handlers(&mut core, &config, jpaths, ui_env);
         startup.core = t.elapsed();
         core
     };
@@ -55,7 +58,12 @@ pub fn run(launch: Launch) {
     }
     let keys = urfin_keymap::register(&mut core, paths, cfg, FlagRegistry::with_builtin());
     let (ui_cfg, _) = config.section::<urfin_ui::config::UiCfg>("ui");
-    let theme = gpui_shell::Theme::new(&urfin_ui::sys::probe_system(), &ui_cfg);
+    let theme = gpui_shell::Theme::new(&probe, &ui_cfg);
+    let context = if screens.is_none() {
+        probe.context
+    } else {
+        None
+    };
     for c in open {
         core.dispatch(c);
     }
@@ -122,6 +130,7 @@ pub fn run(launch: Launch) {
             screens: screens.inspect(|d| {
                 let _ = std::fs::create_dir_all(d);
             }),
+            context,
         },
         geom,
     );
@@ -143,5 +152,24 @@ fn open_demo_tree(core: &mut Core) {
             eprintln!("screens: demo tree: {e}");
             std::process::exit(1);
         }
+    }
+}
+
+/// Свои темы (`<config_dir>/themes`) и политика организации (T-01). `--screens` —
+/// без них: сцены одинаковы на любой машине.
+fn theme_env(
+    probe: &urfin_ui::sys::SysProbe,
+    paths: &urfin_core::Paths,
+    screens: bool,
+) -> urfin_ui::ThemeEnv {
+    if screens {
+        return urfin_ui::ThemeEnv::default();
+    }
+    urfin_ui::ThemeEnv {
+        dir: Some(paths.config_dir.join("themes")),
+        policy: urfin_ui::ThemePolicy {
+            theme: probe.policy.theme.as_deref().map(Into::into),
+            locked: probe.policy.locked,
+        },
     }
 }
