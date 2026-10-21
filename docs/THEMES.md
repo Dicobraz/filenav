@@ -18,7 +18,7 @@ syntax = { keyword="#1F5FA8", string="#8A4B12", number="#6A3FA0", comment="#5F6B
 frame="#1C1C1C" panel="#262626" header="#2B2B2B" text="#F2F2F2" secondary="#B8B8B8"
 accent="#6CC4F2" cursor="#24557A" cursor_text="#FFFFFF" border="#3C3C3C"
 current_line="#2E2E2E" highlight="#5C4A1C"
-modified="#FFB86C" exec="#8FD98A" archive="#C9B4FF" context_admin="#FF8A7A" context_remote="#FFC46B" warning_bg="#3D3220" danger_bg="#402622"
+modified="#FF8A7A" exec="#8FD98A" archive="#C9B4FF" context_admin="#FF8A7A" context_remote="#FFC46B" warning_bg="#3D3220" danger_bg="#402622"
 syntax = { keyword="#7FB8F0", string="#E3B07A", number="#C9B4FF", comment="#949494" }
 
 [blue]
