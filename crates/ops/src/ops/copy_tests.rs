@@ -1709,6 +1709,7 @@ fn bench_small_files() {
             let f = crate::sys::fs::CopyFlags {
                 excl: true,
                 symlink: false,
+                no_buffering: false,
             };
             crate::sys::fs::copy_file(s, d, f, &mut |_| true)
         }),
@@ -1795,4 +1796,139 @@ fn copy_keeps_zone_identifier_both_engines() {
             assert_eq!(mtime(&p), old(1_500_000_000), "{small:?} {n}");
         }
     }
+}
+
+// --- S5-16: крупные файлы ---
+
+/// Замер S5-16 (бенч #5): крупный файл — `CopyFileExW` с кэшем и
+/// `COPY_FILE_NO_BUFFERING`. `URFIN_BENCH_MB` — размер в мегабайтах (4096).
+/// `cargo nextest run --release -p urfin-ops bench_large --run-ignored only --no-capture`.
+#[test]
+#[ignore = "замер на стенде: файл в гигабайты"]
+fn bench_large_file() {
+    use std::io::Write as _;
+    let mb: usize = std::env::var("URFIN_BENCH_MB")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(4096);
+    let d = tmp();
+    let src = d.path().join("big.bin");
+    {
+        let mut f =
+            std::io::BufWriter::with_capacity(8 << 20, std::fs::File::create(&src).unwrap());
+        let chunk = bytes(1 << 20, 11);
+        for _ in 0..mb {
+            f.write_all(&chunk).unwrap();
+        }
+        f.into_inner().unwrap().sync_all().unwrap();
+    }
+    let total = (mb as u64) << 20;
+    for round in 0..3 {
+        for nb in [false, true] {
+            let dst = d.path().join(format!("copy-{round}-{nb}.bin"));
+            let t0 = Instant::now();
+            crate::sys::fs::copy_file(
+                &src,
+                &dst,
+                crate::sys::fs::CopyFlags {
+                    excl: true,
+                    symlink: false,
+                    no_buffering: nb,
+                },
+                &mut |_| true,
+            )
+            .unwrap();
+            // Данные на устройстве: без этого кэш скрывает запись.
+            std::fs::OpenOptions::new()
+                .write(true)
+                .open(&dst)
+                .unwrap()
+                .sync_all()
+                .unwrap();
+            let dt = t0.elapsed().as_secs_f64();
+            #[allow(clippy::cast_precision_loss, reason = "замер")]
+            let mbs = total as f64 / dt / 1_048_576.0;
+            eprintln!(
+                "large {mb} MiB round {round}: {} {mbs:.0} MiB/s",
+                if nb { "NO_BUFFERING" } else { "cached      " }
+            );
+            std::fs::remove_file(&dst).unwrap();
+        }
+    }
+}
+
+/// Приёмка S5-16: мимо кэша (`no_buffering`) нечётные размеры — 0, 1 байт,
+/// сектор ±1, страница ±1, мегабайт ±1 — копируются побайтно и со временем.
+/// 4 ГБ + 1 — в `bench_large_file` (на стенде гигабайты не пишем в каждом прогоне).
+#[test]
+fn unbuffered_odd_sizes_are_identical() {
+    let d = tmp();
+    let (src, dst) = (d.path().join("s"), d.path().join("d"));
+    let sizes = [
+        0usize,
+        1,
+        511,
+        512,
+        513,
+        4095,
+        4096,
+        4097,
+        (1 << 20) - 1,
+        (1 << 20) + 1,
+    ];
+    let names: Vec<String> = sizes.iter().map(|n| format!("f{n}.bin")).collect();
+    for (n, name) in sizes.iter().zip(&names) {
+        write(&src.join(name), &bytes(*n, *n as u64), old(1_500_000_000));
+    }
+    std::fs::create_dir(&dst).unwrap();
+    let items: Vec<&str> = names.iter().map(String::as_str).collect();
+    let mut t = transfer(Mode::Copy, &src, &items, &dst, None, OpOptions::default());
+    // Все — «крупные»: мимо кэша; через временный файл (крупнее small_file не все,
+    // поэтому small_file тоже 0).
+    t.strategy.large = 0;
+    t.small = 0;
+    let mut h = H::new(64);
+    let r = run(&mut h, t);
+    assert_eq!(done(&r).items, sizes.len() as u64);
+    assert_eq!(snapshot(&dst), snapshot(&src));
+}
+
+/// Приёмка S5-16: пауза крупного файла мимо кэша — не позже 100 мс работа
+/// перестаёт писать (колбэк между чанками).
+#[test]
+fn unbuffered_pause_within_100ms() {
+    let d = tmp();
+    let (src, dst) = (d.path().join("s"), d.path().join("d"));
+    write(
+        &src.join("big.bin"),
+        &bytes(256 << 20, 3),
+        old(1_500_000_000),
+    );
+    std::fs::create_dir(&dst).unwrap();
+    let mut t = transfer(
+        Mode::Copy,
+        &src,
+        &["big.bin"],
+        &dst,
+        None,
+        OpOptions::default(),
+    );
+    t.strategy.large = 0;
+    let mut h = H::new(64);
+    let id = h.start(1, t);
+    h.pump_until("copy started", |h| snap(h, id).bytes_done > 0);
+    h.cmd("job.pause", id);
+    let t0 = Instant::now();
+    // Пауза видна в колбэке следующего чанка: через 100 мс байты больше не растут.
+    std::thread::sleep(Duration::from_millis(100));
+    let at = snap(&h, id).bytes_done;
+    std::thread::sleep(Duration::from_millis(300));
+    let later = snap(&h, id).bytes_done;
+    let total = 64u64 << 20;
+    if at < total {
+        assert_eq!(later, at, "still writing {:?} after pause", t0.elapsed());
+    }
+    h.cmd("job.resume", id);
+    assert!(matches!(h.wait_done(id), JobState::Done(_)));
+    assert_eq!(hash(&dst.join("big.bin")), hash(&src.join("big.bin")));
 }
