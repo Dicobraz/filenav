@@ -92,7 +92,7 @@ body{margin:0}
 <sc-if value="{{dmBarOn}}" hint-placeholder-val="{{ false }}">
 <div style="{{dmBar}}" role="group" aria-label="Дубликаты">
 <span style="display: inline-flex; color: {{t.a}}"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 1.5h5l2.5 2.5v8h-7.5z M10.5 1.5v2.5h2.5" fill="none" stroke="currentColor" stroke-width="1.1"></path><path d="M3.5 4.5v10h7" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></span>
-<span>9 групп, хэшем проверены 3 · отмечено 10 · <span style="font-weight: 600">освободится 0,7 ГБ</span></span>
+<span>9 групп, хэшем проверены 3 · отмечено 4 · <span style="font-weight: 600">освободится 536 МБ</span></span>
 <button type="button" style="margin-left: 8px; {{btnPrimary}}">Проверить хэшем 6 групп <span style="font-size: 11px; opacity: 0.8">Ctrl+H</span></button>
 <button type="button" style="{{btn}}">В Корзину <span style="font-size: 11px; color: {{t.s}}">F8</span></button>
 </div>
@@ -2262,7 +2262,7 @@ const D = [["LLVM-19.1.7-win64.exe","362 МБ",1,[["C:\\Dev","14.01.25 11:02"],[
 D.forEach((g, gi) => {
 const kk = /\.exe$/.test(g[0]) ? "x" : /\.(7z|zip)$/.test(g[0]) ? "a" : "f";
 rowsL.push(mk({ name: g[0], k: kk, sub: g[3].length + " копии", badge: g[2] ? "✓ совпадает по хэшу" : "только размер", ok: !!g[2], size: g[1], bold: true }));
-g[3].forEach((m, mi) => rowsL.push(mk({ name: m[0], k: "d", ind: 22, date: m[1], m: mi > 0, c: gi === 0 && mi === 1 })));
+g[3].forEach((m, mi) => rowsL.push(mk({ name: m[0], k: "d", ind: 22, date: m[1], m: mi > 0 && !!g[2], c: gi === 0 && mi === 1 })));
 });
 rowsL.forEach((r) => { if (r.isDir && r.name.indexOf("C:\\") === 0) { r.nameSt = r.nameSt.replace("font-weight: 500", "font-weight: 400"); } });
 } else {
