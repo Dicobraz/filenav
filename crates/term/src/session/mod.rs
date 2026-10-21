@@ -14,11 +14,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crossbeam_channel::{Sender, unbounded};
-use urfin_core::{CancelToken, Cx, Msg, MsgSink, Runtime};
+use urfin_core::{CancelToken, Cx, Msg, MsgSink};
 
 pub use scan::{CwdSource, OscEvent};
 
-use crate::TermState;
 use crate::sys::conpty::{self, ExitWatch, PtyControl, PtySize, SpawnSpec};
 use crate::vt::shared::{TermShared, VtListener};
 
@@ -193,8 +192,12 @@ const EXIT_WAIT: Duration = Duration::from_secs(1);
 
 impl Session {
     /// Запустить процесс и потоки сеанса (`term-r-<id>`, `term-w-<id>`).
+    ///
+    /// Потоки — обычные `std::thread`, не `Runtime::spawn_dedicated`: reader спит
+    /// в `ReadFile`, пока жива псевдоконсоль, и shutdown Core ждал бы его до
+    /// таймаута (как hub vfs). При выходе процесса `ConPTY` закрывается вместе с
+    /// хэндлами, shell получает закрытие консоли.
     pub fn start(
-        rt: &Runtime,
         id: SessionId,
         spec: &SpawnSpec,
         opts: &SessionOpts,
@@ -208,7 +211,9 @@ impl Session {
             control: control.clone(),
         };
         let spawn = |name: String, f: Box<dyn FnOnce() + Send>| {
-            rt.spawn_dedicated(name, rt.token(), move |_| f());
+            if let Err(e) = std::thread::Builder::new().name(name).spawn(f) {
+                tracing::error!(error = %e, "term: thread");
+            }
         };
         let p = start_pipeline(
             &spawn,
@@ -278,7 +283,7 @@ impl Drop for Session {
     }
 }
 
-/// Событие сеанса как `Msg`: копится в `TermState::inbox` до разбора (S6-10).
+/// Событие сеанса как `Msg`: разбирает менеджер сеансов.
 #[derive(Debug)]
 pub struct SessionMsg {
     pub id: SessionId,
@@ -291,9 +296,7 @@ impl Msg for SessionMsg {
     }
 
     fn apply(self: Box<Self>, cx: &mut Cx<'_>) {
-        if let Some(st) = cx.state.ext.get_mut::<TermState>() {
-            st.inbox.push((self.id, self.event));
-        }
+        crate::manager::on_session_event(cx, self.id, self.event);
     }
 }
 
