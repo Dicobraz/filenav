@@ -103,7 +103,7 @@ body{margin:0}
 <sc-if value="{{r.isFile}}" hint-placeholder-val="{{ true }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z M9.5 1.5v3h3" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></sc-if>
 </span>
 </sc-if>
-<span style="overflow: hidden; text-overflow: ellipsis">{{r.n1}}<span style="{{r.hlStyle}}">{{r.n2}}</span>{{r.n3}}</span>
+<span style="overflow: hidden; text-overflow: ellipsis">{{r.n1}}<span style="{{r.hlStyle}}">{{r.n2}}</span>{{r.n3}}</span><sc-if value="{{r.renameTo}}" hint-placeholder-val="{{ false }}"><span style="color: {{t.s}}; font-weight: 400">→</span><span style="{{r.toStyle}}">{{r.renameTo}}</span></sc-if><sc-if value="{{r.tag}}" hint-placeholder-val="{{ false }}"><span style="{{r.tagStyle}}">{{r.tag}}</span></sc-if>
 </span>
 <span style="width: 92px; text-align: right">{{r.size}}</span>
 <sc-if value="{{pn.packedCol}}" hint-placeholder-val="{{ false }}"><span style="width: 80px; text-align: right; color: {{r.dateColor}}">{{r.packed}}</span></sc-if>
@@ -363,7 +363,7 @@ body{margin:0}
 </label>
 <label style="display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" checked="{{ true }}" readOnly="{{ true }}">Сохранять даты</label>
 <label style="display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" readOnly="{{ true }}">Проверить хэш после копирования</label>
-<div style="margin-left: auto; display: flex; gap: 8px">
+<div style="margin-left: 8px; display: flex; gap: 8px">
 <button type="button" style="{{btnPrimary}}">Копировать <span style="opacity: 0.8; font-size: 11px">Enter</span></button>
 <button type="button" style="{{btn}}">В фоне <span style="color: {{t.s}}; font-size: 11px">Shift+Enter</span></button>
 <button type="button" style="{{btn}}">Отмена <span style="color: {{t.s}}; font-size: 11px">Esc</span></button>
@@ -408,10 +408,40 @@ body{margin:0}
 <div style="display: flex; align-items: center; gap: 16px">
 <label style="display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" readOnly="{{ true }}">Регистр</label>
 <label style="display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" readOnly="{{ true }}">И папки</label>
-<div style="margin-left: auto; display: flex; gap: 8px">
+<div style="margin-left: 0; display: flex; gap: 8px">
 <button type="button" style="{{btnPrimary}}">Отметить <span style="opacity: 0.8; font-size: 11px">Enter</span></button>
 <button type="button" style="{{btn}}">Отмена <span style="color: {{t.s}}; font-size: 11px">Esc</span></button>
 </div>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{isRename}}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; left: 0; right: calc(50% + 0.5px); bottom: 0; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; background: {{t.h}}; border-top: 2px solid {{t.a}}">
+<div style="display: flex; align-items: center; gap: 10px">
+<span style="display: inline-flex; color: {{t.s}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 12.5h8 M11.5 2.5l2 2-6 6H5.5v-2z" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></span>
+<label for="mr-tpl" style="font-weight: 500; white-space: nowrap">Новые имена</label>
+<input id="mr-tpl" value="[N]_[C:1:1:2].[E]" style="flex: 1; min-width: 0; font-family: 'Cascadia Mono', Consolas, monospace; {{inputStyle}}">
+<span style="color: {{t.s}}; font-size: 12px; white-space: nowrap">изменится 3 · проблем 0</span>
+</div>
+<div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap">
+<sc-for list="{{tplChips}}" as="tc" hint-placeholder-count="5"><button type="button" style="{{chipOff}}"><span style="font-family: 'Cascadia Mono', Consolas, monospace">{{tc.k}}</span> <span style="color: {{t.s}}">{{tc.v}}</span></button></sc-for>
+<div style="margin-left: 8px; display: flex; gap: 8px">
+<button type="button" style="{{btnPrimary}}">Переименовать <span style="opacity: 0.8; font-size: 11px">Enter</span></button>
+<button type="button" style="{{btn}}">Отмена <span style="color: {{t.s}}; font-size: 11px">Esc</span></button>
+</div>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{isCmp}}" hint-placeholder-val="{{ false }}">
+<div style="position: absolute; left: 0; right: 0; bottom: 0; padding: 10px 14px; display: flex; align-items: center; gap: 10px; background: {{t.h}}; border-top: 2px solid {{t.a}}">
+<span style="display: inline-flex; color: {{t.a}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3" width="5.5" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.1"></rect><rect x="9" y="3" width="5.5" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.1"></rect><path d="M3.5 6h2 M11 6h2 M3.5 9h2" stroke="currentColor" stroke-width="1.1"></path></svg></span>
+<span style="font-weight: 500; white-space: nowrap">Сравнение папок:</span>
+<span style="white-space: nowrap">только слева 2 · только справа 1 · новее слева 1</span>
+<span style="color: {{t.s}}; white-space: nowrap">· одинаковых 1</span>
+<div style="margin-left: 8px; display: flex; gap: 8px">
+<button type="button" style="{{btnPrimary}}">Синхронизировать → <span style="opacity: 0.8; font-size: 11px">Enter</span></button>
+<button type="button" style="{{btn}}">Синхронизировать ← <span style="color: {{t.s}}; font-size: 11px">Shift+Enter</span></button>
+<button type="button" style="{{btn}}">Закрыть <span style="color: {{t.s}}; font-size: 11px">Esc</span></button>
 </div>
 </div>
 </sc-if>
@@ -423,10 +453,10 @@ body{margin:0}
 </div>
 </sc-if>
 <sc-if value="{{isDelete}}" hint-placeholder-val="{{ false }}">
-<div style="position: absolute; left: 0; right: calc(50% + 0.5px); bottom: 0; padding: 10px 14px; display: flex; align-items: center; gap: 10px; background: {{t.h}}; border-top: 2px solid {{t.k}}">
+<div style="position: absolute; left: 0; right: calc(50% + 0.5px); bottom: 0; padding: 10px 14px; display: flex; align-items: center; gap: 10px; background: {{t.dbg}}; border-top: 2px solid {{t.k}}">
 <span style="display: inline-flex; color: {{t.k}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11 M6 4V2.5h4V4 M4 4l.7 9.5h6.6L12 4 M6.5 6.5v5 M9.5 6.5v5" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></span>
 <span style="white-space: nowrap"><span style="font-weight: 500">Удалить 2 объекта</span><span style="color: {{t.s}}"> · 67,7 КБ · в Корзину</span></span>
-<div style="margin-left: auto; display: flex; gap: 8px">
+<div style="margin-left: 8px; display: flex; gap: 8px">
 <button type="button" style="{{btnDanger}}">Удалить <span style="opacity: 0.8; font-size: 11px">Enter</span></button>
 <button type="button" style="{{btn}}">Безвозвратно <span style="color: {{t.s}}; font-size: 11px">Shift+Enter</span></button>
 <button type="button" style="{{btn}}">Отмена <span style="color: {{t.s}}; font-size: 11px">Esc</span></button>
@@ -434,7 +464,7 @@ body{margin:0}
 </div>
 </sc-if>
 <sc-if value="{{isConflict}}" hint-placeholder-val="{{ false }}">
-<div style="position: absolute; left: 0; right: 0; bottom: 0; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; background: {{t.h}}; border-top: 2px solid {{t.rem}}">
+<div style="position: absolute; left: 0; right: 0; bottom: 0; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; background: {{t.wbg}}; border-top: 2px solid {{t.rem}}">
 <div style="display: flex; align-items: center; gap: 10px">
 <span style="display: inline-flex; color: {{t.rem}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2l6.5 11.5h-13z M8 6.5v3.5 M8 11.5v.5" fill="none" stroke="currentColor" stroke-width="1.2"></path></svg></span>
 <span style="font-weight: 500">Файл уже есть в папке назначения</span>
@@ -456,6 +486,19 @@ body{margin:0}
 </div>
 </sc-if>
 </div>
+<sc-if value="{{showBanner}}" hint-placeholder-val="{{ false }}">
+<div style="height: 40px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 12px; background: {{t.wbg}}; border-top: 2px solid {{t.rem}}">
+<span style="display: inline-flex; color: {{t.rem}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.1"></circle><path d="M8 4.5V8l2.5 1.5" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></span>
+<span style="font-weight: 500">Прервано при выходе:</span>
+<span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">Копировать big.bin → D:\backup\b</span>
+<span style="color: {{t.s}}; white-space: nowrap">выполнено ≈ 62 %</span>
+<span style="color: {{t.s}}; font-size: 12px; white-space: nowrap">· ещё 1</span>
+<div style="margin-left: 8px; display: flex; gap: 8px">
+<button type="button" style="{{btnPrimary}}">Продолжить</button>
+<button type="button" style="{{btn}}">Очистить</button>
+</div>
+</div>
+</sc-if>
 <sc-if value="{{showJobs}}" hint-placeholder-val="{{ false }}">
 <div style="display: flex; flex-direction: column; padding: 2px 0; background: {{t.h}}; border-top: 1px solid {{t.b}}">
 <sc-for list="{{jobs}}" as="j" hint-placeholder-count="2">
@@ -487,23 +530,24 @@ body{margin:0}
 </sc-for>
 </div>
 <sc-if value="{{showToast}}" hint-placeholder-val="{{ false }}">
-<div style="position: absolute; top: 118px; right: 16px; width: 300px; box-sizing: border-box; padding: 10px 12px; background: {{t.p}}; border: 1px solid {{t.b}}; border-radius: 6px; font-size: 12.5px">
-<div style="color: {{t.t}}; margin-bottom: 3px">Копирование завершено</div>
-<div style="color: {{t.s}}">48 файлов · 1,9 ГБ · 6,2 с</div>
+<div style="position: absolute; {{toastPos}} right: 16px; width: 340px; box-sizing: border-box; padding: 10px 12px; background: {{t.p}}; border: 1px solid {{t.b}}; border-radius: 6px; font-size: 12.5px">
+<div style="color: {{t.t}}; margin-bottom: 3px">{{toast.title}}</div>
+<div style="color: {{t.s}}">{{toast.text}}</div>
+<sc-if value="{{toast.act}}" hint-placeholder-val="{{ false }}"><div style="display: flex; gap: 6px; margin-top: 8px"><sc-for list="{{toast.acts}}" as="ta" hint-placeholder-count="2"><button type="button" style="{{chipOff}}; white-space: nowrap">{{ta}}</button></sc-for></div></sc-if>
 </div>
 </sc-if>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark","blue","turquoise","grass","sepia"],"default":"light"},"screen":{"editor":"enum","options":["panels","settings-panels","settings-keys","settings-editor","terminal","termhalf","menu","context","select","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress","search","viewer","editor","settings"],"default":"panels"},"density":{"editor":"enum","options":["20","24","28"],"default":"24"},"icons":{"editor":"enum","options":["none","mono","color"],"default":"mono"},"context":{"editor":"enum","options":["none","admin","remote"],"default":"none"},"$preview":{"width":1280,"height":760}}'>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark","blue","turquoise","grass","sepia"],"default":"light"},"screen":{"editor":"enum","options":["panels","journal","multirename","compare","settings-panels","settings-keys","settings-editor","terminal","termhalf","menu","context","select","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress","search","viewer","editor","settings"],"default":"panels"},"density":{"editor":"enum","options":["20","24","28"],"default":"24"},"icons":{"editor":"enum","options":["none","mono","color"],"default":"mono"},"context":{"editor":"enum","options":["none","admin","remote"],"default":"none"},"$preview":{"width":1280,"height":760}}'>
 class Component extends DCLogic {
 renderVals() {
 const TH = {
-light: {f:"#E9E9E9",p:"#F4F4F4",h:"#EEEEEE",t:"#1B1B1B",s:"#5F5F5F",a:"#0067C0",c:"#D3E3F1",ct:"#1B1B1B",b:"#DCDCDC",k:"#B5402F",ex:"#2E7D32",ar:"#7B4FB0",cl:"#ECECEC",hl:"#F2E3A0",kw:"#1F5FA8",str:"#8A4B12",num:"#6A3FA0",com:"#5F6B76",adm:"#B5402F",rem:"#A86A12"},
-dark: {f:"#1C1C1C",p:"#262626",h:"#2B2B2B",t:"#F2F2F2",s:"#B8B8B8",a:"#6CC4F2",c:"#24557A",ct:"#FFFFFF",b:"#3C3C3C",k:"#FFB86C",ex:"#8FD98A",ar:"#C9B4FF",cl:"#2E2E2E",hl:"#5C4A1C",kw:"#7FB8F0",str:"#E3B07A",num:"#C9B4FF",com:"#949494",adm:"#FF8A7A",rem:"#FFC46B"},
-blue: {f:"#E1E9F1",p:"#EEF3F8",h:"#E8EEF4",t:"#1E2A36",s:"#5E6B78",a:"#3A6EA5",c:"#D4E3F2",ct:"#1E2A36",b:"#D3DDE8",k:"#B0452F",ex:"#2E7D4A",ar:"#7A4FA8",cl:"#E6EDF4",hl:"#F0E2A6",kw:"#2F5F96",str:"#8A4B12",num:"#6A3FA0",com:"#5E6B78",adm:"#B0452F",rem:"#A86A12"},
-turquoise: {f:"#DFEDEB",p:"#EDF5F4",h:"#E6F1EF",t:"#1D2E2D",s:"#5A7270",a:"#2C8C86",c:"#CFE9E6",ct:"#1D2E2D",b:"#CFE1DE",k:"#B0502F",ex:"#3A7D2E",ar:"#7A4FA8",cl:"#E4F0EE",hl:"#F0E2A6",kw:"#1F6F6A",str:"#8A4B12",num:"#6A3FA0",com:"#5A7270",adm:"#B0502F",rem:"#A86A12"},
-grass: {f:"#E3ECDD",p:"#EEF4EA",h:"#E8F0E3",t:"#222D1C",s:"#5F6D57",a:"#4E8A3A",c:"#DCEBCF",ct:"#222D1C",b:"#D5E0CC",k:"#A84A2C",ex:"#2C6E8F",ar:"#7A4FA8",cl:"#E6EEE1",hl:"#F0E2A6",kw:"#3E6E2E",str:"#8A4B12",num:"#2C5F8F",com:"#5F6D57",adm:"#A84A2C",rem:"#A86A12"},
-sepia: {f:"#E7DECF",p:"#F2ECE1",h:"#ECE4D7",t:"#3A3128",s:"#7A6C5C",a:"#9A6A3A",c:"#E8DCC6",ct:"#3A3128",b:"#DACFBC",k:"#A8432F",ex:"#4F7A2E",ar:"#7A4F8F",cl:"#EBE3D6",hl:"#EAD49A",kw:"#7A4A1F",str:"#5E6A2E",num:"#6A3F7A",com:"#7A6C5C",adm:"#A8432F",rem:"#9A6212"}
+light: {f:"#E9E9E9",p:"#F4F4F4",h:"#EEEEEE",t:"#1B1B1B",s:"#5F5F5F",a:"#0067C0",c:"#D3E3F1",ct:"#1B1B1B",b:"#DCDCDC",k:"#B5402F",ex:"#2E7D32",ar:"#7B4FB0",cl:"#ECECEC",hl:"#F2E3A0",kw:"#1F5FA8",str:"#8A4B12",num:"#6A3FA0",com:"#5F6B76",adm:"#B5402F",rem:"#A86A12",wbg:"#F8EBD3",dbg:"#F7E2DD"},
+dark: {f:"#1C1C1C",p:"#262626",h:"#2B2B2B",t:"#F2F2F2",s:"#B8B8B8",a:"#6CC4F2",c:"#24557A",ct:"#FFFFFF",b:"#3C3C3C",k:"#FFB86C",ex:"#8FD98A",ar:"#C9B4FF",cl:"#2E2E2E",hl:"#5C4A1C",kw:"#7FB8F0",str:"#E3B07A",num:"#C9B4FF",com:"#949494",adm:"#FF8A7A",rem:"#FFC46B",wbg:"#3D3220",dbg:"#402622"},
+blue: {f:"#E1E9F1",p:"#EEF3F8",h:"#E8EEF4",t:"#1E2A36",s:"#5E6B78",a:"#3A6EA5",c:"#D4E3F2",ct:"#1E2A36",b:"#D3DDE8",k:"#B0452F",ex:"#2E7D4A",ar:"#7A4FA8",cl:"#E6EDF4",hl:"#F0E2A6",kw:"#2F5F96",str:"#8A4B12",num:"#6A3FA0",com:"#5E6B78",adm:"#B0452F",rem:"#A86A12",wbg:"#F5EAD6",dbg:"#F4E2DE"},
+turquoise: {f:"#DFEDEB",p:"#EDF5F4",h:"#E6F1EF",t:"#1D2E2D",s:"#5A7270",a:"#2C8C86",c:"#CFE9E6",ct:"#1D2E2D",b:"#CFE1DE",k:"#B0502F",ex:"#3A7D2E",ar:"#7A4FA8",cl:"#E4F0EE",hl:"#F0E2A6",kw:"#1F6F6A",str:"#8A4B12",num:"#6A3FA0",com:"#5A7270",adm:"#B0502F",rem:"#A86A12",wbg:"#F4EAD6",dbg:"#F4E2DC"},
+grass: {f:"#E3ECDD",p:"#EEF4EA",h:"#E8F0E3",t:"#222D1C",s:"#5F6D57",a:"#4E8A3A",c:"#DCEBCF",ct:"#222D1C",b:"#D5E0CC",k:"#A84A2C",ex:"#2C6E8F",ar:"#7A4FA8",cl:"#E6EEE1",hl:"#F0E2A6",kw:"#3E6E2E",str:"#8A4B12",num:"#2C5F8F",com:"#5F6D57",adm:"#A84A2C",rem:"#A86A12",wbg:"#F3E9D4",dbg:"#F3E1DA"},
+sepia: {f:"#E7DECF",p:"#F2ECE1",h:"#ECE4D7",t:"#3A3128",s:"#7A6C5C",a:"#9A6A3A",c:"#E8DCC6",ct:"#3A3128",b:"#DACFBC",k:"#A8432F",ex:"#4F7A2E",ar:"#7A4F8F",cl:"#EBE3D6",hl:"#EAD49A",kw:"#7A4A1F",str:"#5E6A2E",num:"#6A3F7A",com:"#7A6C5C",adm:"#A8432F",rem:"#9A6212",wbg:"#EFDDBE",dbg:"#EED5CB"}
 };
 const NAMES = [["light","Системная светлая"],["dark","Системная тёмная"],["blue","Голубая"],["turquoise","Бирюза"],["grass","Травяная"],["sepia","Сепия"]];
 const st = this.state || {};
@@ -535,16 +579,19 @@ const tabs = (TABS[screen] || TABS.panels).map(([label, on, aria]) => ({ label, 
 const L = [["..","up","",""],[".github","d","","12.10.26 09:14"],["crates","d","","19.10.26 22:41"],["docs","d","","20.10.26 11:02"],["target","d","","20.10.26 13:55"],["Cargo.lock","f","58,3 КБ","20.10.26 13:50"],["Cargo.toml","m","1,2 КБ","19.10.26 22:40"],["CHANGELOG.md","f","9,4 КБ","18.10.26 17:05"],["deny.toml","f","2,0 КБ","15.10.26 10:11"],["LICENSE-APACHE","f","11,1 КБ","01.09.26 12:00"],["LICENSE-MIT","f","1,0 КБ","01.09.26 12:00"],["README.md","f","4,8 КБ","17.10.26 21:33"],["build.ps1","x","3,6 КБ","14.10.26 08:47"],["rust-toolchain.toml","f","96 Б","02.09.26 14:20"],["urfin-0.4.2.zip","a","8,9 МБ","19.10.26 23:10"],["urfin.exe","x","11,7 МБ","20.10.26 13:55"]];
 const R = [["..","up","",""],["archive","d","","03.10.26 16:22"],["clients","d","","18.10.26 12:40"],["templates","d","","11.09.26 09:05"],["budget_2027.xlsx","f","412 КБ","17.10.26 18:31"],["contract_draft.docx","f","96 КБ","16.10.26 11:47"],["logo.svg","f","6,4 КБ","22.07.26 10:00"],["meeting_notes.txt","f","2,1 КБ","20.10.26 10:15"],["presale_kit.pdf","f","3,2 МБ","14.10.26 15:58"],["report_q3.xlsx","f","88 КБ","09.10.26 19:12"],["setup.msi","x","9,7 МБ","19.10.26 23:12"],["backup_1019.7z","a","1,4 ГБ","19.10.26 02:00"]];
 const isCopy = screen === "copy";
-const marked = isCopy ? [5, 7, 11] : (screen === "delete" ? [5, 7] : []);
+const marked = isCopy ? [5, 7, 11] : (screen === "delete" ? [5, 7] : (screen === "multirename" ? [6, 7, 11] : []));
 const cur = isCopy ? 11 : (screen === "delete" ? 7 : (screen === "quick" ? 5 : 6));
 const qs = screen === "quick" ? "car" : "";
 const kindColor = {up:t.t,d:t.t,f:t.t,m:t.k,x:t.ex,a:t.ar};
-const rows = (list, c) => list.map((q, i) => {
-const kind = q[1], isC = i === c, isM = marked.indexOf(i) >= 0 && c >= 0;
+const rows = (list, c, ex) => list.map((q, i) => {
+const xe = (ex && ex[i]) || {};
+const kind = q[1], isC = i === c, isM = (marked.indexOf(i) >= 0 && c >= 0) || !!xe.m;
 const col = isC ? t.ct : (isM ? t.a : kindColor[kind]);
 const iconCol = isC ? t.ct : (iconMode === "color" ? (kind === "d" || kind === "up" ? t.a : kindColor[kind]) : t.s);
 return {
 name: q[0], size: kind === "d" ? "<DIR>" : q[2], date: q[3], packed: q[4] || "",
+renameTo: xe.to || "", toStyle: "font-weight: 500; color: " + (xe.bad ? t.k : (isC ? t.ct : t.a)), tag: xe.tag || "",
+tagStyle: "margin-left: 4px; padding: 0 6px; border-radius: 4px; border: 1px solid " + (isC ? t.ct : t.b) + "; color: " + (isC ? t.ct : t.s) + "; font-size: 11px; font-weight: 400",
 ...(() => { const nm = q[0]; if (screen === "select" && c >= 0 && /\.(toml|lock)$/i.test(nm)) return { n1: "", n2: nm, n3: "" }; if (qs && c >= 0 && nm.toLowerCase().indexOf(qs) === 0) return { n1: "", n2: nm.slice(0, qs.length), n3: nm.slice(qs.length) }; return { n1: nm, n2: "", n3: "" }; })(),
 hlStyle: "background: " + t.hl + "; color: " + t.t + "; border-radius: 2px",
 isUp: kind === "up", isDir: kind === "d", isFile: kind !== "up" && kind !== "d",
@@ -558,7 +605,10 @@ const actPath = "color: " + t.t + "; border-bottom: 2px solid " + t.a + "; paddi
 const SRC = ["..","app.rs","breadcrumb.rs","cache.rs","cmdline.rs","columns.rs","commands.rs","conflict.rs","drives.rs","editor.rs","file_list.rs","fonts.rs","icons.rs","info.rs","job_bar.rs","keybar.rs","layout.rs","lib.rs","menu.rs","panel.rs","prompt_bar.rs","quick_search.rs","quick_view.rs","settings.rs","status.rs","tabs.rs","theme.rs","toast.rs","tree.rs","viewer.rs","widgets.rs","window.rs","sys"].map((n) => n === ".." ? ["..","up","",""] : (n === "sys" ? ["sys","d","",""] : [n,"f","",""]));
 const DES = [["..","up","",""],["screens","d","","20.10.26 20:31"],["DESIGN.md","f","9,8 КБ","20.10.26 20:35"],["window.dc.html","f","48,1 КБ","20.10.26 20:31"]];
 const P = (o) => Object.assign({ vis: "", isFull: false, isBrief: false, isTree: false, isInfo: false, isQv: false, isState: false, drives: false, tag: "", packedCol: false }, o);
-const full = (path, info, list, c, act, extra) => P(Object.assign({ isFull: true, path, info, rows: rows(list, c), pathStyle: act ? actPath : pasPath }, extra || {}));
+const full = (path, info, list, c, act, extra, ex) => P(Object.assign({ isFull: true, path, info, rows: rows(list, c, ex), pathStyle: act ? actPath : pasPath }, extra || {}));
+const CMPL = [["..","up","",""],["design","d","","21.10.26 12:30"],["specs","d","","21.10.26 12:21"],["01-ROADMAP.md","f","12,4 КБ","20.10.26 18:10"],["00-ARCHITECTURE.md","f","31,0 КБ","19.10.26 12:00"],["THEMES.md","f","6,1 КБ","20.10.26 15:42"],["TASKS-DESIGN.md","f","4,2 КБ","21.10.26 12:30"]];
+const CMPR = [["..","up","",""],["design","d","","14.10.26 09:00"],["specs","d","","14.10.26 09:00"],["01-ROADMAP.md","f","11,9 КБ","14.10.26 09:00"],["00-ARCHITECTURE.md","f","31,0 КБ","19.10.26 12:00"],["OLD-NOTES.md","f","2,2 КБ","02.09.26 17:40"]];
+const JB = [["..","up","",""],["big.bin","f","3,1 ГБ","21.10.26 11:58"],["big2.bin","f","3,1 ГБ","21.10.26 11:40"]];
 const B = (label, key, primary) => ({ label, key, style: primary ? btnPrimary : btn, keyStyle: "font-size: 11px; " + (primary ? "opacity: 0.8" : "color: " + t.s) });
 const ARC = [["..","up","","",""],["crates","d","","19.10.26 22:41",""],["docs","d","","20.10.26 11:02",""],["Cargo.lock","f","58,3 КБ","20.10.26 13:50","12,1 КБ"],["Cargo.toml","f","1,2 КБ","19.10.26 22:40","0,5 КБ"],["LICENSE-APACHE","f","11,1 КБ","01.09.26 12:00","3,9 КБ"],["LICENSE-MIT","f","1,0 КБ","01.09.26 12:00","0,6 КБ"],["README.md","f","4,8 КБ","17.10.26 21:33","2,0 КБ"],["urfin.exe","x","11,7 МБ","20.10.26 13:55","8,2 МБ"]];
 const ST = {
@@ -569,6 +619,9 @@ net: { net: true, iconColor: t.rem, title: "Нет связи с \\\\nas\\backup
 const panels = screen === "archive" ? [P({ isFull: true, path: "C:\\Dev\\urfin\\urfin-0.4.2.zip\\urfin-0.4.2", tag: "zip", info: "8 объектов", pathStyle: actPath, rows: rows(ARC, 4), packedCol: true }), P({ isState: true, path: "\\\\fs01\\share\\presale\\new", info: "", pathStyle: pasPath, st: ST.empty })]
 : screen === "terminal" ? [P({ vis: "visibility: hidden", path: "", rows: [] }), P({ vis: "visibility: hidden", path: "", rows: [] })]
 : screen === "termhalf" ? [P({ vis: "visibility: hidden", path: "C:\\Dev\\urfin", rows: [] }), full("\\\\fs01\\share\\presale", "12 объектов", R, 4, true)]
+: screen === "multirename" ? [full("C:\\Dev\\urfin", "16 объектов", L, 7, true, {}, { 6: { to: "Cargo_01.toml" }, 7: { to: "CHANGELOG_02.md" }, 11: { to: "README_03.md" } }), full("\\\\fs01\\share\\presale", "12 объектов", R, -1, false)]
+: screen === "compare" ? [full("C:\\Dev\\urfin\\docs", "7 объектов", CMPL, 3, true, {}, { 3: { m: true, tag: "новее" }, 5: { m: true, tag: "только здесь" }, 6: { m: true, tag: "только здесь" } }), full("\\\\fs01\\share\\docs-backup", "6 объектов", CMPR, -1, false, {}, { 5: { m: true, tag: "только здесь" } })]
+: screen === "journal" ? [full("C:\\Dev\\urfin", "16 объектов", L, 6, true), full("D:\\backup\\b", "3 объекта", JB, -1, false)]
 : screen === "errors" ? [P({ isState: true, path: "C:\\System Volume Information", info: "", pathStyle: actPath, st: ST.lock }), P({ isState: true, path: "\\\\nas\\backup", info: "", pathStyle: pasPath, st: ST.net })]
 : screen === "brief" ? [P({ isBrief: true, path: "C:\\Dev\\urfin\\crates\\ui\\src", info: "32 объекта", pathStyle: actPath, rows: rows(SRC, 8), briefGrid: "flex: 1; display: grid; grid-auto-flow: column; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(22, " + rowH + "px); padding-top: 4px; align-content: start; background-image: linear-gradient(to right, transparent calc(33.33% - 1px), " + t.b + " calc(33.33% - 1px), " + t.b + " 33.33%, transparent 33.33%, transparent calc(66.66% - 1px), " + t.b + " calc(66.66% - 1px), " + t.b + " 66.66%, transparent 66.66%)" }), full("\\\\fs01\\share\\presale", "12 объектов", R, -1, false)]
 : screen === "tree" ? [P({ isTree: true, path: "C:\\Dev\\urfin", info: "дерево", pathStyle: actPath }), full("C:\\Dev\\urfin\\docs\\design", "3 объекта", DES, -1, false)]
@@ -696,6 +749,8 @@ tree: ["docs\\design · 3 объекта","","C: 214 ГБ свободно"],
 info: ["","Выделено 0 из 16",""],
 quickview: ["Cargo.toml · 1,2 КБ · 19.10.26 22:40","стр 1–26 из 41",""],
 drives: ["","",""],
+multirename: ["","Выделено 3 из 16 · 15,4 КБ","C: 214 ГБ свободно"],
+compare: ["01-ROADMAP.md · 12,4 КБ · 20.10.26 18:10","Выделено 3 из 6","C: 214 ГБ свободно"],
 terminal: ["pwsh 7.5 · интеграция с оболочкой","",""],
 termhalf: ["budget_2027.xlsx · 412 КБ · 17.10.26 18:31","Выделено 0 из 12","S: 1,8 ТБ свободно"],
 archive: ["Cargo.toml · 1,2 КБ, сжато до 0,5 КБ · 19.10.26 22:40","Выделено 0 из 8","архив 8,9 МБ · сжатие 38 %"],
@@ -711,6 +766,8 @@ menu: [["← →","Меню"],["↑ ↓","Пункт"],["Enter","Выбрать"
 terminal: [["Ctrl+O","Панели"],["Ctrl+F1","Левая"],["Ctrl+F2","Правая"],["Ctrl+Shift+F","Поиск в выводе"],["Ctrl+Break","Прервать"]],
 context: [["↑ ↓","Пункт"],["→","Подменю"],["Enter","Выбрать"],["Esc","Закрыть"]],
 select: [["Tab","Следующее поле"],["Alt+↓","История масок"]],
+compare: [["Tab","Следующая кнопка"],["Ins","Изменить отметку"]],
+multirename: [["Tab","Шаблон ↔ список"],["F1","Справка по шаблону"]],
 drives: [["Enter","Открыть"],["Del","Извлечь или отключить"],["Alt+Enter","Свойства тома"],["Esc","Закрыть"]],
 quick: [["Ctrl+Enter","Следующее"],["Ctrl+Shift+Enter","Предыдущее"],["Enter","Открыть"],["Esc","Закрыть"]],
 panels: [["F1","Помощь"],["F2","Меню"],["F3","Смотр"],["F4","Ред"],["F5","Коп"],["F6","Перен"],["F7","Папка"],["F8","Удал"],["F9","Конф"],["F10","Выход"]],
@@ -728,7 +785,7 @@ return {
 t, icons, ctx, tabs, panels, results, preview, viewLines, editLines, mini, viewportStyle, foldCol, gutterStyle, marks, tagStyle, segOn: segBtn(true), segOff: segBtn(false), nav, cards, densOpts, iconOpts, followOs, keys, keybarStyle,
 toggleOs: () => this.setState({ followOs: !followOs }),
 status: STATUS[screen] || STATUS.panels,
-isPanels: ["panels","terminal","termhalf","menu","context","select","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress"].indexOf(screen) >= 0,
+isPanels: ["panels","journal","multirename","compare","terminal","termhalf","menu","context","select","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress"].indexOf(screen) >= 0,
 showTerm: screen === "terminal" || screen === "termhalf",
 cliCmd: screen === "terminal" || screen === "termhalf" ? "" : "cargo build --release",
 oneSet: ["viewer","editor","settings","search"].indexOf(screen) >= 0,
@@ -786,7 +843,7 @@ return K.map(([cmd, keys, ctx, warn], i) => ({ cmd, ctx, warn: warn || "",
 keys: keys ? keys.map((k) => ({ label: k, style: kb })) : [{ label: "Нажмите сочетание… Esc — отмена", style: cap }],
 style: "min-height: 34px; display: flex; align-items: center; gap: 16px; padding: 4px 12px; box-sizing: border-box; border-bottom: 1px solid " + t.b + "; background: " + (keys ? (warn ? t.h : "transparent") : t.cl) }));
 })(),
-isDelete: screen === "delete", isConflict: screen === "conflict", isMenu: screen === "menu", isCtx: screen === "context", isSelect: screen === "select",
+isDelete: screen === "delete", isConflict: screen === "conflict", isMenu: screen === "menu", tplChips: [["[N]","имя"],["[E]","расширение"],["[C]","счётчик"],["[Y][M][D]","дата"],["найти/замена","через /"]].map(([k, v]) => ({ k, v })), isCtx: screen === "context", isSelect: screen === "select",
 ctxItems: [["Открыть","Enter"],["Открыть с помощью","›"],["Просмотр","F3"],["Редактировать","F4"],null,["Копировать путь","Ctrl+Shift+C"],["Копировать имя",""],null,["Упаковать в архив",""],["Сравнить с файлом в другой панели",""],null,["Удалить","F8"],["Свойства","Alt+Enter"],null,["Меню Проводника","›"]].map((m, i) => m ? ({ item: true, sep: false, label: m[0], key: m[1], keyStyle: "font-size: 12px; color: " + (i === 3 ? t.ct : t.s), style: "height: 28px; display: flex; align-items: center; gap: 16px; padding: 0 10px; border: 0; border-radius: 4px; font: inherit; background: " + (i === 3 ? t.c : "transparent") + "; color: " + (i === 3 ? t.ct : t.t) }) : ({ item: false, sep: true })), isQuick: screen === "quick", tree, infoRows, drives,
 qvLines: EL.slice(0, 26).map((line, i) => ({ n: i + 1, segs: tomlSegs(line).map((sg) => ({ x: sg.x, style: "color: " + sg.c })) })),
 menuBar: ["Левая","Файлы","Команды","Параметры","Правая"].map((label, i) => ({ label, open: i === 1, filletL: true, filletR: true, listStyle: "position: absolute; left: -40px; top: 100%; width: 330px; padding: 6px 4px 4px; box-sizing: border-box; background: " + t.p + "; border: 1px solid " + t.b + "; border-radius: 8px; display: flex; flex-direction: column; z-index: 1", style: i === 1 ? "position: relative; z-index: 2; height: 27px; margin-bottom: -1px; padding: 0 12px 1px; border: 1px solid " + t.b + "; border-bottom: 0; border-radius: 8px 8px 0 0; font: inherit; font-weight: 500; background: " + t.p + "; color: " + t.t : "height: 24px; margin-bottom: 3px; padding: 0 12px; border: 1px solid transparent; border-radius: 4px; font: inherit; background: transparent; color: " + t.t })),
@@ -794,8 +851,11 @@ menuItems: [["Просмотр","F3"],["Редактировать","F4"],["Ко
 showJobs: screen === "progress" || screen === "conflict",
 jobs: (screen === "conflict" ? [["Копирование","3 объекта → \\\\fs01\\share\\presale",35,"ждёт ответа: конфликт 4 из 12",t.rem,"Пауза"]] : [["Копирование","48 файлов → \\\\fs01\\share\\presale",35,"1,2 из 3,4 ГБ · 48 МБ/с · ещё 47 с",t.a,"Пауза"],["Удаление","target\\debug → Корзина",70,"9 012 из 12 870 · ещё 4 с",t.a,"Пауза"]]).map(([name, what, pct, info, col, act]) => ({ name, what, info, act, infoColor: col === t.a ? t.s : col, bar: "height: 100%; width: " + pct + "%; background: " + col })),
 isCopy, isSearch: screen === "search", isViewer: screen === "viewer", isEditor: screen === "editor", isSettings: screen === "settings",
-showCli: ["panels","terminal","termhalf","menu","context","select","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress","search"].indexOf(screen) >= 0,
-showToast: screen === "panels",
+showCli: ["panels","journal","multirename","compare","terminal","termhalf","menu","context","select","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress","search"].indexOf(screen) >= 0,
+showToast: screen === "panels", isCmp: screen === "compare",
+toastPos: "bottom: " + (82 + 12 + (screen === "progress" ? 64 : (screen === "conflict" ? 34 : 0))) + "px;",
+toast: screen === "compare" ? { title: "Сравнение папок", text: "только слева 2 · только справа 1 · новее слева 1", act: true, acts: ["Синхронизировать →", "Синхронизировать ←"] } : { title: "Копирование завершено", text: "48 файлов · 1,9 ГБ · 6,2 с", act: false, acts: [] },
+showBanner: screen === "journal", isRename: screen === "multirename",
 inputStyle, chipOn: chip(true), chipOff: chip(false), btn, btnPrimary,
 btnDanger: "height: 30px; padding: 0 14px; border: 1px solid " + t.k + "; border-radius: 4px; background: " + t.k + "; color: " + t.p + "; font: inherit; display: flex; gap: 8px; align-items: center"
 };
