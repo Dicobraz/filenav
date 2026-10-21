@@ -241,6 +241,7 @@ impl OpsHandler {
             mask,
             small_file: u64::from(self.cfg.small_file),
             journal_dir: self.journal_dir.clone(),
+            strategy: crate::strategy::StrategyTable::from_config(&self.cfg.strategy),
         };
         crate::ops::copy::start(&self.engine, cx, start);
         Ok(())

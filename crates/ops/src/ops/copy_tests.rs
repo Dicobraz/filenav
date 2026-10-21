@@ -147,6 +147,7 @@ fn transfer(
             mask,
             small_file: 1 << 20,
             journal_dir: None,
+            strategy: crate::strategy::StrategyTable::default(),
         },
     )
 }
@@ -1637,5 +1638,161 @@ fn startup_banner_continue_and_clear() {
             std::fs::read(dst.join(format!("t/f{i}.txt"))).unwrap(),
             format!("src-{i}").into_bytes()
         );
+    }
+}
+
+// --- S5-14: мелкие файлы ---
+
+/// Приёмка S5-14: свой путь мелкого файла сохраняет Zone.Identifier (Mark of the
+/// Web), время изменения и атрибуты; занятое имя — `AlreadyExists`.
+#[test]
+fn small_path_keeps_zone_identifier_time_attrs() {
+    let d = tmp();
+    let (src, dst) = (d.path().join("a.exe"), d.path().join("b.exe"));
+    write(&src, &bytes(5000, 1), old(1_500_000_000));
+    let zone = b"[ZoneTransfer]\r\nZoneId=3\r\n";
+    std::fs::write(format!("{}:Zone.Identifier", src.display()), zone).unwrap();
+    // Запись потока меняет время изменения файла — выставить после.
+    set_mtime(&src, old(1_500_000_000));
+    crate::sys::fs::set_attrs(
+        &src,
+        crate::sys::fs::ATTR_READONLY | crate::sys::fs::ATTR_ARCHIVE,
+    )
+    .unwrap();
+    let mut buf = Vec::new();
+    assert!(crate::sys::fs::copy_small(&src, &dst, &mut buf).unwrap());
+    assert_eq!(std::fs::read(&dst).unwrap(), bytes(5000, 1));
+    assert_eq!(
+        std::fs::read(format!("{}:Zone.Identifier", dst.display())).unwrap(),
+        zone
+    );
+    assert_eq!(mtime(&dst), old(1_500_000_000));
+    assert_eq!(
+        crate::sys::fs::attrs(&dst).unwrap() & crate::sys::fs::ATTR_READONLY,
+        crate::sys::fs::ATTR_READONLY
+    );
+    let e = crate::sys::fs::copy_small(&src, &dst, &mut buf).unwrap_err();
+    assert_eq!(e.kind(), std::io::ErrorKind::AlreadyExists);
+    for p in [&src, &dst] {
+        crate::sys::fs::set_attrs(p, 0).unwrap();
+    }
+}
+
+/// Копия одного мелкого файла в замере S5-14.
+type SmallCopy = fn(&Path, &Path, &mut Vec<u8>) -> std::io::Result<()>;
+
+/// Замер S5-14 (бенч #3): мелкие файлы — `CopyFileExW`, `CopyFile2`, свой путь;
+/// 1 и 8 потоков. `URFIN_BENCH_N` — число файлов (10k).
+/// `cargo nextest run --release -p urfin-ops bench_small --run-ignored only --no-capture`.
+#[test]
+#[ignore = "замер на стенде"]
+fn bench_small_files() {
+    let n: usize = std::env::var("URFIN_BENCH_N")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(10_000);
+    let d = tmp();
+    let src = d.path().join("src");
+    std::fs::create_dir(&src).unwrap();
+    let mut total = 0u64;
+    let names: Vec<String> = (0..n)
+        .map(|i| {
+            let size = 1024 + (i * 7919) % (63 * 1024);
+            total += size as u64;
+            let name = format!("f{i:06}.bin");
+            std::fs::write(src.join(&name), bytes(size, i as u64)).unwrap();
+            name
+        })
+        .collect();
+    let methods: [(&str, SmallCopy); 3] = [
+        ("CopyFileExW", |s, d, _| {
+            let f = crate::sys::fs::CopyFlags {
+                excl: true,
+                symlink: false,
+            };
+            crate::sys::fs::copy_file(s, d, f, &mut |_| true)
+        }),
+        ("CopyFile2", |s, d, _| {
+            crate::sys::fs::copy_file2(s, d, true)
+        }),
+        ("own", |s, d, b| {
+            crate::sys::fs::copy_small(s, d, b).map(|ok| assert!(ok))
+        }),
+    ];
+    let mut results: BTreeMap<(String, usize), Vec<f64>> = BTreeMap::new();
+    let mut run = 0;
+    let rounds: usize = std::env::var("URFIN_BENCH_ROUNDS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(3);
+    for _round in 0..rounds {
+        for threads in [1usize, 8] {
+            for (name, f) in &methods {
+                run += 1;
+                let dst = d.path().join(format!("dst{run}"));
+                std::fs::create_dir(&dst).unwrap();
+                let t0 = Instant::now();
+                std::thread::scope(|sc| {
+                    for chunk in names.chunks(n.div_ceil(threads)) {
+                        let (src, dst) = (&src, &dst);
+                        sc.spawn(move || {
+                            let mut buf = Vec::with_capacity(1 << 20);
+                            for nm in chunk {
+                                f(&src.join(nm), &dst.join(nm), &mut buf).unwrap();
+                            }
+                        });
+                    }
+                });
+                let dt = t0.elapsed().as_secs_f64();
+                #[allow(clippy::cast_precision_loss, reason = "замер")]
+                results
+                    .entry(((*name).to_owned(), threads))
+                    .or_default()
+                    .push(n as f64 / dt);
+                remove_dir_all::remove_dir_all(&dst).unwrap();
+            }
+        }
+    }
+    eprintln!("small files: {n} files, {total} bytes (1–64 KiB)");
+    for ((name, threads), mut v) in results {
+        v.sort_by(f64::total_cmp);
+        eprintln!(
+            "{name:>12} x{threads}: median {:>7.0} files/s (min {:.0}, max {:.0})",
+            v[v.len() / 2],
+            v[0],
+            v[v.len() - 1]
+        );
+    }
+}
+
+/// Приёмка S5-14: копия дерева сохраняет Zone.Identifier — и системным путём
+/// (по умолчанию), и своим (`[ops.strategy] small = "own"`).
+#[test]
+fn copy_keeps_zone_identifier_both_engines() {
+    for small in [crate::api::Engine::Os, crate::api::Engine::Small] {
+        let d = tmp();
+        let (src, dst) = (d.path().join("s"), d.path().join("d"));
+        let zone = b"[ZoneTransfer]\r\nZoneId=3\r\n";
+        for n in ["a.exe", "sub/b.pdf"] {
+            write(&src.join("t").join(n), &bytes(3000, 7), old(1_500_000_000));
+            let p = src.join("t").join(n);
+            std::fs::write(format!("{}:Zone.Identifier", p.display()), zone).unwrap();
+            set_mtime(&p, old(1_500_000_000));
+        }
+        std::fs::create_dir(&dst).unwrap();
+        let mut t = transfer(Mode::Copy, &src, &["t"], &dst, None, OpOptions::default());
+        t.strategy.small = small;
+        let mut h = H::new(64);
+        let r = run(&mut h, t);
+        assert_eq!(done(&r).items, 2, "{small:?}");
+        for n in ["a.exe", "sub/b.pdf"] {
+            let p = dst.join("t").join(n);
+            assert_eq!(
+                std::fs::read(format!("{}:Zone.Identifier", p.display())).unwrap(),
+                zone,
+                "{small:?} {n}"
+            );
+            assert_eq!(mtime(&p), old(1_500_000_000), "{small:?} {n}");
+        }
     }
 }

@@ -214,6 +214,7 @@ pub(crate) struct Transfer {
     tag: String,
     /// Каталог журналов (`None` — без журнала: повтор, тесты).
     journal_dir: Option<PathBuf>,
+    strategy: crate::strategy::StrategyTable,
     journal: OnceLock<Journal>,
     ticks: AtomicU64,
     info: OnceLock<Info>,
@@ -232,6 +233,8 @@ pub(crate) struct Start {
     pub mask: Option<Mask>,
     pub small_file: u64,
     pub journal_dir: Option<PathBuf>,
+    /// Движки по размеру файла (`[ops.strategy]`, S5-14).
+    pub strategy: crate::strategy::StrategyTable,
 }
 
 /// «Продолжить» прерванную job (S5 §6.3): тот же запрос; файлы, равные
@@ -255,6 +258,7 @@ pub(crate) fn recovered(
         mask,
         small_file,
         journal_dir,
+        strategy: crate::strategy::StrategyTable::default(),
     })
 }
 
@@ -316,6 +320,7 @@ pub(crate) fn start_retry(
         pairs,
         tag: new_tag(),
         journal_dir: None,
+        strategy: crate::strategy::StrategyTable::default(),
         journal: OnceLock::new(),
         ticks: AtomicU64::new(0),
         info: OnceLock::new(),
@@ -414,6 +419,7 @@ impl Transfer {
             pairs: Vec::new(),
             tag: new_tag(),
             journal_dir: s.journal_dir,
+            strategy: s.strategy,
             journal: OnceLock::new(),
             ticks: AtomicU64::new(0),
             info: OnceLock::new(),
@@ -739,6 +745,16 @@ impl Transfer {
         }
         if it.size >= self.small {
             cx.progress().set_current(&shown(&it.src));
+        } else if excl && self.strategy.small == crate::api::Engine::Small {
+            // Свой путь мелкого файла (S5-14); не годится (ссылка, EA, облако) — системный.
+            let mut buf = SMALL_BUF.take();
+            let r = sys::copy_small(&it.src, to, &mut buf);
+            buf.clear();
+            SMALL_BUF.set(buf);
+            if r? {
+                cx.add_bytes(it.size);
+                return Ok(());
+            }
         }
         let mut last = 0u64;
         let flags = sys::CopyFlags {
@@ -762,6 +778,11 @@ impl Transfer {
         }
         Ok(())
     }
+}
+
+thread_local! {
+    /// Буфер своего пути мелких файлов: один на воркер.
+    static SMALL_BUF: std::cell::Cell<Vec<u8>> = const { std::cell::Cell::new(Vec::new()) };
 }
 
 /// Сбросить файл на диск (`FlushFileBuffers`) и вернуть его размер. Read-only
