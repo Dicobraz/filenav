@@ -210,7 +210,7 @@ body{margin:0}
 <div style="display: flex; gap: 8px; align-items: center">
 <label style="width: 44px; color: {{t.s}}; font-size: 12px" for="q-in">В</label>
 <input id="q-in" value="C:\Dev\urfin\crates" style="flex: 1; min-width: 0; {{inputStyle}}">
-<label style="display: flex; gap: 6px; align-items: center; color: {{t.t}}; font-size: 12px"><input type="checkbox" checked="{{ true }}" readOnly="{{ true }}">Подкаталоги</label>
+<label style="display: flex; gap: 6px; align-items: center; color: {{t.t}}; font-size: 12px"><input type="checkbox" checked="{{ true }}" readOnly="{{ true }}" style="margin: 0">Подкаталоги</label>
 </div>
 </div>
 <div style="height: 24px; display: flex; align-items: center; padding: 0 12px; border-bottom: 1px solid {{t.b}}; color: {{t.s}}; font-size: 11.5px">
@@ -345,7 +345,7 @@ body{margin:0}
 <div style="display: flex; flex-direction: column; gap: 12px">
 <div style="display: flex; align-items: center; justify-content: space-between">
 <span style="font-size: 15px; font-weight: 500">Тема</span>
-<label style="display: flex; gap: 8px; align-items: center; color: {{t.t}}"><input type="checkbox" checked="{{followOs}}" onChange="{{toggleOs}}">Как в Windows — светлая или тёмная и акцент из системы</label>
+<label style="display: flex; gap: 8px; align-items: center; color: {{t.t}}"><input type="checkbox" checked="{{followOs}}" onChange="{{toggleOs}}" style="margin: 0">Как в Windows — светлая или тёмная и акцент из системы</label>
 </div>
 <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px">
 <sc-for list="{{cards}}" as="c" hint-placeholder-count="6">
@@ -394,7 +394,7 @@ body{margin:0}
 <div style="min-height: 36px; display: flex; align-items: center; gap: 24px; border-bottom: 1px solid {{t.b}}">
 <span style="width: 240px; flex: none">{{r.label}}</span>
 <sc-if value="{{r.seg}}" hint-placeholder-val="{{ false }}"><div style="display: flex; gap: 4px"><sc-for list="{{r.opts}}" as="o" hint-placeholder-count="3"><button type="button" style="{{o.style}}">{{o.label}}</button></sc-for></div></sc-if>
-<sc-if value="{{r.check}}" hint-placeholder-val="{{ false }}"><label style="display: flex; gap: 8px; align-items: center"><input type="checkbox" checked="{{r.on}}" readOnly="{{ true }}">{{r.text}}</label></sc-if>
+<sc-if value="{{r.check}}" hint-placeholder-val="{{ false }}"><label style="display: flex; gap: 8px; align-items: center"><input type="checkbox" checked="{{r.on}}" readOnly="{{ true }}" style="margin: 0">{{r.text}}</label></sc-if>
 <sc-if value="{{r.select}}" hint-placeholder-val="{{ false }}"><select aria-label="{{r.label}}" style="min-width: 260px; {{inputStyle}}"><option>{{r.value}}</option></select></sc-if>
 <span style="margin-left: auto; color: {{t.s}}; font-size: 12px">{{r.note}}</span>
 </div>
@@ -456,8 +456,8 @@ body{margin:0}
 <button type="button" style="{{btn}}">Отмена <span style="color: {{t.s}}; font-size: 11px">Esc</span></button>
 </div>
 </div>
-<div style="display: flex; align-items: center; gap: 16px; padding-left: 24px">
-<label style="display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" readOnly="{{ true }}">Несколько через ;</label>
+<div style="display: flex; align-items: center; gap: 16px">
+<label style="display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" readOnly="{{ true }}" style="margin: 0">Несколько через ;</label>
 <span style="color: {{t.s}}; font-size: 12px">вложенные — через \</span>
 </div>
 </div>
@@ -472,7 +472,7 @@ body{margin:0}
 <label style="display: flex; gap: 8px; align-items: center; font-size: 12.5px">Если файл есть
 <select style="{{inputStyle}}"><option>Спросить</option><option>Заменить</option><option>Пропустить</option><option>Заменить, если новее</option></select>
 </label>
-<label style="display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" checked="{{ true }}" readOnly="{{ true }}">Проверить хэш перед удалением исходных</label>
+<label style="display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" checked="{{ true }}" readOnly="{{ true }}" style="margin: 0">Проверить хэш перед удалением исходных</label>
 <div style="margin-left: 8px; display: flex; gap: 8px">
 <button type="button" style="{{btnPrimary}}">Перенести <span style="opacity: 0.8; font-size: 11px">Enter</span></button>
 <button type="button" style="{{btn}}">В фоне <span style="color: {{t.s}}; font-size: 11px">Shift+Enter</span></button>
@@ -491,8 +491,8 @@ body{margin:0}
 <label style="display: flex; gap: 8px; align-items: center; font-size: 12.5px">Если файл есть
 <select style="{{inputStyle}}"><option>Спросить</option><option>Заменить</option><option>Пропустить</option><option>Заменить, если новее</option></select>
 </label>
-<label style="display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" checked="{{ true }}" readOnly="{{ true }}">Сохранять даты</label>
-<label style="display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" readOnly="{{ true }}">Проверить хэш после копирования</label>
+<label style="display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" checked="{{ true }}" readOnly="{{ true }}" style="margin: 0">Сохранять даты</label>
+<label style="display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" readOnly="{{ true }}" style="margin: 0">Проверить хэш после копирования</label>
 <div style="margin-left: 8px; display: flex; gap: 8px">
 <button type="button" style="{{btnPrimary}}">Копировать <span style="opacity: 0.8; font-size: 11px">Enter</span></button>
 <button type="button" style="{{btn}}">В фоне <span style="color: {{t.s}}; font-size: 11px">Shift+Enter</span></button>
@@ -536,8 +536,8 @@ body{margin:0}
 <span style="color: {{t.s}}; font-size: 12px; white-space: nowrap">совпадает 4</span>
 </div>
 <div style="display: flex; align-items: center; gap: 16px">
-<label style="display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" readOnly="{{ true }}">Регистр</label>
-<label style="display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" readOnly="{{ true }}">И папки</label>
+<label style="display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" readOnly="{{ true }}" style="margin: 0">Регистр</label>
+<label style="display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" readOnly="{{ true }}" style="margin: 0">И папки</label>
 <div style="margin-left: 0; display: flex; gap: 8px">
 <button type="button" style="{{btnPrimary}}">Отметить <span style="opacity: 0.8; font-size: 11px">Enter</span></button>
 <button type="button" style="{{btn}}">Отмена <span style="color: {{t.s}}; font-size: 11px">Esc</span></button>
@@ -584,7 +584,7 @@ body{margin:0}
 <span style="color: {{t.s}}; font-size: 12px; white-space: nowrap">совпадает 7 из 16</span>
 </div>
 <div style="display: flex; align-items: center; gap: 16px">
-<label style="display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" readOnly="{{ true }}">Скрывать папки</label>
+<label style="display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" readOnly="{{ true }}" style="margin: 0">Скрывать папки</label>
 <div style="display: flex; gap: 8px">
 <button type="button" style="{{btnPrimary}}">Применить <span style="opacity: 0.8; font-size: 11px">Enter</span></button>
 <button type="button" style="{{btn}}">Сбросить</button>
@@ -652,7 +652,7 @@ body{margin:0}
 <button type="button" style="{{btn}}">Пропустить <span style="color: {{t.s}}; font-size: 11px">S</span></button>
 <button type="button" style="{{btn}}">Заменить, если новее <span style="color: {{t.s}}; font-size: 11px">N</span></button>
 <button type="button" style="{{btn}}">Переименовать <span style="color: {{t.s}}; font-size: 11px">R</span></button>
-<label style="margin-left: auto; display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" checked="{{ true }}" readOnly="{{ true }}">Так же для остальных 8</label>
+<label style="margin-left: 8px; display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" checked="{{ true }}" readOnly="{{ true }}" style="margin: 0">Так же для остальных 8</label>
 <button type="button" style="{{btn}}">Отмена <span style="color: {{t.s}}; font-size: 11px">Esc</span></button>
 </div>
 </div>
