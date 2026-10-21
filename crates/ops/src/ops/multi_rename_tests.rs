@@ -332,7 +332,7 @@ fn chain_of_10k() {
         .map(|(a, b)| (a.as_str(), b.as_str()))
         .collect();
     let mut h = H::new(8);
-    // 20k `MoveFileExW` (две фазы): ~20 с в одиночку, под нагрузкой — за 30 с.
+    // 10k `MoveFileExW`: ~10 с в одиночку, под нагрузкой — в разы дольше.
     h.deadline = Duration::from_secs(180);
     let st = job(&mut h, d.path(), &rows);
     assert!(
