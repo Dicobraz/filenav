@@ -60,6 +60,7 @@ name = "base"
 "Shift+F8" = { cmd = "ops.delete", current = true }
 "Shift+Delete" = { cmd = "ops.delete", permanent = true }
 "Ctrl+A" = "ops.attrs"
+"Ctrl+I" = "panel.filter"
 "Shift+F1" = "arc.add"
 "Shift+F2" = "arc.extract"
 "Alt+F7" = "search.files"

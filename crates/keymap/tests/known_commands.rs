@@ -195,6 +195,7 @@ static KNOWN: &[CommandMeta] = &[
     meta("panel.cursor.up", &[arg("n", ValueKind::Int, false)], true),
     meta("panel.enter", &[], false),
     meta("panel.forward", &[], false),
+    meta("panel.filter", &[arg("mask", ValueKind::Str, false)], false),
     meta("panel.hidden.toggle", &[], false),
     meta(
         "panel.mode",

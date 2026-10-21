@@ -95,69 +95,135 @@ opt-level = 3
 strip = "symbols"
 panic = "unwind"
 
-# Холодный код — по размеру (бинарь <15 МБ): компилятор шейдеров (раз на старте),
+# Холодный код — по размеру (`z`: без векторизации циклов, бинарь ≤ 25 МБ, №54): компилятор шейдеров (раз на старте),
 # разбор TOML/Fluent/зон (конфиг, строки), JSON сессии.
 [profile.release.package.toml_parser]
-opt-level = "s"
+opt-level = "z"
 [profile.release.package.toml_edit]
-opt-level = "s"
+opt-level = "z"
 [profile.release.package.toml]
-opt-level = "s"
+opt-level = "z"
 [profile.release.package.fluent-bundle]
-opt-level = "s"
+opt-level = "z"
 [profile.release.package.fluent-syntax]
-opt-level = "s"
+opt-level = "z"
 [profile.release.package.serde_json]
-opt-level = "s"
+opt-level = "z"
 
 # Декодеры изображений и SVG, Markdown/HTML из gpui (ADR-0018): в файловом
 # менеджере не на горячем пути — по размеру (бюджет бинаря 25 МБ, №54).
 [profile.release.package.image]
-opt-level = "s"
+opt-level = "z"
 [profile.release.package.zune-jpeg]
-opt-level = "s"
+opt-level = "z"
 [profile.release.package.image-webp]
-opt-level = "s"
+opt-level = "z"
 [profile.release.package.exr]
-opt-level = "s"
+opt-level = "z"
 [profile.release.package.tiff]
-opt-level = "s"
+opt-level = "z"
 [profile.release.package.gif]
-opt-level = "s"
+opt-level = "z"
 [profile.release.package.png]
-opt-level = "s"
+opt-level = "z"
 [profile.release.package.qoi]
-opt-level = "s"
+opt-level = "z"
 [profile.release.package.usvg]
-opt-level = "s"
+opt-level = "z"
 [profile.release.package.resvg]
-opt-level = "s"
+opt-level = "z"
 [profile.release.package.tiny-skia]
-opt-level = "s"
+opt-level = "z"
 [profile.release.package.tiny-skia-path]
-opt-level = "s"
+opt-level = "z"
 [profile.release.package.markdown]
-opt-level = "s"
+opt-level = "z"
 [profile.release.package.html5ever]
-opt-level = "s"
+opt-level = "z"
 [profile.release.package.markup5ever]
-opt-level = "s"
+opt-level = "z"
 [profile.release.package.rustybuzz]
-opt-level = "s"
+opt-level = "z"
 [profile.release.package.ttf-parser]
-opt-level = "s"
+opt-level = "z"
 [profile.release.package.fontdb]
-opt-level = "s"
+opt-level = "z"
 [profile.release.package.zune-inflate]
-opt-level = "s"
+opt-level = "z"
 [profile.release.package.lebe]
-opt-level = "s"
+opt-level = "z"
 [profile.release.package.half]
-opt-level = "s"
+opt-level = "z"
 [profile.release.package.fdeflate]
-opt-level = "s"
+opt-level = "z"
 [profile.release.package.weezl]
-opt-level = "s"
+opt-level = "z"
+# Цветовые профили картинок, тесселяция путей, разбор regex и SVG-типов, ICU-нормализация:
+# не на горячем пути кадра (бинарь ≤ 25 МБ, №54; D-04 — 25,06).
+[profile.release.package.moxcms]
+opt-level = "z"
+[profile.release.package.pxfm]
+opt-level = "z"
+[profile.release.package.lyon_tessellation]
+opt-level = "z"
+[profile.release.package.lyon_path]
+opt-level = "z"
+[profile.release.package.lyon_geom]
+opt-level = "z"
+[profile.release.package.lyon_algorithms]
+opt-level = "z"
+[profile.release.package.regex-syntax]
+opt-level = "z"
+[profile.release.package.svgtypes]
+opt-level = "z"
+[profile.release.package.icu_normalizer]
+opt-level = "z"
+[profile.release.package.icu_properties]
+opt-level = "z"
+[profile.release.package.icu_collections]
+opt-level = "z"
+[profile.release.package.icu_provider]
+opt-level = "z"
+[profile.release.package.icu_locale_core]
+opt-level = "z"
+[profile.release.package.tracing-subscriber]
+opt-level = "z"
+[profile.release.package.chrono]
+opt-level = "z"
+[profile.release.package.time]
+opt-level = "z"
+[profile.release.package.smol]
+opt-level = "z"
+[profile.release.package.async-process]
+opt-level = "z"
+[profile.release.package.async-net]
+opt-level = "z"
+[profile.release.package.async-fs]
+opt-level = "z"
+[profile.release.package.async-executor]
+opt-level = "z"
+[profile.release.package.sha1_smol]
+opt-level = "z"
+[profile.release.package.svg_fmt]
+opt-level = "z"
+[profile.release.package.unicode-bidi]
+opt-level = "z"
+[profile.release.package.unicode-linebreak]
+opt-level = "z"
+[profile.release.package.string_cache]
+opt-level = "z"
+[profile.release.package.toml_datetime]
+opt-level = "z"
+[profile.release.package.fluent-langneg]
+opt-level = "z"
+[profile.release.package.intl-memoizer]
+opt-level = "z"
+[profile.release.package.unic-langid-impl]
+opt-level = "z"
+[profile.release.package.icu_normalizer_data]
+opt-level = "z"
+[profile.release.package.icu_properties_data]
+opt-level = "z"
 
 # Гигиена диска (H-01): в стектрейсах — файл и строка, PDB в разы меньше.
 [profile.dev]

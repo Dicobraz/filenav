@@ -17,7 +17,6 @@ extends = "base"
 "Ctrl+F6" = { cmd = "panel.sort", key = "size" }
 "Ctrl+F7" = { cmd = "panel.sort", key = "unsorted" }
 "Ctrl+F12" = "ui.menu.sort"
-"Ctrl+I" = { cmd = "ui.draft", command = "panel.filter", arg = "mask" }
 "Ctrl+Shift+0" = { cmd = "panel.bookmark.set", n = 0 }
 "Ctrl+Shift+1" = { cmd = "panel.bookmark.set", n = 1 }
 "Ctrl+Shift+2" = { cmd = "panel.bookmark.set", n = 2 }

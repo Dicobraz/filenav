@@ -314,14 +314,68 @@ pub(super) fn status(zones: &[String; 3], theme: &Theme) -> Div {
         }))
 }
 
+/// Клавиши keybar, пока открыта встроенная строка (D-04): только дополнительные —
+/// клавиши самой строки на её кнопках. `None` — обычные F-клавиши.
+pub(super) fn strip_keys(s: &AppState) -> Option<Vec<(String, String)>> {
+    let i18n = urfin_i18n::current();
+    let qs = s
+        .ext
+        .get::<urfin_keymap::KeymapView>()
+        .is_some_and(|k| k.qs.is_some());
+    if qs {
+        return Some(vec![
+            ("Ctrl+Enter".into(), i18n.get("ui-keys-qs-next")),
+            ("↑".into(), i18n.get("ui-keys-qs-prev")),
+            ("Esc".into(), i18n.get("ui-keys-close")),
+        ]);
+    }
+    let ui = s.ext.get::<crate::UiState>();
+    // Переименование на месте: строки внизу нет — клавиши поля в keybar.
+    if ui.is_some_and(|u| u.rename.is_some()) {
+        return Some(vec![
+            ("Enter".into(), i18n.get("ui-keys-apply")),
+            ("Esc".into(), i18n.get("ui-keys-cancel")),
+            ("Tab".into(), i18n.get("ui-keys-name-ext")),
+        ]);
+    }
+    let draft = ui.is_some_and(|u| u.draft.is_some());
+    (draft || s.prompts.active().is_some()).then(Vec::new)
+}
+
 /// Строка клавиш (D-02): «F1 Помощь» — клавиша цветом текста, подпись `secondary`;
-/// 10 клавиш — по ширине, меньше — слева с шагом 28. Клик — команда клавиши.
+/// 10 клавиш — по ширине, меньше — слева с шагом 28. Клик — команда клавиши. Пока
+/// открыта встроенная строка — её дополнительные клавиши (`extra`, D-04).
 pub(super) fn keybar(
     items: &[Item],
     mods: Mods,
+    extra: Option<&[(String, String)]>,
     theme: &Theme,
     click: &impl Fn(Command) -> super::overlays::Handler,
 ) -> Div {
+    if let Some(keys) = extra {
+        return div()
+            .h(px(theme.m(Metric::HKeybar)))
+            .flex_none()
+            .flex()
+            .items_center()
+            .gap(px(KEYBAR_GAP))
+            .px(px(theme.m(Metric::PadRowX)))
+            .text_size(px(SMALL_TEXT))
+            .text_color(theme.c(Role::TextSecondary))
+            .children(keys.iter().map(|(k, v)| {
+                div()
+                    .flex()
+                    .gap(px(4.0))
+                    .whitespace_nowrap()
+                    .child(
+                        div()
+                            .text_color(theme.c(Role::TextPrimary))
+                            .font_weight(gpui_kit::FontWeight::MEDIUM)
+                            .child(SharedString::from(k.clone())),
+                    )
+                    .child(SharedString::from(v.clone()))
+            }));
+    }
     let mut shown: Vec<&Item> = items.iter().filter(|i| (1..=10).contains(&i.n)).collect();
     shown.sort_by_key(|i| i.n);
     let full = shown.len() >= 10;
@@ -399,7 +453,13 @@ impl Render for ChromeView {
             .flex_col()
             .child(cmdline(s, &h.theme))
             .child(status(&zones, &h.theme))
-            .child(keybar(h.keybar.items(h.mods), h.mods, &h.theme, &click))
+            .child(keybar(
+                h.keybar.items(h.mods),
+                h.mods,
+                strip_keys(s).as_deref(),
+                &h.theme,
+                &click,
+            ))
     }
 }
 
@@ -415,6 +475,7 @@ pub(super) fn bottom_print(
     use std::hash::{Hash, Hasher};
     let mut h = std::hash::DefaultHasher::new();
     (look, urfin_i18n::epoch(), format!("{mods:?}"), zones).hash(&mut h);
+    strip_keys(s).hash(&mut h);
     s.panel(s.active).tab().loc.path.hash(&mut h);
     for it in items {
         (it.n, &it.label, it.enabled).hash(&mut h);
