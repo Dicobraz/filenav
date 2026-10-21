@@ -450,16 +450,21 @@ body{margin:0}
 <div style="display: flex; align-items: center; gap: 10px">
 <span style="display: inline-flex; color: {{t.s}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 3.5h4.5l1.5 1.5h7v8h-13z M8 7.5v4 M6 9.5h4" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></span>
 <label for="mv-mk" style="font-weight: 500; white-space: nowrap">Новая папка</label>
-<input id="mv-mk" value="release-notes" style="width: 260px; min-width: 0; {{inputStyle}}">
+<input id="mv-mk" value="{{mvMkVal}}" style="width: {{mvMkW}}; min-width: 0; {{inputStyle}}">
 <div style="margin-left: 8px; display: flex; gap: 8px">
 <button type="button" style="{{btnPrimary}}">Создать <span style="opacity: 0.8; font-size: 11px">Enter</span></button>
 <button type="button" style="{{btn}}">Отмена <span style="color: {{t.s}}; font-size: 11px">Esc</span></button>
 </div>
 </div>
 <div style="display: flex; align-items: center; gap: 16px">
-<label style="display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" readOnly="{{ true }}" style="margin: 0">Несколько через ;</label>
+<label style="display: flex; gap: 6px; align-items: center; font-size: 12.5px"><input type="checkbox" checked="{{mvTree}}" readOnly="{{ true }}" style="margin: 0">Несколько через ;</label>
 <span style="color: {{t.s}}; font-size: 12px">вложенные — через \</span>
 </div>
+<sc-if value="{{mvTree}}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; padding: 6px 0 2px; border-top: 1px solid {{t.b}}">
+<sc-for list="{{mvTreeRows}}" as="tr" hint-placeholder-count="5"><div style="height: 22px; display: flex; align-items: center; gap: 6px; padding-left: {{tr.pad}}"><span style="display: inline-flex; color: {{tr.ic}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 3.5h4.5l1.5 1.5h7v8h-13z" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></span><span style="{{tr.st}}">{{tr.n}}</span><span style="color: {{t.s}}; font-size: 11.5px">{{tr.note}}</span></div></sc-for>
+</div>
+</sc-if>
 </div>
 </sc-if>
 <sc-if value="{{mvIsMove}}" hint-placeholder-val="{{ false }}">
@@ -710,7 +715,7 @@ body{margin:0}
 </sc-if>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark","blue","turquoise","grass","sepia"],"default":"light"},"screen":{"editor":"enum","options":["panels","help","about","bookmarks","history","sort","filter","filtered","attrs","mkdir","move","rename","journal","multirename","compare","settings-panels","settings-keys","settings-editor","terminal","termhalf","menu","context","select","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress","search","viewer","editor","settings"],"default":"panels"},"density":{"editor":"enum","options":["20","24","28"],"default":"24"},"icons":{"editor":"enum","options":["none","mono","color"],"default":"mono"},"context":{"editor":"enum","options":["none","admin","remote"],"default":"none"},"$preview":{"width":1280,"height":760}}'>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark","blue","turquoise","grass","sepia"],"default":"light"},"screen":{"editor":"enum","options":["panels","help","about","bookmarks","history","sort","filter","filtered","attrs","mkdir","mkdirtree","move","rename","journal","multirename","compare","settings-panels","settings-keys","settings-editor","terminal","termhalf","menu","context","select","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress","search","viewer","editor","settings"],"default":"panels"},"density":{"editor":"enum","options":["20","24","28"],"default":"24"},"icons":{"editor":"enum","options":["none","mono","color"],"default":"mono"},"context":{"editor":"enum","options":["none","admin","remote"],"default":"none"},"$preview":{"width":1280,"height":760}}'>
 class Component extends DCLogic {
 renderVals() {
 const TH = {
@@ -951,6 +956,7 @@ filter: ["Cargo.toml · 1,2 КБ · 19.10.26 22:40","Выделено 0 из 7",
 filtered: ["Cargo.toml · 1,2 КБ · 19.10.26 22:40","Выделено 0 из 7","C: 214 ГБ свободно"],
 attrs: ["CHANGELOG.md · 9,4 КБ · 18.10.26 17:05","Выделено 2 из 16 · 10,6 КБ","C: 214 ГБ свободно"],
 mkdir: ["Cargo.toml · 1,2 КБ · 19.10.26 22:40","Выделено 0 из 16","C: 214 ГБ свободно"],
+mkdirtree: ["Cargo.toml · 1,2 КБ · 19.10.26 22:40","Будет создано 3 папки","C: 214 ГБ свободно"],
 move: ["CHANGELOG.md · 9,4 КБ · 18.10.26 17:05","Выделено 2 из 16 · 67,7 КБ","C: 214 ГБ свободно"],
 rename: ["9,4 КБ · 18.10.26 17:05","Выделено 0 из 16","C: 214 ГБ свободно"],
 panels: ["Cargo.toml · 1,2 КБ · 19.10.26 22:40","Выделено 1 из 16 · 1,2 КБ","C: 214 ГБ свободно"],
@@ -982,6 +988,7 @@ sort: [["↑ ↓","Пункт"],["Enter","Выбрать"],["Пробел","Пе
 filter: [["Tab","Следующее поле"],["Alt+↓","История масок"]],
 attrs: [["Tab","Следующее поле"],["Пробел","Флажок"],["Ctrl+Пробел","Не менять «—»"]],
 mkdir: [["Tab","Следующее поле"],["Alt+↓","История имён"]],
+mkdirtree: [["Tab","Следующее поле"],["Alt+↓","История имён"]],
 move: [["Tab","Следующее поле"],["Alt+↓","История путей"]],
 rename: [["Enter","Применить"],["Esc","Отмена"],["Tab","Имя ↔ расширение"]],
 menu: [["← →","Меню"],["↑ ↓","Пункт"],["Enter","Выбрать"],["Esc","Закрыть"]],
@@ -1029,7 +1036,7 @@ return {
 t, icons, ctx, tabs, panels, results, preview, viewLines, editLines, mini, viewportStyle, foldCol, gutterStyle, marks, tagStyle, segOn: segBtn(true), segOff: segBtn(false), nav, cards, densOpts, iconOpts, followOs, keys, keybarStyle,
 toggleOs: () => this.setState({ followOs: !followOs }),
 status: STATUS[screen] || STATUS.panels,
-isPanels: ["panels","bookmarks","history","sort","filter","filtered","attrs","mkdir","move","rename","journal","multirename","compare","terminal","termhalf","menu","context","select","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress"].indexOf(screen) >= 0,
+isPanels: ["panels","bookmarks","history","sort","filter","filtered","attrs","mkdir","mkdirtree","move","rename","journal","multirename","compare","terminal","termhalf","menu","context","select","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress"].indexOf(screen) >= 0,
 showTerm: screen === "terminal" || screen === "termhalf",
 cliCmd: screen === "terminal" || screen === "termhalf" ? "" : "cargo build --release",
 oneSet: screen === "help" || ["viewer","editor","settings","search"].indexOf(screen) >= 0,
@@ -1094,11 +1101,14 @@ menuBar: ["Левая","Файлы","Команды","Параметры","Пр�
 menuItems: [["Просмотр","F3"],["Редактировать","F4"],["Копировать","F5"],["Переместить или переименовать","F6"],["Создать папку","F7"],["Удалить","F8"],null,["Отметить группу","Num +"],["Снять отметку с группы","Num −"],["Инвертировать отметку","Num *"],null,["Атрибуты и права","Ctrl+A"],["Сравнить каталоги","›"],["Свойства","Alt+Enter"]].map((m, i) => m ? ({ item: true, sep: false, label: m[0], key: m[1], keyStyle: "font-size: 12px; color: " + (i === 2 ? t.ct : t.s), style: "height: 28px; display: flex; align-items: center; gap: 16px; padding: 0 10px; border: 0; border-radius: 4px; font: inherit; background: " + (i === 2 ? t.c : "transparent") + "; color: " + (i === 2 ? t.ct : t.t) }) : ({ item: false, sep: true })),
 showJobs: screen === "progress" || screen === "conflict",
 jobs: (screen === "conflict" ? [["Копирование","3 объекта → \\\\fs01\\share\\presale",35,"ждёт ответа: конфликт 4 из 12",t.rem,"Пауза"]] : [["Копирование","48 файлов → \\\\fs01\\share\\presale",35,"1,2 из 3,4 ГБ · 48 МБ/с · ещё 47 с",t.a,"Пауза"],["Удаление","target\\debug → Корзина",70,"9 012 из 12 870 · ещё 4 с",t.a,"Пауза"]]).map(([name, what, pct, info, col, act]) => ({ name, what, info, act, infoColor: col === t.a ? t.s : col, bar: "height: 100%; width: " + pct + "%; background: " + col })),
-mvIsMkdir: screen === "mkdir", mvIsMove: screen === "move",
+mvIsMkdir: screen === "mkdir" || screen === "mkdirtree", mvTree: screen === "mkdirtree",
+mvMkVal: screen === "mkdirtree" ? "design\\screens; notes\\2026-10" : "release-notes", mvMkW: "260px",
+mvTreeRows: [["design",0,false],["screens",1,true],["notes",0,true],["2026-10",1,true]].map(([n, d, nw]) => ({ n, pad: (d * 18) + "px", ic: nw ? t.a : t.s, st: nw ? "font-weight: 500" : "color: " + t.s, note: nw ? "новая" : "есть" })),
+mvIsMove: screen === "move",
 mvBox: "height: " + (rowH - 4) + "px; box-sizing: border-box; width: 240px; margin-left: -7px; padding: 0 6px; display: inline-flex; align-items: center; border: 1px solid " + t.a + "; border-radius: 4px; background: " + t.p + "; color: " + t.t + "; font-weight: 400; box-shadow: inset 0 -1px 0 " + t.a,
 mvSel: "background: " + t.a + "; color: " + t.p,
 atOn: screen === "attrs", atFlags, atNest, atDates, isCopy, isSearch: screen === "search", isViewer: screen === "viewer", isEditor: screen === "editor", isSettings: screen === "settings",
-showCli: ["panels","bookmarks","history","sort","filter","filtered","attrs","mkdir","move","rename","journal","multirename","compare","terminal","termhalf","menu","context","select","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress","search"].indexOf(screen) >= 0,
+showCli: ["panels","bookmarks","history","sort","filter","filtered","attrs","mkdir","mkdirtree","move","rename","journal","multirename","compare","terminal","termhalf","menu","context","select","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress","search"].indexOf(screen) >= 0,
 showToast: screen === "panels", isCmp: screen === "compare",
 toastPos: "bottom: " + (82 + 12 + (screen === "progress" ? 64 : (screen === "conflict" ? 34 : 0))) + "px;",
 toast: screen === "compare" ? { title: "Сравнение папок", text: "только слева 2 · только справа 1 · новее слева 1", act: true, acts: ["Синхронизировать →", "Синхронизировать ←"] } : { title: "Копирование завершено", text: "48 файлов · 1,9 ГБ · 6,2 с", act: false, acts: [] },

@@ -87,6 +87,7 @@ SHOTS = [
     ("screen-delete", {"screen": "delete"}),
     ("screen-conflict", {"screen": "conflict"}),
     ("screen-mkdir", {"screen": "mkdir"}),
+    ("screen-mkdirtree", {"screen": "mkdirtree"}),
     ("screen-move", {"screen": "move"}),
     ("screen-rename", {"screen": "rename"}),
     ("screen-attrs", {"screen": "attrs"}),
