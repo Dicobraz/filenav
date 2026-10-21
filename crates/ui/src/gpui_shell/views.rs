@@ -106,7 +106,7 @@ pub(super) fn body(s: &AppState, side: Side, theme: &Theme, rows: u32) -> Div {
 }
 
 /// Дерево: видимые узлы страницей вокруг курсора; отступ 16 на уровень с направляющими
-/// `border`, ▸/▾, значок папки; курсор — заливка во всю строку (№66).
+/// `border`, ▸/▾, значок папки; курсор — заливка во всю строку (№73).
 fn tree(t: &TreeState, theme: &Theme, rows: u32, active: bool, icons: IconMode) -> Div {
     let vis = t.visible();
     let cur = vis
