@@ -375,3 +375,45 @@ ui-keys-collapse = Свернуть
 ui-jobs-with-errors = с ошибками
 ui-jobs-expand = Развернуть
 ui-key-space = Пробел
+
+## Строки операций (D-04): ссылка, время, переименование, F7, сравнение, синхронизация
+ui-strip-link = Ссылка
+ui-strip-link-to = на
+ui-strip-link-kind = Тип
+ui-strip-link-hint = Без режима разработчика нужны права администратора; для папки подойдёт Junction
+ui-link-sym = Символическая
+ui-link-hard = Жёсткая
+ui-link-junction = Junction
+ui-strip-touch = Время изменения
+ui-strip-touch-deep = Для вложенных
+ui-strip-touch-hint = создание и доступ — в «Атрибутах»
+ui-strip-mr = Новые имена
+ui-mr-tok-name = имя
+ui-mr-tok-ext = расширение
+ui-mr-tok-counter = счётчик
+ui-mr-tok-date = дата
+ui-mr-tok-replace = найти/замена через /
+ui-mkdir-exists = есть
+ui-mkdir-new = новая
+ui-strip-sync = Синхронизировать:
+ui-strip-sync-what = { $count } { $count ->
+    [one] файл
+    [few] файла
+   *[many] файлов
+} · { $size }
+ui-strip-sync-mirror = Удалять лишнее
+ui-strip-sync-go = Синхронизировать
+ui-compare-title = Сравнение папок:
+ui-compare-only-left = только слева { $n }
+ui-compare-only-right = только справа { $n }
+ui-compare-newer-left = новее слева { $n }
+ui-compare-newer-right = новее справа { $n }
+ui-compare-differs = различаются { $n }
+ui-compare-equal = одинаковых { $n }
+ui-compare-sync-lr = Синхронизировать →
+ui-compare-sync-rl = Синхронизировать ←
+ui-button-close = Закрыть
+ui-tag-newer = новее
+ui-tag-only-here = только здесь
+ui-prompt-skip-all = Пропустить все такие
+ui-job-waiting-for = ждёт ответа: { $what }

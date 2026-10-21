@@ -181,6 +181,12 @@ pub struct CoreHost {
     /// Скорость задач по замерам и раскрытый список F11 (D-06).
     rates: jobs::Rates,
     jobs_list: jobs::List,
+    /// Итог сравнения папок (D-04): строка внизу и метки в панелях.
+    compare: Option<CompareView>,
+    /// Заметки после имён в панелях (превью переименования, метки сравнения).
+    notes: [std::rc::Rc<std::collections::HashMap<String, panel::Note>>; 2],
+    /// Строк превью во встроенной строке (дерево F7) — для высоты строки.
+    strip_rows: usize,
 }
 
 impl std::fmt::Debug for CoreHost {
@@ -263,6 +269,9 @@ impl CoreHost {
             complete_sel: (0, 0),
             rates: jobs::Rates::default(),
             jobs_list: jobs::List::default(),
+            compare: None,
+            notes: Default::default(),
+            strip_rows: 0,
         }
     }
 
@@ -429,6 +438,139 @@ impl CoreHost {
         Some(pouch::pouch(theme, x, y, CONFLICT_W, None, body))
     }
 
+    /// Клавиши строки сравнения (D-04); `true` — клавиша её.
+    fn compare_key(
+        &mut self,
+        ks: &gpui_kit::Keystroke,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(core) = self.core.as_ref() else {
+            return false;
+        };
+        if self.compare.is_some()
+            && self.field.is_none()
+            && core.state().prompts.active().is_none()
+            && core
+                .state()
+                .ext
+                .get::<crate::UiState>()
+                .is_some_and(|u| u.draft.is_none() && u.menu.is_none())
+        {
+            let cmd = match ks.key.as_str() {
+                "enter" if ks.modifiers.shift => Some(Command::new("ops.sync").arg("dir", "rl")),
+                "enter" => Some(Command::new("ops.sync").arg("dir", "lr")),
+                "escape" => {
+                    self.compare = None;
+                    self.input.skip();
+                    cx.notify();
+                    return true;
+                }
+                _ => None,
+            };
+            if let Some(c) = cmd {
+                self.input.skip();
+                self.out.push(c.from(urfin_core::Origin::Key));
+                self.after_input(None, window, cx);
+                cx.notify();
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Строка сравнения видна: итог без черновика или черновик синхронизации.
+    fn compare_mode(compare: Option<&CompareView>, s: &urfin_core::AppState) -> bool {
+        let Some(c) = compare else {
+            return false;
+        };
+        match s.ext.get::<crate::UiState>().and_then(|u| u.draft.as_ref()) {
+            None => s.prompts.active().is_none(),
+            Some(d) => d.cmd == "ops.copy" && c.sync.is_some(),
+        }
+    }
+
+    /// Итог сравнения живёт, пока панели на тех же папках; черновик синхронизации
+    /// закрылся (Enter или Esc) — итог тоже.
+    fn compare_life(compare: &mut Option<CompareView>, s: &urfin_core::AppState) {
+        let Some(c) = compare.as_mut() else {
+            return;
+        };
+        let moved = c.locs[0] != s.panel(Side::Left).tab().loc
+            || c.locs[1] != s.panel(Side::Right).tab().loc;
+        let draft = s
+            .ext
+            .get::<crate::UiState>()
+            .is_some_and(|u| u.draft.is_some());
+        if c.sync.is_some() && draft {
+            c.seen_draft = true;
+        }
+        if moved || (c.seen_draft && !draft) {
+            *compare = None;
+        }
+    }
+
+    /// Заметки после имён: превью группового переименования в активной панели, метки
+    /// сравнения у выделенного («новее», «только здесь»), при синхронизации — стрелка у
+    /// того, что копируется.
+    fn compute_notes(
+        &self,
+        s: &urfin_core::AppState,
+    ) -> [std::rc::Rc<std::collections::HashMap<String, panel::Note>>; 2] {
+        use std::collections::HashMap;
+        let mut out: [HashMap<String, panel::Note>; 2] = Default::default();
+        let draft = s.ext.get::<crate::UiState>().and_then(|u| u.draft.as_ref());
+        if let Some(p) = self.mr_preview.as_ref()
+            && draft.is_some_and(|d| d.cmd == field::MULTI_RENAME)
+        {
+            let i = usize::from(s.active == Side::Right);
+            for (from, to, problem) in &p.rows {
+                out[i].insert(
+                    from.clone(),
+                    panel::Note::Rename {
+                        to: to.clone(),
+                        bad: !problem.is_empty(),
+                    },
+                );
+            }
+        }
+        if let Some(c) = self.compare.as_ref() {
+            let i18n = urfin_i18n::current();
+            let (newer, only) = (i18n.get("ui-tag-newer"), i18n.get("ui-tag-only-here"));
+            let syncing = c
+                .sync
+                .filter(|_| draft.is_some_and(|d| d.cmd == "ops.copy"));
+            for (i, side) in [Side::Left, Side::Right].into_iter().enumerate() {
+                let t = s.panel(side).tab();
+                let other = &s.panel(side.other()).tab().listing.entries;
+                let names: std::collections::HashSet<String> = other
+                    .iter()
+                    .map(|e| e.name.as_str().to_lowercase())
+                    .collect();
+                for &k in t.listing.order.iter().take(NOTES_MAX) {
+                    if !t.selection.contains(k) {
+                        continue;
+                    }
+                    let Some(e) = t.listing.entries.get(k as usize) else {
+                        continue;
+                    };
+                    let note = match syncing {
+                        Some(src) if src == side => {
+                            panel::Note::Arrow(if side == Side::Left { "→" } else { "←" })
+                        }
+                        Some(_) => continue,
+                        None if names.contains(&e.name.as_str().to_lowercase()) => {
+                            panel::Note::Tag(newer.clone())
+                        }
+                        None => panel::Note::Tag(only.clone()),
+                    };
+                    out[i].insert(e.name.to_string(), note);
+                }
+            }
+        }
+        out.map(std::rc::Rc::new)
+    }
+
     /// Левый край и ширина панелей по их ширинам (линия между ними — `WDivider`).
     fn panel_spans(theme: &Theme, widths: [Option<f32>; 2]) -> [Option<(f32, f32)>; 2] {
         let left = widths[0].map(|w| (0.0, w));
@@ -480,8 +622,11 @@ impl CoreHost {
             - self.theme.m(Metric::HCmdline)
             - self.theme.m(Metric::HStatus)
             - self.theme.m(Metric::HKeybar);
-        let mr_rows = self.mr_preview.as_ref().map_or(0, |p| p.rows.len());
-        let cover = strip::cover(core.state(), mr_rows);
+        let cover = strip::cover(
+            core.state(),
+            self.strip_rows,
+            Self::compare_mode(self.compare.as_ref(), core.state()),
+        );
         for (i, side) in [Side::Left, Side::Right].into_iter().enumerate() {
             let mode = core.state().panel(side).tab().view_mode;
             let Some(w) = widths[i] else {
@@ -569,6 +714,32 @@ impl CoreHost {
                     self.mr_preview = Some(field::MrPreview::from_args(&args));
                     cx.notify();
                 }
+                // Итог сравнения папок (D-04, `screen-compare.png`).
+                urfin_core::UiEvent::Ext { id, args } if id.as_str() == "ops.compare.result" => {
+                    let n = |k: &str| u32::try_from(args.int(k).unwrap_or(0)).unwrap_or(0);
+                    let st = core.state();
+                    self.compare = Some(CompareView {
+                        counts: [
+                            n("only_left"),
+                            n("only_right"),
+                            n("newer_left"),
+                            n("newer_right"),
+                            n("differs"),
+                            n("equal"),
+                        ],
+                        sync: match args.str("sync") {
+                            Some("left") => Some(Side::Left),
+                            Some("right") => Some(Side::Right),
+                            _ => None,
+                        },
+                        locs: [
+                            st.panel(Side::Left).tab().loc.clone(),
+                            st.panel(Side::Right).tab().loc.clone(),
+                        ],
+                        seen_draft: false,
+                    });
+                    cx.notify();
+                }
                 // Ctrl+I: строка фильтра с текущей маской таба.
                 urfin_core::UiEvent::Ext { id, .. } if id.as_str() == "panel.ask_filter" => {
                     let mut c = Command::new("ui.draft")
@@ -638,6 +809,11 @@ impl CoreHost {
             "left" => cur.sel = cur.sel.saturating_sub(1),
             "right" | "tab" => cur.sel = (cur.sel + 1).min(n.saturating_sub(1)),
             "space" => cur.all = !cur.all && p.spec.allow_all,
+            // «Пропустить все такие» (D-04, `screen-operror.png`).
+            "a" if p.spec.allow_all && overlays::error_line(p) => {
+                let i = p.spec.choices.iter().position(|c| c.id == "skip")?;
+                return overlays::reply(p, i, true);
+            }
             k => {
                 let typed = ks.key_char.as_deref().unwrap_or(k).to_lowercase();
                 let i = p.spec.choices.iter().position(|c| {
@@ -1050,6 +1226,13 @@ impl CoreHost {
             cx.notify();
             return true;
         }
+        // Строка сравнения (D-04): Enter — →, Shift+Enter — ←, Esc — закрыть.
+        if self.compare_key(ks, window, cx) {
+            return true;
+        }
+        let Some(core) = self.core.as_ref() else {
+            return false;
+        };
         // Открытое меню F9 разбирает клавиши само (S2 §2.6).
         if let Some(open) = core
             .state()
@@ -1351,6 +1534,29 @@ impl Render for CoreHost {
             .filter(|d| matches!(d.cmd.as_str(), "sel.add" | "sel.remove"))
             .and(self.field.as_ref())
             .map(|f| f.input.read(cx).value().to_string());
+        Self::compare_life(&mut self.compare, s);
+        self.notes = self.compute_notes(s);
+        self.strip_rows = s
+            .ext
+            .get::<crate::UiState>()
+            .and_then(|u| u.draft.as_ref())
+            .filter(|d| d.cmd == "ops.mkdir")
+            .map_or(0, |_| {
+                let text = self
+                    .field
+                    .as_ref()
+                    .map(|f| f.input.read(cx).value().to_string())
+                    .unwrap_or_default();
+                field::mkdir_tree(s.active_tab(), self.strip_opts.many, &text).len()
+            });
+        let notes_hash = [0, 1].map(|i| {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::hash::DefaultHasher::new();
+            let mut v: Vec<_> = self.notes[i].iter().collect();
+            v.sort_by(|a, b| a.0.cmp(b.0));
+            v.hash(&mut h);
+            h.finish()
+        });
         let drives_open = s
             .ext
             .get::<crate::UiState>()
@@ -1484,7 +1690,7 @@ impl Render for CoreHost {
                     self.grid[i],
                     dark,
                     self.field.as_ref(),
-                    anim ^ self.mask_preview.as_ref().map_or(0, |m| fxhash(m)),
+                    anim ^ self.mask_preview.as_ref().map_or(0, |m| fxhash(m)) ^ notes_hash[i],
                 );
                 card = card.child(slot.flex().child(cached(
                     &self.panels[i][k],
@@ -1515,6 +1721,16 @@ impl Render for CoreHost {
                         10..=13 => {
                             let k = usize::from(what - 10);
                             o.attrs[k] = field::next_attr(o.attrs_now[k], o.attrs[k]);
+                        }
+                        40..=42 => o.link_kind = usize::from(what - 40),
+                        30..=34 => {
+                            let token = field::MR_TOKENS[usize::from(what - 30)].0;
+                            if let Some(f) = h.field.as_ref() {
+                                f.input.update(cx, |s, cx| {
+                                    let v = format!("{}{token}", s.value());
+                                    s.set_value(v, window, cx);
+                                });
+                            }
                         }
                         _ => {
                             let now = h.now_iso();
@@ -1550,14 +1766,27 @@ impl Render for CoreHost {
                 self.ops_permanent,
                 &self.strip_opts,
                 self.mr_preview.as_ref(),
+                self.compare.as_ref().and_then(|c| c.sync),
                 &self.theme,
                 &click_all,
                 &toggle,
             )
             .or_else(|| strip::quick(s, &self.theme))
+            .or_else(|| {
+                let c = self.compare.as_ref()?;
+                let close: overlays::Handler =
+                    Box::new(cx.listener(|h: &mut CoreHost, _: &ClickEvent, _, cx| {
+                        h.compare = None;
+                        cx.notify();
+                    }));
+                Some(strip::compare_bar(c.counts, &self.theme, &click_all, close))
+            })
         };
-        let mr_rows = self.mr_preview.as_ref().map_or(0, |p| p.rows.len());
-        let cover = strip::cover(s, mr_rows);
+        let cover = strip::cover(
+            s,
+            self.strip_rows,
+            Self::compare_mode(self.compare.as_ref(), s),
+        );
         // Тосты справа — над встроенной строкой, если она накрывает правую сторону.
         let toast_lift = cover
             .filter(|(scope, _)| scope.covers(Side::Right))
@@ -1710,6 +1939,18 @@ fn fxhash(s: &str) -> u64 {
 const CONTEXT_BAR: f32 = 3.0;
 
 /// Полоса захвата сплиттера по обе стороны линии, px.
+/// Итог сравнения (D-04): счётчики (только слева, только справа, новее слева, новее
+/// справа, различаются, одинаковых), сторона-источник синхронизации, папки панелей.
+struct CompareView {
+    counts: [u32; 6],
+    sync: Option<Side>,
+    locs: [urfin_core::Location; 2],
+    seen_draft: bool,
+}
+
+/// Строк панели, просматриваемых для заметок сравнения, не больше.
+const NOTES_MAX: usize = 100_000;
+
 /// Ширина списка дополнений не меньше.
 const COMPLETE_W: f32 = 360.0;
 /// Ширина списка «Если файл есть».

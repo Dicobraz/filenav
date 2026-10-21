@@ -249,20 +249,71 @@ const SCENES: &[Scene] = &[
         name: "jobs-stopped",
         steps: &["ui.jobs.toggle", "screens.jobs stop=true"],
     },
+    // Строки операций (D-04): ошибка, «файл занят», баннер журнала — демо-командами.
+    Scene {
+        name: "screen-operror",
+        steps: &["screens.error kind=access"],
+    },
+    Scene {
+        name: "screen-opbusy",
+        steps: &["screens.error kind=busy"],
+    },
+    Scene {
+        name: "screen-journal",
+        steps: &[
+            "screens.error stop=true",
+            "screens.jobs stop=true",
+            "screens.banner",
+        ],
+    },
+    Scene {
+        name: "screen-link",
+        steps: &[
+            "screens.banner stop=true",
+            "ui.cancel",
+            "sel.none",
+            "panel.cursor.to name=Projects",
+            "ops.link",
+        ],
+    },
+    Scene {
+        name: "screen-touch",
+        steps: &["ui.cancel", "sel.add mask=\"*.toml;*.json\"", "ops.touch"],
+    },
+    Scene {
+        name: "screen-mkdirtree",
+        steps: &[
+            "ui.cancel",
+            "sel.none",
+            "ui.draft command=ops.mkdir arg=name init=\"Фото\\2026\\10\"",
+        ],
+    },
+    Scene {
+        name: "screen-multirename",
+        steps: &[
+            "panel.focus side=left",
+            "sel.add mask=\"*.md;*.pdf;*.jpg;*.txt\"",
+            "ui.draft command=ops.multi_rename arg=pattern init=\"[N]_[C:1:1:2].[E]\"",
+        ],
+    },
+    Scene {
+        name: "screen-compare",
+        steps: &["ui.cancel", "sel.none", "ops.compare"],
+    },
+    Scene {
+        name: "screen-syncplan",
+        steps: &["ops.sync dir=lr"],
+    },
+    Scene {
+        name: "sync-closed",
+        steps: &["ui.cancel", "sel.none"],
+    },
     Scene {
         name: "narrow",
         steps: &[
             "panel.mode mode=files",
             "ui.theme.set id=system-light",
             "resize 720x600",
-        ],
-    },
-    Scene {
-        name: "multi-rename",
-        steps: &[
-            "panel.focus side=left",
-            "sel.add mask=\"*.md;*.pdf;*.jpg;*.txt\"",
-            "ui.draft command=ops.multi_rename arg=pattern init=\"[N]_[C:1:1:2].[E]\"",
         ],
     },
     // Последней: вопрос о конфликте остаётся открытым (S5-07).

@@ -360,6 +360,58 @@ pub(super) fn prompt(issue: &Issue, index: u64, total: u64) -> PromptSpec {
     }
 }
 
+/// Тело вопроса об ошибке: первая строка — путь (или имя), вторая — кто держит файл
+/// (№69, только «занят»), причина без точки с маленькой буквы и код ОС; при нескольких
+/// проблемах — «k из N».
+fn error_body(issue: &Issue, name: String, index: u64, total: u64) -> String {
+    let path = issue
+        .path
+        .as_ref()
+        .map_or(name, |p| crate::ops::copy::shown(p));
+    let mut parts: Vec<String> = Vec::with_capacity(4);
+    let mut held = false;
+    if issue.kind == IssueKind::Io(IoClass::Sharing)
+        && let Some(p) = issue.path.as_deref()
+    {
+        for h in crate::sys::rm::holders(p).into_iter().take(2) {
+            parts.push(tr(
+                "ops-issue-holder",
+                &[("exe", h.exe), ("pid", h.pid.to_string())],
+            ));
+            held = true;
+        }
+    }
+    // Известно, кто держит файл, — длинная фраза ОС «файл занят» не нужна.
+    if let Some(e) = issue
+        .error
+        .as_deref()
+        .map(str::trim)
+        .filter(|e| !e.is_empty() && !held)
+    {
+        let e = e.trim_end_matches('.');
+        let mut c = e.chars();
+        let lower: String = c
+            .next()
+            .map(|f| f.to_lowercase().chain(c).collect())
+            .unwrap_or_default();
+        parts.push(lower);
+    }
+    if let Some(code) = issue.code {
+        parts.push(tr("ops-issue-code", &[("code", code.to_string())]));
+    }
+    if total > 1 {
+        parts.push(tr(
+            "ops-issue-of",
+            &[("index", index.to_string()), ("total", total.to_string())],
+        ));
+    }
+    if parts.is_empty() {
+        path
+    } else {
+        format!("{path}\n{}", parts.join(" · "))
+    }
+}
+
 /// Вопрос по ошибке после автоповторов (S5-11): Повторить, Пропустить, Отмена;
 /// «для всех» — по классу ошибки (для нехватки места — нет).
 fn error_prompt(issue: &Issue, name: String, index: u64, total: u64) -> PromptSpec {
@@ -379,16 +431,7 @@ fn error_prompt(issue: &Issue, name: String, index: u64, total: u64) -> PromptSp
     ]
     .into_iter()
     .collect();
-    let error = issue.error.as_deref().unwrap_or_default().to_owned();
-    let body = tr(
-        "ops-issue-body",
-        &[
-            ("index", index.to_string()),
-            ("total", total.to_string()),
-            ("name", name),
-            ("error", error),
-        ],
-    );
+    let body = error_body(issue, name, index, total);
     PromptSpec {
         anchor: Anchor::JobBar,
         title: urfin_i18n::current().get(title),

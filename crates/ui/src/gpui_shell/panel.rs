@@ -169,6 +169,7 @@ impl Render for PanelView {
                         .as_deref()
                         .filter(|_| s.active == side)
                         .and_then(|m| urfin_core::Mask::parse(m.trim()).ok()),
+                    notes: std::rc::Rc::clone(&h.notes[usize::from(side == Side::Right)]),
                 },
                 &l,
             )),
@@ -184,6 +185,20 @@ pub(super) struct Highlight {
     pub prefix: Option<String>,
     /// Маска открытой строки отметки группы.
     pub mask: Option<urfin_core::Mask>,
+    /// Заметки после имени по имени элемента (D-04): превью переименования, метки
+    /// сравнения, действие плана синхронизации.
+    pub notes: std::rc::Rc<std::collections::HashMap<String, Note>>,
+}
+
+/// Заметка после имени в строке списка.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub(super) enum Note {
+    /// Групповое переименование: «→ новое имя» (`accent`, проблема — `modified`).
+    Rename { to: String, bad: bool },
+    /// Метка сравнения: «новее», «только здесь».
+    Tag(String),
+    /// Действие плана синхронизации: «→», «←» в рамке `accent`.
+    Arrow(&'static str),
 }
 
 /// Отпечаток всего, что рисует часть панели: изменился — часть рисуется заново, иначе
@@ -667,6 +682,123 @@ fn path_bar(
         )
 }
 
+/// Ширина заметки (для обрезки имени).
+fn note_width(note: &Note, font: &Font, size: Pixels, window: &mut Window) -> Pixels {
+    let measure = |text: &str, sz: Pixels| {
+        let run = TextRun {
+            len: text.len(),
+            font: font.clone(),
+            color: Hsla::default(),
+            background_color: None,
+            underline: None,
+            strikethrough: None,
+        };
+        window
+            .text_system()
+            .shape_line(SharedString::from(text.to_owned()), sz, &[run], None)
+            .width
+    };
+    match note {
+        Note::Rename { to, .. } => measure("→ ", size) + measure(to, size),
+        Note::Tag(t) => measure(t, px(11.0)) + px(12.0),
+        Note::Arrow(_) => px(22.0),
+    }
+}
+
+/// Заметка после имени (D-04): «→ новое» текстом, метка на подложке, стрелка в рамке.
+#[allow(clippy::too_many_arguments, reason = "плоский вызов отрисовки")]
+#[allow(clippy::many_single_char_names, reason = "координаты строки")]
+fn paint_note(
+    note: &Note,
+    x: Pixels,
+    y: Pixels,
+    row_h: Pixels,
+    font: &Font,
+    size: Pixels,
+    pal: Pal,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let run = |len: usize, color: Hsla| TextRun {
+        len,
+        font: font.clone(),
+        color,
+        background_color: None,
+        underline: None,
+        strikethrough: None,
+    };
+    let paint = |window: &mut Window,
+                 cx: &mut App,
+                 text: SharedString,
+                 color: Hsla,
+                 sz: Pixels,
+                 at: Pixels| {
+        let line =
+            window
+                .text_system()
+                .shape_line(text.clone(), sz, &[run(text.len(), color)], None);
+        let w = line.width;
+        let _ = line.paint(point(at, y), row_h, TextAlign::Left, None, window, cx);
+        w
+    };
+    match note {
+        Note::Rename { to, bad } => {
+            let w = paint(
+                window,
+                cx,
+                SharedString::new_static("→"),
+                pal.secondary,
+                size,
+                x,
+            );
+            let color = if *bad { pal.bad } else { pal.accent_text };
+            paint(
+                window,
+                cx,
+                SharedString::from(to.clone()),
+                color,
+                size,
+                x + w + px(6.0),
+            );
+        }
+        Note::Tag(t) => {
+            let sz = px(11.0);
+            let text = SharedString::from(t.clone());
+            let w = window
+                .text_system()
+                .shape_line(text.clone(), sz, &[run(text.len(), pal.secondary)], None)
+                .width;
+            let h = px(16.0);
+            let top = y + (row_h - h) / 2.0;
+            window.paint_quad(
+                gpui_kit::fill(Bounds::new(point(x, top), size2(w + px(12.0), h)), pal.chip)
+                    .corner_radii(px(3.0)),
+            );
+            paint(window, cx, text, pal.secondary, sz, x + px(6.0));
+        }
+        Note::Arrow(a) => {
+            let h = px(16.0);
+            let top = y + (row_h - h) / 2.0;
+            window.paint_quad(
+                gpui_kit::outline(
+                    Bounds::new(point(x, top), size2(px(22.0), h)),
+                    pal.accent,
+                    gpui_kit::BorderStyle::Solid,
+                )
+                .corner_radii(px(4.0)),
+            );
+            paint(
+                window,
+                cx,
+                SharedString::new_static(a),
+                pal.accent_text,
+                px(11.0),
+                x + px(6.0),
+            );
+        }
+    }
+}
+
 /// Отступ текста в поле gpui-kit (малое): поле сдвинуто влево, имя не прыгает.
 const RENAME_INSET: f32 = 8.0;
 
@@ -767,6 +899,8 @@ struct Line {
     on_accent: bool,
     /// Вместо имени — поле переименования.
     renaming: bool,
+    /// Заметка после имени.
+    note: Option<Note>,
 }
 
 /// Геометрия строки в колонке: отступы и колонки Full/Wide.
@@ -859,6 +993,10 @@ struct Pal {
     /// Рамка строки переименования и черта под ней (D-04).
     stroke: Hsla,
     accent: Hsla,
+    /// Заметки: текст `accent`, проблема `modified`, подложка метки.
+    accent_text: Hsla,
+    bad: Hsla,
+    chip: Hsla,
     icons: bool,
 }
 
@@ -985,6 +1123,7 @@ fn list(
                 }
             },
             renaming,
+            note: entry.and_then(|e| hl.notes.get(e.name.as_str()).cloned()),
         });
     }
     let lines = Rc::new(lines);
@@ -999,6 +1138,9 @@ fn list(
         text: theme.c(Role::TextPrimary),
         stroke: theme.c(Role::StrokeControl),
         accent: theme.c(Role::AccentFill),
+        accent_text: theme.c(Role::AccentText),
+        bad: theme.c(Role::Modified),
+        chip: theme.c(Role::FillControl),
         icons: icons != IconMode::None,
     };
     let paint_lines = lines.clone();
@@ -1269,11 +1411,15 @@ fn paint(
                 let mut line = window
                     .text_system()
                     .shape_line(l.name.clone(), size, &runs, None);
-                if line.width > name_w {
+                // Заметке — место после имени: имя обрезается раньше (но не короче половины).
+                let room = l.note.as_ref().map_or(name_w, |n| {
+                    (name_w - note_width(n, &font, size, window) - px(8.0)).max(name_w / 2.0)
+                });
+                if line.width > room {
                     let (cut, runs) = cx
                         .text_system()
                         .line_wrapper(f.clone(), size)
-                        .truncate_line(l.name.clone(), name_w, "…", &runs, TruncateFrom::End);
+                        .truncate_line(l.name.clone(), room, "…", &runs, TruncateFrom::End);
                     line = window.text_system().shape_line(cut, size, &runs, None);
                 }
                 let _ = line.paint(
@@ -1284,6 +1430,10 @@ fn paint(
                     window,
                     cx,
                 );
+                if let Some(note) = &l.note {
+                    let end = x0 + px(geo.name_x()) + line.width.min(name_w) + px(8.0);
+                    paint_note(note, end, y, row_h, &font, size, pal, window, cx);
+                }
             }
             // Колонки прижаты вправо: дата у края, размер левее.
             let mut right = x0 + px(col_w - ROW_MX - geo.pad);

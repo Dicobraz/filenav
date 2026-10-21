@@ -124,6 +124,8 @@ impl OpExec for Link {
                     op: ItemOp::Link,
                     temp: None,
                     error: Some(tr("ops-link-no-privilege").into()),
+                    path: None,
+                    code: None,
                 };
                 p.park(None, Item { src, dst }, 0, issue)?;
             }

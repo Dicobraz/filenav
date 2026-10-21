@@ -698,21 +698,22 @@ fn apply_compare(
         }
     }
     cx.state.touch();
-    let n = |v: u32| v.to_string();
-    cx.toast(
-        Level::Info,
-        text(
-            "ops-compare-result",
-            &[
-                ("only_left", &n(res.only_left)),
-                ("only_right", &n(res.only_right)),
-                ("newer_left", &n(res.newer_left)),
-                ("newer_right", &n(res.newer_right)),
-                ("differs", &n(res.differs)),
-                ("equal", &n(res.equal)),
-            ],
-        ),
-    );
+    // Итог — строкой внизу (D-04, `screen-compare.png`), не тостом.
+    let n = |v: u32| i64::from(v);
+    let mut args = Args::default()
+        .with("only_left", n(res.only_left))
+        .with("only_right", n(res.only_right))
+        .with("newer_left", n(res.newer_left))
+        .with("newer_right", n(res.newer_right))
+        .with("differs", n(res.differs))
+        .with("equal", n(res.equal));
+    if let Some(side) = sync {
+        args = args.with("sync", if side == Side::Left { "left" } else { "right" });
+    }
+    cx.ui(UiEvent::Ext {
+        id: CommandId::from_static("ops.compare.result"),
+        args,
+    });
     let Some(side) = sync else {
         return;
     };
@@ -927,6 +928,15 @@ fn next_banner(cx: &mut Cx<'_>) {
             &[("what", &what), ("dest", &dest), ("n", &p.to_string())],
         ),
         None => text("ops-recover-banner", &[("what", &what), ("dest", &dest)]),
+    };
+    let queued = cx.state.ext.get::<Interrupted>().map_or(0, |l| l.0.len());
+    let text_ = if queued > 0 {
+        format!(
+            "{text_} · {}",
+            text("ops-recover-more", &[("n", &queued.to_string())])
+        )
+    } else {
+        text_
     };
     let path = i.path.display().to_string();
     let cmd = |action: &str| {

@@ -7,7 +7,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::{Div, SharedString, Stateful, div, px};
-use urfin_core::{Anchor, AppState, PromptDetail, Side};
+use urfin_core::{Anchor, AppState, Command, PromptDetail, Side};
 
 use super::theme::Theme;
 use crate::UiState;
@@ -65,13 +65,11 @@ pub(super) const H_QUICK: f32 = 34.0;
 pub(super) const H_PROMPT: f32 = 118.0;
 /// Вопрос о конфликте: ещё сравнение в три строки.
 pub(super) const H_CONFLICT: f32 = 186.0;
-/// Строка превью группового переименования.
-pub(super) const H_MR_ROW: f32 = 20.0;
-/// Сколько строк превью показывать.
-pub(super) const MR_ROWS: usize = 8;
+/// Строка дерева превью F7.
+pub(super) const H_TREE_ROW: f32 = 22.0;
 
 /// Что накрывает панели сейчас: область и высота (для сетки панели).
-pub(super) fn cover(s: &AppState, mr_rows: usize) -> Option<(Scope, f32)> {
+pub(super) fn cover(s: &AppState, rows: usize, compare: bool) -> Option<(Scope, f32)> {
     if let Some(p) = s.prompts.active() {
         let scope = match p.spec.anchor {
             Anchor::Panel(side) => Scope::Panel(side),
@@ -79,6 +77,8 @@ pub(super) fn cover(s: &AppState, mr_rows: usize) -> Option<(Scope, f32)> {
         };
         let h = if matches!(p.spec.detail, Some(PromptDetail::Conflict { .. })) {
             H_CONFLICT
+        } else if super::overlays::error_line(p) {
+            H_ONE
         } else {
             H_PROMPT
         };
@@ -86,17 +86,25 @@ pub(super) fn cover(s: &AppState, mr_rows: usize) -> Option<(Scope, f32)> {
     }
     if let Some(d) = s.ext.get::<UiState>().and_then(|u| u.draft.as_ref()) {
         return Some(match d.cmd.as_str() {
-            "ops.copy" | "ops.move" => (Scope::Full, H_TWO),
-            "ops.mkdir" | "panel.filter" => (Scope::Panel(s.active), H_TWO),
-            "ops.attrs" => (Scope::Panel(s.active), H_THREE),
-            super::field::MULTI_RENAME => (
+            "ops.copy" if compare => (Scope::Full, H_ONE),
+            "ops.copy" | "ops.move" | "ops.link" => (Scope::Full, H_TWO),
+            "ops.mkdir" => (
                 Scope::Panel(s.active),
-                H_ONE
-                    + H_MR_ROW * f32::from(u16::try_from(mr_rows.min(MR_ROWS)).unwrap_or(0))
-                    + 8.0,
+                H_TWO
+                    + if rows > 0 {
+                        8.0 + H_TREE_ROW * f32::from(u16::try_from(rows).unwrap_or(0))
+                    } else {
+                        0.0
+                    },
             ),
+            "panel.filter" | "ops.touch" => (Scope::Panel(s.active), H_TWO),
+            "ops.attrs" | super::field::MULTI_RENAME => (Scope::Panel(s.active), H_THREE),
             _ => (Scope::Panel(s.active), H_ONE),
         });
+    }
+    // Итог сравнения (D-04, `screen-compare.png`) — на всю ширину.
+    if compare {
+        return Some((Scope::Full, H_ONE));
     }
     let keys = s.ext.get::<urfin_keymap::KeymapView>()?;
     if let Some(q) = &keys.qs {
@@ -322,4 +330,92 @@ pub(super) fn quick(s: &AppState, theme: &Theme) -> Option<Div> {
             .text_size(px(12.5))
             .child(SharedString::from(i18n.fmt("ui-chord-pending", &a))),
     )
+}
+
+/// Итог сравнения папок (`screen-compare.png`): «только слева 2 · только справа 1 ·
+/// новее слева 1», `secondary` — «одинаковых N»; Синхронизировать → (Enter), ←
+/// (Shift+Enter), Закрыть (Esc).
+pub(super) fn compare_bar(
+    counts: [u32; 6],
+    theme: &Theme,
+    click: super::overlays::ClickAll<'_>,
+    close: super::overlays::Handler,
+) -> Div {
+    let i18n = urfin_i18n::current();
+    let keys = [
+        "ui-compare-only-left",
+        "ui-compare-only-right",
+        "ui-compare-newer-left",
+        "ui-compare-newer-right",
+        "ui-compare-differs",
+    ];
+    let parts: Vec<String> = keys
+        .iter()
+        .zip(counts)
+        .filter(|(_, n)| *n > 0)
+        .map(|(k, n)| {
+            let mut a = urfin_i18n::FluentArgs::new();
+            a.set("n", n);
+            i18n.fmt(k, &a)
+        })
+        .collect();
+    let mut eq = urfin_i18n::FluentArgs::new();
+    eq.set("n", counts[5]);
+    let row = div()
+        .flex()
+        .flex_wrap()
+        .items_center()
+        .gap(px(10.0))
+        .child(
+            div()
+                .font_family("Segoe Fluent Icons")
+                .text_color(theme.c(Role::AccentText))
+                .child(SharedString::new_static("\u{E8F4}")),
+        )
+        .child(
+            div()
+                .font_weight(gpui_kit::FontWeight::MEDIUM)
+                .child(SharedString::from(i18n.get("ui-compare-title"))),
+        )
+        .child(SharedString::from(parts.join(" · ")))
+        .child(
+            div()
+                .text_size(px(12.0))
+                .text_color(theme.c(Role::TextSecondary))
+                .child(SharedString::from(format!(
+                    "· {}",
+                    i18n.fmt("ui-compare-equal", &eq)
+                ))),
+        )
+        .child(
+            button(
+                theme,
+                "compare-lr".into(),
+                i18n.get("ui-compare-sync-lr"),
+                "Enter",
+                Btn::Primary,
+            )
+            .on_click(click(vec![Command::new("ops.sync").arg("dir", "lr")])),
+        )
+        .child(
+            button(
+                theme,
+                "compare-rl".into(),
+                i18n.get("ui-compare-sync-rl"),
+                "Shift+Enter",
+                Btn::Normal,
+            )
+            .on_click(click(vec![Command::new("ops.sync").arg("dir", "rl")])),
+        )
+        .child(
+            button(
+                theme,
+                "compare-close".into(),
+                i18n.get("ui-button-close"),
+                "Esc",
+                Btn::Normal,
+            )
+            .on_click(close),
+        );
+    container(theme, Tone::Plain, 16.0, 10.0).child(row)
 }

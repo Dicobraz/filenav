@@ -6,6 +6,8 @@ pub(crate) mod trash_win;
 mod windows;
 
 pub(crate) mod fs;
+/// Кто держит файл (№69).
+pub(crate) mod rm;
 
 /// Как открыть файл.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

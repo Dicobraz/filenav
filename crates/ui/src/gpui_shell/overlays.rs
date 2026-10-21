@@ -123,14 +123,7 @@ pub(super) fn banner(s: &AppState, theme: &Theme, click: Click<'_>) -> Option<Di
                 .text_color(theme.c(line))
                 .child(SharedString::from(glyph.to_string())),
         )
-        .child(
-            div()
-                .min_w_0()
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
-                .child(SharedString::from(b.text.clone())),
-        );
+        .children(banner_text(&b.text, theme));
     for (i, (label, cmd)) in b.actions.iter().enumerate() {
         let primary = i == 0;
         row = row.child(
@@ -163,6 +156,45 @@ pub(super) fn banner(s: &AppState, theme: &Theme, click: Click<'_>) -> Option<Di
         );
     }
     Some(row)
+}
+
+/// Текст баннера (`screen-journal.png`): до первого «: » — полужирно, дальше до « · » —
+/// обычным, остальное — `secondary`.
+fn banner_text(text: &str, theme: &Theme) -> Vec<Div> {
+    let (head, body) = match text.split_once(": ") {
+        Some((h, b)) => (Some(format!("{h}:")), b),
+        None => (None, text),
+    };
+    let (main, rest) = body.split_once(" · ").unwrap_or((body, ""));
+    let mut out = Vec::with_capacity(3);
+    if let Some(h) = head {
+        out.push(
+            div()
+                .flex_none()
+                .whitespace_nowrap()
+                .font_weight(gpui_kit::FontWeight::MEDIUM)
+                .child(SharedString::from(h)),
+        );
+    }
+    out.push(
+        div()
+            .min_w_0()
+            .overflow_hidden()
+            .whitespace_nowrap()
+            .text_ellipsis()
+            .child(SharedString::from(main.to_owned())),
+    );
+    if !rest.is_empty() {
+        out.push(
+            div()
+                .flex_none()
+                .whitespace_nowrap()
+                .text_size(px(12.0))
+                .text_color(theme.c(Role::TextSecondary))
+                .child(SharedString::from(rest.to_owned())),
+        );
+    }
+    out
 }
 
 /// Идут ли задачи (job-бар виден, перерисовка ≤ 30 раз/с).
@@ -225,6 +257,112 @@ pub(super) fn cancel(p: &Prompt) -> Command {
 /// `context_remote`, сравнение «Копируемый / Существующий» с меткой «новее»; кнопки с
 /// клавишами (первая — основная), справа «Так же для остальных», в конце «Отмена».
 #[allow(clippy::too_many_lines, reason = "строка вопроса сверху вниз")]
+/// Вопрос об ошибке операции одной строкой (`screen-operror.png`): задача ждёт ответа
+/// (якорь — job-бар), есть «Повторить», сравнения нет.
+pub(super) fn error_line(p: &Prompt) -> bool {
+    p.spec.detail.is_none()
+        && p.spec.anchor == urfin_core::Anchor::JobBar
+        && p.spec.choices.iter().any(|c| c.id == "retry")
+}
+
+/// Строка ошибки: ⚠, «Нет доступа:», путь, причина и код `secondary`; Повторить,
+/// Пропустить, «Пропустить все такие» (A), Отмена — сразу за текстом.
+fn error_bar(p: &Prompt, s: PromptSel, theme: &Theme, click: Click<'_>) -> Div {
+    use super::strip::{Btn, Tone, button, container};
+    let i18n = urfin_i18n::current();
+    let (main, rest) = p
+        .spec
+        .body
+        .split_once('\n')
+        .unwrap_or((p.spec.body.as_str(), ""));
+    let mut row = div()
+        .flex()
+        .flex_wrap()
+        .items_center()
+        .gap(px(10.0))
+        .child(
+            div()
+                .font_family("Segoe Fluent Icons")
+                .text_color(theme.c(Role::ContextRemote))
+                .child(SharedString::new_static("\u{E7BA}")),
+        )
+        .child(
+            div()
+                .font_weight(gpui_kit::FontWeight::MEDIUM)
+                .child(SharedString::from(format!("{}:", p.spec.title))),
+        )
+        .child(
+            div()
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis()
+                .child(SharedString::from(main.to_owned())),
+        )
+        .when(!rest.is_empty(), |d| {
+            d.child(
+                div()
+                    .whitespace_nowrap()
+                    .text_size(px(12.0))
+                    .text_color(theme.c(Role::TextSecondary))
+                    .child(SharedString::from(rest.to_owned())),
+            )
+        });
+    let cancel_at = p.spec.choices.iter().position(|c| c.id == "cancel");
+    for (i, ch) in p.spec.choices.iter().enumerate() {
+        if Some(i) == cancel_at {
+            continue;
+        }
+        let key = if i == s.sel {
+            "Enter".to_owned()
+        } else {
+            ch.key.to_uppercase().to_string()
+        };
+        let kind = if i == s.sel {
+            Btn::Primary
+        } else {
+            Btn::Normal
+        };
+        row = row.child(
+            button(
+                theme,
+                format!("choice-{i}"),
+                ch.label.to_string(),
+                &key,
+                kind,
+            )
+            .when_some(reply(p, i, false), |d, c| d.on_click(click(c))),
+        );
+        if ch.id == "skip" && p.spec.allow_all {
+            row = row.child(
+                button(
+                    theme,
+                    "choice-skip-all".into(),
+                    i18n.get("ui-prompt-skip-all"),
+                    "A",
+                    Btn::Normal,
+                )
+                .when_some(reply(p, i, true), |d, c| d.on_click(click(c))),
+            );
+        }
+    }
+    if let Some(i) = cancel_at {
+        let ch = &p.spec.choices[i];
+        row = row.child(
+            button(
+                theme,
+                format!("choice-{i}"),
+                ch.label.to_string(),
+                "Esc",
+                Btn::Normal,
+            )
+            .when_some(reply(p, i, false), |d, c| d.on_click(click(c))),
+        );
+    }
+    container(theme, Tone::Waiting, 16.0, 10.0).child(row)
+}
+
+#[allow(clippy::too_many_lines, reason = "заголовок, сравнение, кнопки")]
 pub(super) fn prompt_bar(
     p: &Prompt,
     s: PromptSel,
@@ -233,6 +371,9 @@ pub(super) fn prompt_bar(
     toggle_all: Handler,
 ) -> Div {
     use super::strip::{Btn, Tone, button, check, container};
+    if error_line(p) {
+        return error_bar(p, s, theme, click);
+    }
     let i18n = urfin_i18n::current();
     let detail = match &p.spec.detail {
         Some(PromptDetail::Conflict {

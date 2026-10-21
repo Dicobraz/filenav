@@ -163,11 +163,23 @@ fn eta(left: f64) -> Option<String> {
 
 /// Состояние строки текстом и его цвет: «1,2 из 3,4 ГБ · 48 МБ/с · ещё 47 с»,
 /// «ждёт ответа», «пауза», «в очереди», «ошибка: …», «готово».
-fn status(j: &Job, rate: f64) -> (String, Role) {
+#[allow(clippy::many_single_char_names, reason = "состояние, задача, прогресс")]
+fn status(s: &AppState, j: &Job, rate: f64) -> (String, Role) {
     let i18n = urfin_i18n::current();
     let p = j.progress.snapshot();
     match &j.state {
-        JobState::Waiting(_) => (i18n.get("ui-job-waiting"), Role::ContextRemote),
+        JobState::Waiting(id) => {
+            // Что спрашивает: «ждёт ответа: нет доступа» (`screen-operror.png`).
+            let text = s.prompts.get(*id).map_or_else(
+                || i18n.get("ui-job-waiting"),
+                |p| {
+                    let mut a = FluentArgs::new();
+                    a.set("what", p.spec.title.to_lowercase());
+                    i18n.fmt("ui-job-waiting-for", &a)
+                },
+            );
+            (text, Role::ContextRemote)
+        }
         JobState::Paused => (i18n.get("ui-job-paused"), Role::TextSecondary),
         JobState::Queued => (i18n.get("ui-job-queued"), Role::TextSecondary),
         JobState::Failed(e) => {
@@ -339,7 +351,7 @@ pub(super) fn bar(
         .border_t_1()
         .border_color(theme.c(Role::StrokeDivider));
     for j in jobs {
-        let (text, role) = status(j, rates.get(j));
+        let (text, role) = status(s, j, rates.get(j));
         let mut row = div()
             .h(px(H_ROW))
             .flex()
@@ -614,7 +626,7 @@ pub(super) fn list(
         );
     }
     for (i, j) in rows(s, l).into_iter().enumerate() {
-        let (text, role) = status(j, rates.get(j));
+        let (text, role) = status(s, j, rates.get(j));
         let sel = i == l.sel;
         let action: Option<(String, Vec<Command>)> = match j.state {
             JobState::Waiting(_) => Some((
