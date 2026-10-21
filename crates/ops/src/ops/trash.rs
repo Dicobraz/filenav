@@ -126,6 +126,8 @@ impl OpExec for Trash {
                 op: ItemOp::Trash,
                 temp: None,
                 error: Some(tr("ops-no-trash-why", &[]).into()),
+                path: Some(path.clone()),
+                code: None,
             };
             p.park(None, Item { path }, 0, issue)?;
         }

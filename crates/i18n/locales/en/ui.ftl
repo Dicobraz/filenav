@@ -362,3 +362,44 @@ ui-keys-collapse = Collapse
 ui-jobs-with-errors = with errors
 ui-jobs-expand = Expand
 ui-key-space = Space
+
+## Operation strips (D-04): link, time, multi-rename, F7, compare, sync
+ui-strip-link = Link
+ui-strip-link-to = to
+ui-strip-link-kind = Type
+ui-strip-link-hint = Without Developer Mode this needs administrator rights; for a folder a junction works
+ui-link-sym = Symbolic
+ui-link-hard = Hard
+ui-link-junction = Junction
+ui-strip-touch = Modified time
+ui-strip-touch-deep = Including contents
+ui-strip-touch-hint = created and accessed — in Attributes
+ui-strip-mr = New names
+ui-mr-tok-name = name
+ui-mr-tok-ext = extension
+ui-mr-tok-counter = counter
+ui-mr-tok-date = date
+ui-mr-tok-replace = find/replace with /
+ui-mkdir-exists = exists
+ui-mkdir-new = new
+ui-strip-sync = Synchronize:
+ui-strip-sync-what = { $count } { $count ->
+    [one] file
+   *[other] files
+} · { $size }
+ui-strip-sync-mirror = Delete extra
+ui-strip-sync-go = Synchronize
+ui-compare-title = Folder comparison:
+ui-compare-only-left = only on the left { $n }
+ui-compare-only-right = only on the right { $n }
+ui-compare-newer-left = newer on the left { $n }
+ui-compare-newer-right = newer on the right { $n }
+ui-compare-differs = different { $n }
+ui-compare-equal = identical { $n }
+ui-compare-sync-lr = Synchronize →
+ui-compare-sync-rl = Synchronize ←
+ui-button-close = Close
+ui-tag-newer = newer
+ui-tag-only-here = only here
+ui-prompt-skip-all = Skip all such
+ui-job-waiting-for = waiting for an answer: { $what }

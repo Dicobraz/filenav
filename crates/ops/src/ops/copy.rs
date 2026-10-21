@@ -534,6 +534,8 @@ impl Transfer {
                 issue.kind = kind;
                 issue.dst = None;
                 issue.error = Some(text.into());
+                issue.path = Some(it.src.clone());
+                issue.code = e.raw_os_error();
                 let bytes = if it.rename { 0 } else { it.size };
                 ItemResult::Park(Box::new(issue), bytes)
             }
@@ -887,6 +889,8 @@ impl Transfer {
             op: self.op(),
             temp,
             error: None,
+            path: None,
+            code: None,
         }
     }
 

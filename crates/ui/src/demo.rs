@@ -1,7 +1,9 @@
 //! Задачи для сцен `--screens` (D-06): job-бару нужны идущие задачи, а демо-дерево
 //! копируется мгновенно. Handler регистрирует только app под `--screens`, поэтому в
 //! реестре команд и `docs/COMMANDS.md` его нет. `screens.jobs` — запустить три задачи,
-//! которые медленно «идут» сами, `stop=true` — отменить их.
+//! которые медленно «идут» сами, `stop=true` — отменить их. `screens.error kind=access|busy`
+//! — вопрос об ошибке операции (D-04), `screens.banner` — баннер журнала; `stop=true` —
+//! убрать.
 
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -11,22 +13,48 @@ use urfin_core::{
 };
 use urfin_i18n::FluentArgs;
 
-static COMMANDS: &[CommandMeta] = &[CommandMeta {
-    id: "screens.jobs",
-    title: "Demo tasks (--screens)",
-    category: "screens",
-    args: &[ArgSpec {
-        name: "stop",
-        kind: ValueKind::Bool,
-        required: false,
-    }],
-    repeatable: false,
-}];
+const STOP: ArgSpec = ArgSpec {
+    name: "stop",
+    kind: ValueKind::Bool,
+    required: false,
+};
+
+static COMMANDS: &[CommandMeta] = &[
+    CommandMeta {
+        id: "screens.jobs",
+        title: "Demo tasks (--screens)",
+        category: "screens",
+        args: &[STOP],
+        repeatable: false,
+    },
+    CommandMeta {
+        id: "screens.error",
+        title: "Demo operation error (--screens)",
+        category: "screens",
+        args: &[
+            STOP,
+            ArgSpec {
+                name: "kind",
+                kind: ValueKind::Str,
+                required: false,
+            },
+        ],
+        repeatable: false,
+    },
+    CommandMeta {
+        id: "screens.banner",
+        title: "Demo journal banner (--screens)",
+        category: "screens",
+        args: &[STOP],
+        repeatable: false,
+    },
+];
 
 /// Демо-задачи сцен.
 #[derive(Default)]
 pub struct DemoJobs {
     ids: Vec<JobId>,
+    prompts: Vec<urfin_core::PromptId>,
 }
 
 /// Зарегистрировать демо-задачи (только `--screens`).
@@ -51,6 +79,17 @@ impl Handler for DemoJobs {
     }
 
     fn handle(&mut self, cmd: &Command, cx: &mut Cx<'_>) -> Result<(), CmdError> {
+        match cmd.id.as_str() {
+            "screens.error" => {
+                self.error(cmd, cx);
+                return Ok(());
+            }
+            "screens.banner" => {
+                banner(cmd.args.bool("stop").unwrap_or(false), cx);
+                return Ok(());
+            }
+            _ => {}
+        }
         if cmd.args.bool("stop").unwrap_or(false) {
             for id in self.ids.drain(..) {
                 cx.state.jobs.cancel(id);
@@ -114,4 +153,116 @@ impl Handler for DemoJobs {
         }
         Ok(())
     }
+}
+
+impl DemoJobs {
+    /// Вопрос об ошибке, как его задаёт ops (тело — путь и вторая строка с причиной):
+    /// `access` — «Нет доступа», `busy` — «Файл занят» с процессом-владельцем.
+    fn error(&mut self, cmd: &Command, cx: &mut Cx<'_>) {
+        for id in self.prompts.drain(..) {
+            cx.state.prompts.cancel(id);
+        }
+        if cmd.args.bool("stop").unwrap_or(false) {
+            return;
+        }
+        let i18n = urfin_i18n::current();
+        let busy = cmd.args.str("kind") == Some("busy");
+        let code = if busy { 32 } else { 5 };
+        let reason = {
+            let e = std::io::Error::from_raw_os_error(code).to_string();
+            let e = e
+                .split(" (os error")
+                .next()
+                .unwrap_or_default()
+                .trim()
+                .trim_end_matches('.')
+                .to_owned();
+            let mut c = e.chars();
+            c.next()
+                .map(|f| f.to_lowercase().chain(c).collect::<String>())
+                .unwrap_or_default()
+        };
+        let mut parts = Vec::with_capacity(3);
+        if busy {
+            let mut a = FluentArgs::new();
+            a.set("exe", "EXCEL.EXE");
+            a.set("pid", "8812");
+            parts.push(i18n.fmt("ops-issue-holder", &a));
+        }
+        if !busy {
+            parts.push(reason);
+        }
+        let mut a = FluentArgs::new();
+        a.set("code", code);
+        parts.push(i18n.fmt("ops-issue-code", &a));
+        let path = if busy {
+            "report_q3.xlsx"
+        } else {
+            "C:\\Windows\\System32\\config\\SAM"
+        };
+        let choice = |id: &str, key: &str, k: char| urfin_core::Choice {
+            id: id.into(),
+            label: i18n.get(key).into(),
+            key: k,
+        };
+        let spec = urfin_core::PromptSpec {
+            anchor: urfin_core::Anchor::JobBar,
+            title: i18n.get(if busy {
+                "ops-issue-sharing"
+            } else {
+                "ops-issue-permission"
+            }),
+            body: format!("{path}\n{}", parts.join(" · ")),
+            choices: [
+                choice("retry", "ops-choice-retry", 'r'),
+                choice("skip", "ops-choice-skip", 's'),
+                choice("cancel", "ops-choice-cancel", 'c'),
+            ]
+            .into_iter()
+            .collect(),
+            default: 0,
+            input: None,
+            allow_all: true,
+            detail: None,
+            secret: false,
+        };
+        let job = self.ids.first().copied();
+        let (id, _rx) = cx.state.prompts.open(spec, job);
+        self.prompts.push(id);
+    }
+}
+
+/// Баннер журнала «Прервано при выходе» (`screen-journal.png`), как его ставит ops.
+fn banner(stop: bool, cx: &mut Cx<'_>) {
+    if stop {
+        cx.state.banner = None;
+        return;
+    }
+    let i18n = urfin_i18n::current();
+    let mut a = FluentArgs::new();
+    a.set("n", 1);
+    a.set("name", "big.bin");
+    let what = i18n.fmt("ops-job-copy", &a);
+    let mut b = FluentArgs::new();
+    b.set("what", what);
+    b.set("dest", "D:\\backup\\b");
+    b.set("n", 62);
+    let mut m = FluentArgs::new();
+    m.set("n", 1);
+    let text = format!(
+        "{} · {}",
+        i18n.fmt("ops-recover-banner-pct", &b),
+        i18n.fmt("ops-recover-more", &m)
+    );
+    let stop = Command::new("screens.banner").arg("stop", true);
+    cx.state.banner = Some(urfin_core::Banner {
+        level: urfin_core::Level::Warn,
+        text,
+        actions: [
+            (i18n.get("ops-recover-continue").into(), stop.clone()),
+            (i18n.get("ops-recover-clear").into(), stop),
+        ]
+        .into_iter()
+        .collect(),
+    });
 }

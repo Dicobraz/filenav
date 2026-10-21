@@ -19,7 +19,7 @@ use super::theme::Theme;
 use super::{CoreHost, overlays};
 use crate::UiState;
 use crate::field_history::FieldKind;
-use crate::tokens::{Metric, Role};
+use crate::tokens::Role;
 
 /// Что сейчас редактируется.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -286,6 +286,9 @@ impl CoreHost {
                 return mkdir_commands(self.strip_opts.many, &text);
             } else if let Ok(c) = Command::parse(&d.cmd) {
                 let mut c = c.arg(&d.arg, text.as_str());
+                if d.cmd == "ops.link" {
+                    c = c.arg("kind", LINK_KINDS[self.strip_opts.link_kind % 3].0);
+                }
                 if matches!(d.cmd.as_str(), "ops.copy" | "ops.move") {
                     c = self.strip_opts.apply(c);
                     if shift {
@@ -477,12 +480,83 @@ pub(super) struct StripOpts {
     pub many: bool,
     /// Открыт список «Если файл есть».
     pub dropdown: bool,
+    /// Alt+F6: вид ссылки по [`LINK_KINDS`].
+    pub link_kind: usize,
     /// Ctrl+A: атрибуты целей по [`ATTRS`] (`None` — у целей разные) и выбранные.
     pub attrs_now: [Option<bool>; 4],
     pub attrs: [Option<bool>; 4],
     /// Ctrl+A: время изменения целей в поле (ISO); пусто — у целей разное.
     pub mtime_init: String,
 }
+
+/// Виды ссылки Alt+F6 (`ops.link kind=`) и подписи сегментов.
+pub(super) const LINK_KINDS: [(&str, &str); 3] = [
+    ("sym", "ui-link-sym"),
+    ("hard", "ui-link-hard"),
+    ("junction", "ui-link-junction"),
+];
+
+/// Вставки шаблона группового переименования (`screen-multirename.png`): что вставить
+/// в поле и подпись.
+pub(super) const MR_TOKENS: [(&str, &str); 5] = [
+    ("[N]", "ui-mr-tok-name"),
+    ("[E]", "ui-mr-tok-ext"),
+    ("[C]", "ui-mr-tok-counter"),
+    ("[Y][M][D]", "ui-mr-tok-date"),
+    ("/", "ui-mr-tok-replace"),
+];
+
+/// Превью F7 (`screen-mkdirtree.png`): строки дерева — глубина, имя, «есть» (`Some(true)`),
+/// «новая» (`Some(false)`) или неизвестно (глубже существующей папки, без чтения ФС).
+pub(super) fn mkdir_tree(t: &Tab, many: bool, text: &str) -> Vec<(usize, String, Option<bool>)> {
+    let names: Vec<&str> = if many {
+        text.split(';')
+            .map(str::trim)
+            .filter(|n| !n.is_empty())
+            .collect()
+    } else {
+        vec![text.trim()]
+    };
+    if !names.iter().any(|n| n.contains(['\\', '/'])) && names.len() < 2 {
+        return Vec::new();
+    }
+    let here = |n: &str| {
+        let low = n.to_lowercase();
+        t.listing
+            .entries
+            .iter()
+            .any(|e| e.kind.is_dir_like() && e.name.to_lowercase() == low)
+    };
+    let mut out: Vec<(usize, String, Option<bool>)> = Vec::new();
+    for name in names {
+        let mut parent_new = false;
+        let parts: Vec<&str> = name.split(['\\', '/']).filter(|p| !p.is_empty()).collect();
+        for (depth, part) in parts.iter().enumerate() {
+            let state = if depth == 0 {
+                Some(here(part))
+            } else if parent_new {
+                Some(false)
+            } else {
+                None
+            };
+            parent_new = state == Some(false);
+            // Общие начала путей — одной строкой.
+            let dup = out
+                .iter()
+                .rev()
+                .take_while(|(d, _, _)| *d >= depth)
+                .any(|(d, n, _)| *d == depth && n.eq_ignore_ascii_case(part));
+            if !dup {
+                out.push((depth, (*part).to_owned(), state));
+            }
+        }
+    }
+    out.truncate(MKDIR_ROWS);
+    out
+}
+
+/// Строк превью F7 не больше.
+pub(super) const MKDIR_ROWS: usize = 8;
 
 /// Атрибуты строки Ctrl+A: бит `Attrs`, буква `ops.attrs`, подпись.
 pub(super) const ATTRS: [(u32, char, &str); 4] = [
@@ -634,6 +708,10 @@ pub(super) fn mask_matches(t: &Tab, mask: &str) -> Option<(urfin_core::Mask, usi
 /// файл есть, даты, хэш, кнопки), F8 — с чертой `modified`, отметка группы — с числом
 /// совпадений, групповое переименование — с превью; кнопки с клавишами.
 #[allow(clippy::too_many_lines, reason = "строка черновика сверху вниз")]
+#[allow(
+    clippy::many_single_char_names,
+    reason = "состояние, черновик, аргументы"
+)]
 #[allow(clippy::too_many_arguments, reason = "плоский вызов отрисовки")]
 pub(super) fn draft_bar(
     s: &AppState,
@@ -642,6 +720,7 @@ pub(super) fn draft_bar(
     permanent: bool,
     opts: &StripOpts,
     preview: Option<&MrPreview>,
+    sync: Option<urfin_core::Side>,
     theme: &Theme,
     click: overlays::ClickAll<'_>,
     toggle: &dyn Fn(u8) -> overlays::Handler,
@@ -694,12 +773,19 @@ pub(super) fn draft_bar(
         if matches!(d.cmd.as_str(), "ops.copy" | "ops.move") {
             c = opts.apply(c);
         }
+        if d.cmd == "ops.link" {
+            c = c.arg("kind", LINK_KINDS[opts.link_kind % 3].0);
+        }
         if let Some((k, v)) = extra {
             c = c.arg(k, v);
         }
         vec![c, Command::new("ui.cancel")]
     };
     match d.cmd.as_str() {
+        "ops.copy" if sync.is_some() => {
+            let side = sync.unwrap_or(urfin_core::Side::Left);
+            Some(sync_bar(side, &a, theme, click, field_text, opts))
+        }
         "ops.copy" | "ops.move" => {
             let copy = d.cmd == "ops.copy";
             let (text, go) = if copy {
@@ -884,11 +970,61 @@ pub(super) fn draft_bar(
                     .on_click(toggle(2)),
                 )
                 .child(note(theme, i18n.get("ui-strip-mkdir-nested")));
-            Some(
-                container(theme, Tone::Plain, 12.0, 12.0)
-                    .child(row)
-                    .child(more),
-            )
+            let mut bar = container(theme, Tone::Plain, 12.0, 12.0)
+                .child(row)
+                .child(more);
+            let tree = mkdir_tree(s.active_tab(), opts.many, field_text);
+            if !tree.is_empty() {
+                let mut list = div()
+                    .flex()
+                    .flex_col()
+                    .pt(px(6.0))
+                    .border_t_1()
+                    .border_color(theme.c(Role::StrokeDivider));
+                for (depth, name, state) in tree {
+                    #[allow(clippy::cast_precision_loss, reason = "глубина единицы")]
+                    let indent = depth as f32 * 18.0;
+                    list = list.child(
+                        div()
+                            .h(px(22.0))
+                            .pl(px(indent))
+                            .flex()
+                            .items_center()
+                            .gap(px(6.0))
+                            .text_size(px(12.5))
+                            .child(
+                                div()
+                                    .font_family("Segoe Fluent Icons")
+                                    .text_color(theme.c(if state == Some(true) {
+                                        Role::TextSecondary
+                                    } else {
+                                        Role::AccentText
+                                    }))
+                                    .child(SharedString::new_static("\u{E8B7}")),
+                            )
+                            .child(
+                                div()
+                                    .when(state != Some(true), |d| {
+                                        d.font_weight(gpui_kit::FontWeight::MEDIUM)
+                                    })
+                                    .child(SharedString::from(name)),
+                            )
+                            .children(state.map(|on| {
+                                note(
+                                    theme,
+                                    i18n.get(if on {
+                                        "ui-mkdir-exists"
+                                    } else {
+                                        "ui-mkdir-new"
+                                    }),
+                                )
+                                .text_size(px(11.0))
+                            })),
+                    );
+                }
+                bar = bar.child(list);
+            }
+            Some(bar)
         }
         "panel.filter" => {
             let count = filter_matches(s.active_tab(), field_text).map(|(n, all)| {
@@ -999,6 +1135,215 @@ pub(super) fn draft_bar(
                     .child(buttons),
             )
         }
+        "ops.link" => {
+            let t = s.active_tab();
+            let (target, dir) = match t.current() {
+                Some(Row::Entry { entry, .. }) => (
+                    path_text(t).trim_end_matches('\\').to_owned() + "\\" + entry.name.as_str(),
+                    entry.kind.is_dir_like(),
+                ),
+                _ => (path_text(t), true),
+            };
+            let row = div()
+                .flex()
+                .items_center()
+                .gap(px(10.0))
+                .child(icon(theme, "\u{E71B}"))
+                .child(title(i18n.get("ui-strip-link")))
+                .children(input)
+                .child(note(theme, i18n.get("ui-strip-link-to")))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .h(px(30.0))
+                        .px(px(8.0))
+                        .flex()
+                        .items_center()
+                        .rounded(px(4.0))
+                        .border_1()
+                        .border_color(theme.c(Role::StrokeControl))
+                        .bg(theme.c(Role::LayerPanel))
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .child(SharedString::from(target)),
+                );
+            let mut seg = div()
+                .flex()
+                .items_center()
+                .rounded(px(4.0))
+                .border_1()
+                .border_color(theme.c(Role::StrokeControl));
+            for (k, (_, label)) in LINK_KINDS.iter().enumerate() {
+                // Жёсткая ссылка на папку невозможна.
+                let enabled = !(dir && k == 1);
+                let on = opts.link_kind % 3 == k;
+                #[allow(clippy::cast_possible_truncation, reason = "три вида")]
+                let id = 40 + k as u8;
+                let mut b = div()
+                    .id(SharedString::from(format!("link-kind-{k}")))
+                    .h(px(28.0))
+                    .px(px(12.0))
+                    .flex()
+                    .items_center()
+                    .text_size(px(12.5))
+                    .when(k > 0, |d| {
+                        d.border_l_1().border_color(theme.c(Role::StrokeControl))
+                    })
+                    .when(on, |d| d.bg(theme.c(Role::FillCursor)))
+                    .when(!enabled, |d| d.text_color(theme.c(Role::TextDisabled)))
+                    .child(SharedString::from(i18n.get(label)));
+                if enabled {
+                    b = b.on_click(toggle(id));
+                }
+                seg = seg.child(b);
+            }
+            let more = div()
+                .flex()
+                .items_center()
+                .gap(px(12.0))
+                .child(note(theme, i18n.get("ui-strip-link-kind")))
+                .child(seg)
+                .child(icon(theme, "\u{E946}"))
+                .child(note(theme, i18n.get("ui-strip-link-hint")))
+                .child(
+                    button(
+                        theme,
+                        "draft-go".into(),
+                        i18n.get("ui-button-create"),
+                        "Enter",
+                        Btn::Primary,
+                    )
+                    .on_click(click(commit(None))),
+                )
+                .child(cancel());
+            Some(
+                container(theme, Tone::Plain, 16.0, 12.0)
+                    .child(row)
+                    .child(more),
+            )
+        }
+        "ops.touch" => {
+            let row = div()
+                .flex()
+                .items_center()
+                .gap(px(10.0))
+                .child(icon(theme, "\u{E823}"))
+                .child(title(i18n.get("ui-strip-touch")))
+                .child(div().w(px(200.0)).flex_none().children(input))
+                .child(
+                    button(
+                        theme,
+                        "strip-now".into(),
+                        i18n.get("ui-strip-attrs-now"),
+                        "",
+                        Btn::Normal,
+                    )
+                    .on_click(toggle(20)),
+                )
+                .child(
+                    button(
+                        theme,
+                        "draft-go".into(),
+                        i18n.get("ui-button-apply"),
+                        "Enter",
+                        Btn::Primary,
+                    )
+                    .on_click(click(commit(None))),
+                )
+                .child(cancel());
+            let more = div()
+                .flex()
+                .items_center()
+                .gap(px(16.0))
+                .child(check(
+                    theme,
+                    "touch-deep".into(),
+                    false,
+                    i18n.get("ui-strip-touch-deep"),
+                    false,
+                ))
+                .child(note(theme, i18n.get("ui-strip-touch-hint")));
+            Some(
+                container(theme, Tone::Plain, 12.0, 12.0)
+                    .child(row)
+                    .child(more),
+            )
+        }
+        MULTI_RENAME => {
+            let summary = preview.map(|p| {
+                let mut m = FluentArgs::new();
+                if let Some(e) = &p.error {
+                    m.set("error", e.clone());
+                    i18n.fmt("ui-mr-pattern-error", &m)
+                } else {
+                    m.set("changed", p.changed);
+                    m.set("problems", p.problems);
+                    i18n.fmt("ui-strip-mr-summary", &m)
+                }
+            });
+            let row = div()
+                .flex()
+                .items_center()
+                .gap(px(10.0))
+                .child(icon(theme, "\u{E70F}"))
+                .child(title(i18n.get("ui-strip-mr")))
+                .children(input)
+                .children(summary.map(|t| note(theme, t)));
+            let mut chips = div().flex().flex_wrap().items_center().gap(px(6.0));
+            for (k, (token, label)) in MR_TOKENS.iter().enumerate() {
+                #[allow(clippy::cast_possible_truncation, reason = "пять вставок")]
+                let id = 30 + k as u8;
+                chips =
+                    chips.child(
+                        div()
+                            .id(SharedString::from(format!("mr-tok-{k}")))
+                            .h(px(26.0))
+                            .px(px(10.0))
+                            .flex()
+                            .items_center()
+                            .gap(px(6.0))
+                            .rounded(px(4.0))
+                            .border_1()
+                            .border_color(theme.c(Role::StrokeControl))
+                            .bg(theme.c(Role::LayerPanel))
+                            .text_size(px(12.0))
+                            .child(div().font_family("Cascadia Mono").child(
+                                SharedString::new_static(if *token == "/" { "" } else { token }),
+                            ))
+                            .child(
+                                div()
+                                    .text_color(theme.c(Role::TextSecondary))
+                                    .child(SharedString::from(i18n.get(label))),
+                            )
+                            .on_click(toggle(id)),
+                    );
+            }
+            let buttons = div()
+                .flex()
+                .items_center()
+                .gap(px(8.0))
+                .child(
+                    button(
+                        theme,
+                        "draft-go".into(),
+                        i18n.get("ui-button-rename"),
+                        "Enter",
+                        Btn::Primary,
+                    )
+                    .on_click(click(vec![
+                        mr_command(field_text, true),
+                        Command::new("ui.cancel"),
+                    ])),
+                )
+                .child(cancel());
+            Some(
+                container(theme, Tone::Plain, 12.0, 10.0)
+                    .child(row)
+                    .child(chips)
+                    .child(buttons),
+            )
+        }
         cmd => {
             let multi = cmd == MULTI_RENAME;
             let select = matches!(cmd, "sel.add" | "sel.remove");
@@ -1050,13 +1395,109 @@ pub(super) fn draft_bar(
                     button(theme, "draft-go".into(), ok, "Enter", Btn::Primary).on_click(click(go)),
                 )
                 .child(cancel());
-            let mut bar = container(theme, Tone::Plain, 12.0, 10.0).child(row);
-            if multi && let Some(p) = preview {
-                bar = bar.child(mr_preview(p, theme));
-            }
-            Some(bar)
+            Some(container(theme, Tone::Plain, 12.0, 10.0).child(row))
         }
     }
+}
+
+/// Синхронизация после сравнения (`screen-syncplan.png`): направление → / ← (⇄ и
+/// «Удалять лишнее» — нет в ops), объём того, что скопировать, Синхронизировать (копия
+/// с «Заменить, если новее»).
+fn sync_bar(
+    side: urfin_core::Side,
+    a: &FluentArgs<'_>,
+    theme: &Theme,
+    click: overlays::ClickAll<'_>,
+    field_text: &str,
+    opts: &StripOpts,
+) -> Div {
+    use super::strip::{Btn, Tone, button, check, container};
+    let i18n = urfin_i18n::current();
+    let left = side == urfin_core::Side::Left;
+    let arrow = if left { "→" } else { "←" };
+    let mut seg = div()
+        .flex()
+        .items_center()
+        .rounded(px(4.0))
+        .border_1()
+        .border_color(theme.c(Role::StrokeControl));
+    for (k, (glyph, dir)) in [("→", Some("lr")), ("←", Some("rl")), ("⇄", None)]
+        .into_iter()
+        .enumerate()
+    {
+        let on = dir == Some(if left { "lr" } else { "rl" });
+        let mut b = div()
+            .id(SharedString::from(format!("sync-dir-{k}")))
+            .w(px(38.0))
+            .h(px(28.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .when(k > 0, |d| {
+                d.border_l_1().border_color(theme.c(Role::StrokeControl))
+            })
+            .when(on, |d| d.bg(theme.c(Role::FillCursor)))
+            .when(dir.is_none(), |d| d.text_color(theme.c(Role::TextDisabled)))
+            .child(SharedString::new_static(glyph));
+        if let Some(dir) = dir.filter(|_| !on) {
+            b = b.on_click(click(vec![
+                Command::new("ui.cancel"),
+                Command::new("ops.sync").arg("dir", dir),
+            ]));
+        }
+        seg = seg.child(b);
+    }
+    let what = format!("{arrow} {}", i18n.fmt("ui-strip-sync-what", a));
+    let go = Command::new("ops.copy")
+        .arg("dest", field_text)
+        .arg("conflict", "newer");
+    let go = opts.apply(go).arg("conflict", "newer");
+    let row = div()
+        .flex()
+        .flex_wrap()
+        .items_center()
+        .gap(px(12.0))
+        .child(
+            div()
+                .font_family("Segoe Fluent Icons")
+                .text_color(theme.c(Role::AccentText))
+                .child(SharedString::new_static("\u{E8AB}")),
+        )
+        .child(
+            div()
+                .font_weight(gpui_kit::FontWeight::MEDIUM)
+                .child(SharedString::from(i18n.get("ui-strip-sync"))),
+        )
+        .child(SharedString::from(what))
+        .child(seg)
+        .child(check(
+            theme,
+            "sync-mirror".into(),
+            false,
+            i18n.get("ui-strip-sync-mirror"),
+            false,
+        ))
+        .child(
+            button(
+                theme,
+                "draft-go".into(),
+                i18n.get("ui-strip-sync-go"),
+                "Enter",
+                Btn::Primary,
+            )
+            .on_click(click(vec![go, Command::new("ui.cancel")])),
+        )
+        .child(
+            button(
+                theme,
+                "draft-cancel".into(),
+                i18n.get("ui-button-cancel"),
+                "Esc",
+                Btn::Normal,
+            )
+            .on_click(click(vec![Command::new("ui.cancel")])),
+        );
+    container(theme, Tone::Plain, 16.0, 12.0).child(row)
 }
 
 /// Значок строки (Segoe Fluent Icons) цветом `secondary`.
@@ -1076,72 +1517,6 @@ fn note(theme: &Theme, text: String) -> Div {
         .text_size(px(12.0))
         .text_color(theme.c(Role::TextSecondary))
         .child(SharedString::from(text))
-}
-
-/// Превью группового переименования: «было → станет», проблемные — красным,
-/// итог или ошибка шаблона.
-fn mr_preview(p: &MrPreview, theme: &Theme) -> Div {
-    let i18n = urfin_i18n::current();
-    let secondary = theme.c(Role::TextSecondary);
-    if let Some(e) = &p.error {
-        return div()
-            .text_color(theme.c(Role::CriticalFg))
-            .child(SharedString::from(i18n.fmt("ui-mr-pattern-error", &{
-                let mut a = FluentArgs::new();
-                a.set("error", e.clone());
-                a
-            })));
-    }
-    let mut list = div().flex().flex_col().gap_1();
-    for (from, to, problem) in &p.rows {
-        let bad = !problem.is_empty();
-        let note = if bad {
-            i18n.get(&format!("ui-mr-problem-{problem}"))
-        } else {
-            String::new()
-        };
-        list = list.child(
-            div()
-                .flex()
-                .flex_row()
-                .gap_2()
-                .child(
-                    div()
-                        .w(px(260.0))
-                        .overflow_hidden()
-                        .text_color(secondary)
-                        .child(SharedString::from(from.clone())),
-                )
-                .child(div().text_color(secondary).child("→"))
-                .child(
-                    div()
-                        .text_color(theme.c(if bad {
-                            Role::CriticalFg
-                        } else {
-                            Role::TextPrimary
-                        }))
-                        .child(SharedString::from(to.clone())),
-                )
-                .when(bad, |d| {
-                    d.child(
-                        div()
-                            .text_size(px(theme.m(Metric::TypeCaption)))
-                            .text_color(theme.c(Role::CriticalFg))
-                            .child(SharedString::from(note)),
-                    )
-                }),
-        );
-    }
-    let mut a = FluentArgs::new();
-    a.set("changed", p.changed);
-    a.set("problems", p.problems);
-    a.set("shown", p.rows.len());
-    div().flex().flex_col().gap_2().child(list).child(
-        div()
-            .text_size(px(theme.m(Metric::TypeCaption)))
-            .text_color(secondary)
-            .child(SharedString::from(i18n.fmt("ui-mr-summary", &a))),
-    )
 }
 
 /// Поле правки пути панели `side` (если оно открыто).

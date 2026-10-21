@@ -298,6 +298,10 @@ pub struct Issue {
     pub temp: Option<PathBuf>,
     /// Текст ошибки ОС (`IssueKind::Io`, `LowSpace`).
     pub error: Option<Arc<str>>,
+    /// Полный путь элемента с ошибкой и код ошибки ОС — для строки-вопроса (D-04) и
+    /// поиска процесса, держащего файл (№69).
+    pub path: Option<PathBuf>,
+    pub code: Option<i32>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
