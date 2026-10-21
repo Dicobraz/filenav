@@ -130,6 +130,11 @@ impl DeviceGate {
     }
 
     #[cfg(test)]
+    pub(crate) fn waiting(&self) -> usize {
+        self.lock().waiting.len()
+    }
+
+    #[cfg(test)]
     pub(crate) fn running(&self, device: u64) -> u8 {
         self.lock().running.get(&device).copied().unwrap_or(0)
     }
@@ -156,6 +161,15 @@ mod tests {
     use std::sync::mpsc;
 
     use super::*;
+
+    /// Ждёт условия (поток ожидающего встал в очередь), не дольше 5 с.
+    fn until(f: impl Fn() -> bool) {
+        let t0 = std::time::Instant::now();
+        while !f() {
+            assert!(t0.elapsed() < Duration::from_secs(5), "timeout");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
 
     fn ctl(prio: u8) -> Arc<JobCtl> {
         let c = Arc::new(JobCtl::default());
@@ -225,9 +239,9 @@ mod tests {
         let (rel_normal, rx_normal) = mpsc::channel();
         let (rel_high, rx_high) = mpsc::channel();
         let normal = wait_in_thread(&g, 2, vec![(7, 1)], ctl(1), tx.clone(), rx_normal);
-        std::thread::sleep(Duration::from_millis(50));
+        until(|| g.waiting() == 1);
         let high = wait_in_thread(&g, 3, vec![(7, 1)], ctl(2), tx.clone(), rx_high);
-        std::thread::sleep(Duration::from_millis(50));
+        until(|| g.waiting() == 2);
         drop(busy);
         assert_eq!(
             rx.recv_timeout(Duration::from_secs(2)).unwrap(),
@@ -238,6 +252,7 @@ mod tests {
         let nc = ctl(1);
         let (rel_now, rx_now) = mpsc::channel();
         let now = wait_in_thread(&g, 4, vec![(7, 1)], Arc::clone(&nc), tx, rx_now);
+        until(|| g.waiting() == 2);
         assert!(rx.recv_timeout(Duration::from_millis(100)).is_err());
         nc.run_now.store(true, Ordering::Relaxed);
         g.poke();

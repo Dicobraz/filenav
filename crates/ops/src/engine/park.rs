@@ -252,6 +252,7 @@ const CANCEL: &str = "cancel";
 const RETRY: &str = "retry";
 const DELETE: &str = "delete";
 const FIX: &str = "fix";
+const JUNCTION: &str = "junction";
 
 fn resolution(r: &Reply) -> Resolution {
     match r.choice.as_str() {
@@ -262,6 +263,7 @@ fn resolution(r: &Reply) -> Resolution {
         CANCEL => Resolution::Abort,
         RETRY => Resolution::Retry,
         DELETE => Resolution::DeletePermanently,
+        JUNCTION => Resolution::Junction,
         _ => Resolution::Skip,
     }
 }
@@ -291,6 +293,9 @@ pub(super) fn prompt(issue: &Issue, index: u64, total: u64) -> PromptSpec {
         .or(issue.dst.as_ref())
         .map_or_else(String::new, |m| m.name.to_string());
     let mut choices: SmallVec<[Choice; 4]> = SmallVec::new();
+    if issue.op == crate::api::ItemOp::Link {
+        return link_prompt(issue, name, index, total);
+    }
     if let IssueKind::Io(_) | IssueKind::LowSpace = issue.kind {
         return error_prompt(issue, name, index, total);
     }
@@ -465,6 +470,39 @@ fn name_prompt(issue: &Issue, name: String, index: u64, total: u64) -> PromptSpe
         default: 0,
         input: None,
         allow_all: true,
+        detail: None,
+        secret: false,
+    }
+}
+
+/// Symlink без прав (режим разработчика выключен): для каталога — junction.
+fn link_prompt(issue: &Issue, name: String, index: u64, total: u64) -> PromptSpec {
+    let choices: SmallVec<[Choice; 4]> = [
+        choice(JUNCTION, "ops-choice-junction", 'j'),
+        choice(CANCEL, "ops-choice-cancel", 'c'),
+    ]
+    .into_iter()
+    .collect();
+    let body = tr(
+        "ops-issue-body",
+        &[
+            ("index", index.to_string()),
+            ("total", total.to_string()),
+            ("name", name),
+            (
+                "error",
+                issue.error.as_deref().unwrap_or_default().to_owned(),
+            ),
+        ],
+    );
+    PromptSpec {
+        anchor: Anchor::JobBar,
+        title: urfin_i18n::current().get("ops-issue-no-symlink"),
+        body,
+        choices,
+        default: 0,
+        input: None,
+        allow_all: false,
         detail: None,
         secret: false,
     }

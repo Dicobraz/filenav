@@ -356,14 +356,19 @@ impl CoreHost {
                         "ops.copy" | "ops.move" => "dest",
                         "ops.mkdir" => "name",
                         field::MULTI_RENAME => "pattern",
+                        "ops.link" => "dest",
+                        "ops.attrs" => "set",
+                        "ops.touch" => "mtime",
                         _ => "confirmed",
                     };
                     self.ops_permanent = args.bool("permanent").unwrap_or(false);
-                    drafts.push(
-                        Command::new("ui.draft")
-                            .arg("command", command.as_str())
-                            .arg("arg", arg),
-                    );
+                    let mut c = Command::new("ui.draft")
+                        .arg("command", command.as_str())
+                        .arg("arg", arg);
+                    if let Some(init) = args.str("init") {
+                        c = c.arg("init", init);
+                    }
+                    drafts.push(c);
                 }
                 _ => {}
             }
