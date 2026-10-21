@@ -139,7 +139,7 @@ body{margin:0}
 <sc-if value="{{r.isFile}}" hint-placeholder-val="{{ true }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z M9.5 1.5v3h3" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></sc-if>
 </span>
 </sc-if>
-<sc-if value="{{r.mvEdit}}" hint-placeholder-val="{{ false }}"><span role="textbox" aria-label="Новое имя" style="{{mvBox}}"><span style="{{mvSel}}">{{r.mvBase}}</span><span>{{r.mvExt}}</span></span></sc-if><span style="overflow: hidden; text-overflow: ellipsis">{{r.n1}}<span style="{{r.hlStyle}}">{{r.n2}}</span>{{r.n3}}</span><sc-if value="{{r.renameTo}}" hint-placeholder-val="{{ false }}"><span style="color: {{t.s}}; font-weight: 400">→</span><span style="{{r.toStyle}}">{{r.renameTo}}</span></sc-if><sc-if value="{{r.tag}}" hint-placeholder-val="{{ false }}"><span style="{{r.tagStyle}}">{{r.tag}}</span></sc-if>
+<sc-if value="{{r.mvEdit}}" hint-placeholder-val="{{ false }}"><span role="textbox" aria-label="Новое имя" style="{{mvBox}}"><span style="{{mvSel}}">{{r.mvBase}}</span><span>{{r.mvExt}}</span><span style="{{mvCaret}}"></span></span></sc-if><span style="overflow: hidden; text-overflow: ellipsis">{{r.n1}}<span style="{{r.hlStyle}}">{{r.n2}}</span>{{r.n3}}</span><sc-if value="{{r.renameTo}}" hint-placeholder-val="{{ false }}"><span style="color: {{t.s}}; font-weight: 400">→</span><span style="{{r.toStyle}}">{{r.renameTo}}</span></sc-if><sc-if value="{{r.tag}}" hint-placeholder-val="{{ false }}"><span style="{{r.tagStyle}}">{{r.tag}}</span></sc-if>
 </span>
 <span style="width: 92px; text-align: right">{{r.size}}</span>
 <sc-if value="{{pn.packedCol}}" hint-placeholder-val="{{ false }}"><span style="width: 80px; text-align: right; color: {{r.dateColor}}">{{r.packed}}</span></sc-if>
@@ -776,7 +776,7 @@ hlStyle: "background: " + t.hl + "; color: " + t.t + "; border-radius: 2px",
 isUp: kind === "up", isDir: kind === "d", isFile: kind !== "up" && kind !== "d",
 weight: (kind === "d" || kind === "up" || isM) ? 500 : 400,
 iconColor: iconCol, dateColor: isC ? t.ct : t.s,
-rowStyle: "height: " + rowH + "px; display: flex; align-items: center; padding: 0 12px; background: " + (isC ? t.c : "transparent") + "; color: " + col + (isM ? "; box-shadow: inset 3px 0 0 " + t.a : ""),
+rowStyle: "height: " + rowH + "px; display: flex; align-items: center; padding: 0 12px; background: " + (screen === "rename" && isC ? t.p + "; box-shadow: inset 0 0 0 1px " + t.b + ", inset 0 -2px 0 " + t.a : (isC ? t.c : "transparent") + (isM ? "; box-shadow: inset 3px 0 0 " + t.a : "")) + "; color: " + col,
 briefStyle: "height: " + rowH + "px; display: flex; align-items: center; gap: 8px; padding: 0 10px; overflow: hidden; white-space: nowrap; font-weight: " + ((kind === "d" || kind === "up") ? 500 : 400) + "; background: " + (isC ? t.c : "transparent") + "; color: " + col + (isM ? "; box-shadow: inset 3px 0 0 " + t.a : "")
 };
 });
@@ -1105,8 +1105,8 @@ mvIsMkdir: screen === "mkdir" || screen === "mkdirtree", mvTree: screen === "mkd
 mvMkVal: screen === "mkdirtree" ? "design\\screens; notes\\2026-10" : "release-notes", mvMkW: "260px",
 mvTreeRows: [["design",0,false],["screens",1,true],["notes",0,true],["2026-10",1,true]].map(([n, d, nw]) => ({ n, pad: (d * 18) + "px", ic: nw ? t.a : t.s, st: nw ? "font-weight: 500" : "color: " + t.s, note: nw ? "новая" : "есть" })),
 mvIsMove: screen === "move",
-mvBox: "height: " + (rowH - 4) + "px; box-sizing: border-box; width: 240px; margin-left: -7px; padding: 0 6px; display: inline-flex; align-items: center; border: 1px solid " + t.a + "; border-radius: 4px; background: " + t.p + "; color: " + t.t + "; font-weight: 400; box-shadow: inset 0 -1px 0 " + t.a,
-mvSel: "background: " + t.a + "; color: " + t.p,
+mvBox: "display: inline-flex; align-items: center; color: " + t.t + "; font-weight: 400; white-space: pre",
+mvSel: "background: " + t.a + "; color: " + t.p, mvCaret: "display: none",
 atOn: screen === "attrs", atFlags, atNest, atDates, isCopy, isSearch: screen === "search", isViewer: screen === "viewer", isEditor: screen === "editor", isSettings: screen === "settings",
 showCli: ["panels","bookmarks","history","sort","filter","filtered","attrs","mkdir","mkdirtree","move","rename","journal","multirename","compare","terminal","termhalf","menu","context","select","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress","search"].indexOf(screen) >= 0,
 showToast: screen === "panels", isCmp: screen === "compare",
