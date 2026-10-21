@@ -58,17 +58,27 @@ const SCENES: &[Scene] = &[
         name: "context-admin",
         steps: &["ui.theme.set id=system-light", "context admin"],
     },
+    // Плотность 20 и цветные иконки (D-03): имя — как у снимка дизайна.
+    Scene {
+        name: "density-20-color-icons",
+        steps: &[
+            "context none",
+            "ui.density.set px=20",
+            "ui.icons.set mode=color",
+        ],
+    },
     Scene {
         name: "marked",
         steps: &[
-            "context none",
+            "ui.density.set px=24",
+            "ui.icons.set mode=mono",
             "ui.theme.follow_os",
             "sel.add mask=\"*.md;*.pdf;*.jpg\"",
             "panel.cursor.down n=3",
         ],
     },
     Scene {
-        name: "brief",
+        name: "screen-brief",
         steps: &["panel.view_mode mode=brief"],
     },
     Scene {
@@ -108,16 +118,39 @@ const SCENES: &[Scene] = &[
         steps: &["keymap.qs.cancel", "panel.cursor.home", "ops.copy"],
     },
     Scene {
-        name: "info",
+        name: "screen-info",
         steps: &["panel.mode mode=info"],
     },
     Scene {
-        name: "tree",
+        name: "screen-tree",
         steps: &["panel.mode mode=tree"],
+    },
+    Scene {
+        name: "screen-quickview",
+        steps: &["panel.mode mode=qview"],
+    },
+    Scene {
+        name: "screen-drives",
+        steps: &["panel.mode mode=files", "ui.drives side=left"],
+    },
+    // Состояния папки (D-03): нет доступа (папка ОС только для администраторов) и нет
+    // связи (несуществующий ресурс на своём SMB — ответ сразу); затем назад.
+    Scene {
+        name: "screen-errors",
+        steps: &[
+            "ui.cancel",
+            "panel.go side=left path=\"C:\\System Volume Information\"",
+            "panel.go side=right path=\"\\\\127.0.0.1\\urfin-missing\"",
+        ],
     },
     Scene {
         name: "narrow",
         steps: &[
+            "panel.focus side=left",
+            "panel.back",
+            "panel.focus side=right",
+            "panel.back",
+            "panel.focus side=left",
             "panel.mode mode=files",
             "ui.theme.set id=system-light",
             "resize 720x600",
@@ -266,9 +299,12 @@ impl Screens {
             .contains(&WAIT_PROMPT)
             || s.prompts.active().is_some();
         prompt
-            && [Side::Left, Side::Right]
-                .into_iter()
-                .all(|side| matches!(s.panel(side).tab().listing.status, ListingStatus::Complete))
+            && [Side::Left, Side::Right].into_iter().all(|side| {
+                matches!(
+                    s.panel(side).tab().listing.status,
+                    ListingStatus::Complete | ListingStatus::Failed(_)
+                )
+            })
     }
 }
 

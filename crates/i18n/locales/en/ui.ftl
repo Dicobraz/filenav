@@ -224,3 +224,30 @@ ui-status-dir = { $name } · { $count } { $count ->
     [one] item
    *[other] items
 }
+
+## Диски (D-03)
+ui-drives-section-drives = Drives
+ui-drives-section-network = Network
+ui-drives-section-places = Places
+ui-drives-free = { $bytes } free
+ui-drives-offline = no connection
+ui-place-home = Home
+ui-place-desktop = Desktop
+ui-place-documents = Documents
+ui-place-downloads = Downloads
+ui-size-dir = <DIR>
+
+## Состояния папки (D-03)
+ui-state-empty = Folder is empty
+ui-state-denied = No access to the folder
+ui-state-denied-text = Only administrators can read this folder.
+ui-state-offline = No connection to { $path }
+ui-state-offline-text = The network resource does not respond. Other work does not wait.
+ui-state-failed = Cannot read the folder
+ui-state-back = Back
+ui-state-retry = Retry now
+
+ui-tree-label = tree
+ui-qv-title = Quick view
+ui-info-summary = Folder { $path }: { $files } files, { $dirs } folders · { $bytes }
+ui-info-free-of = { $free } free of { $total }

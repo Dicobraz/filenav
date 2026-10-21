@@ -17,21 +17,23 @@ use urfin_vfs::icons::icon_class;
 
 use super::CoreHost;
 use super::theme::Theme;
+use crate::config::IconMode;
 use crate::fmt_cell::{Cell, ColKind, cell_text};
 use crate::tokens::{Metric, Role};
 
 /// Ширина колонок Full: размер и дата (S2 §2.1).
-const W_SIZE: f32 = 96.0;
-const W_MTIME: f32 = 128.0;
+const W_SIZE: f32 = 92.0;
+const W_MTIME: f32 = 120.0;
 /// Минимальная ширина колонки Brief.
-const W_BRIEF: f32 = 220.0;
+/// Brief — только имена в три колонки (D-03).
+const BRIEF_COLS: f32 = 3.0;
 /// Шрифт иконок ОС (S2 §1.6).
 const ICON_FONT: &str = "Segoe Fluent Icons";
 /// `..` — стрелка вверх.
 const GLYPH_UP: char = '\u{E74A}';
 
 /// Геометрия панели для `panel.viewport`: строк в колонке и колонок.
-pub(super) fn grid(theme: &Theme, mode: ViewMode, w: f32, h: f32) -> (u32, u32) {
+pub(super) fn grid(theme: &Theme, mode: ViewMode, _w: f32, h: f32) -> (u32, u32) {
     let head = if matches!(mode, ViewMode::Full) {
         theme.m(Metric::HColHeader)
     } else {
@@ -41,7 +43,7 @@ pub(super) fn grid(theme: &Theme, mode: ViewMode, w: f32, h: f32) -> (u32, u32) 
     #[allow(clippy::cast_sign_loss, reason = "не меньше 1.0")]
     let rows = (list_h / theme.m(Metric::HRow)).floor().max(1.0) as u32;
     let cols = match mode {
-        ViewMode::Brief => (w / W_BRIEF).floor().max(1.0),
+        ViewMode::Brief => BRIEF_COLS,
         ViewMode::Medium => 2.0,
         _ => 1.0,
     };
@@ -133,14 +135,16 @@ impl Render for PanelView {
                     &measure,
                     &l,
                 ))
-                .when(matches!(t.view_mode, ViewMode::Full), |d| {
-                    d.child(col_header(side, theme, cols, &l))
-                })
+                .when(
+                    matches!(t.view_mode, ViewMode::Full) && state_of(t).is_none(),
+                    |d| d.child(col_header(side, theme, cols, &l)),
+                )
             }
             // Дерево, «Сведения», просмотр (S2 §2.4–2.5).
             Piece::List if t.mode != urfin_core::PanelMode::Files => {
                 body.child(super::views::body(s, side, theme, rows))
             }
+            Piece::List if state_of(t).is_some() => body.child(state_view(t, side, theme, &l)),
             Piece::List => body.child(list(
                 t,
                 side,
@@ -150,6 +154,9 @@ impl Render for PanelView {
                 cols,
                 h.field.as_ref(),
                 h.slide_pos(side),
+                s.ext
+                    .get::<crate::UiState>()
+                    .map_or(IconMode::Mono, |u| u.icons),
                 &l,
             )),
             Piece::Foot => body.child(footer(s, t, side, s.active == side, theme)),
@@ -173,6 +180,8 @@ pub(super) fn fingerprint(
     let t = s.panel(side).tab();
     let active = s.active == side;
     (side == Side::Right, look, urfin_i18n::epoch(), t.id.0).hash(&mut h);
+    let icons = s.ext.get::<crate::UiState>().map(|u| u.icons as u8);
+    icons.hash(&mut h);
     format!("{:?}{:?}", t.view_mode, t.mode).hash(&mut h);
     if let Some(f) = field {
         format!("{:?}{}", f.key, f.input.entity_id()).hash(&mut h);
@@ -234,10 +243,197 @@ pub(super) fn card(theme: &Theme) -> Div {
         .bg(theme.c(Role::LayerPanel))
 }
 
-/// Высота шапки панели: путь и, в Full, строка колонок.
-pub(super) fn head_h(theme: &Theme, mode: ViewMode) -> f32 {
+/// Состояние папки вместо списка (D-03, `screen-errors.png`, `screen-archive.png`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum FolderState {
+    Empty,
+    /// Нет доступа: замок `modified`, «Назад».
+    Denied,
+    /// Нет связи: `context_remote`, «Повторить сейчас».
+    Offline,
+    /// Прочая ошибка чтения — её текст.
+    Failed(String),
+}
+
+/// Что показать вместо списка; `None` — список.
+pub(super) fn state_of(t: &Tab) -> Option<FolderState> {
+    match &t.listing.status {
+        urfin_core::ListingStatus::Complete if t.listing.order.is_empty() => {
+            Some(FolderState::Empty)
+        }
+        urfin_core::ListingStatus::Failed(e) => Some(if e.starts_with("access denied") {
+            FolderState::Denied
+        } else if is_offline(e) || t.loc.path.as_os_str().to_string_lossy().starts_with(r"\\") {
+            FolderState::Offline
+        } else {
+            FolderState::Failed(e.to_string())
+        }),
+        _ => None,
+    }
+}
+
+/// Ошибки сети Windows: путь не найден, имя недоступно, сеть отключена.
+fn is_offline(e: &str) -> bool {
+    [53, 64, 67, 1222, 1231, 1232, 1311]
+        .iter()
+        .any(|c| e.contains(&format!("(os error {c})")))
+}
+
+/// Вид состояния: значок 56 в круге, заголовок 15/500, пояснение `secondary` до 380,
+/// кнопки с клавишами. Путь — только в заголовке панели.
+/// Вид состояния: значок, цвет, заголовок, пояснение, кнопки (ключ Fluent, клавиша, команда).
+type StateLook = (
+    char,
+    Role,
+    String,
+    String,
+    Vec<(&'static str, &'static str, urfin_core::Command)>,
+);
+
+#[allow(clippy::too_many_lines, reason = "значок, текст и кнопки сверху вниз")]
+fn state_view(t: &Tab, side: Side, theme: &Theme, cx: &Listen) -> Div {
+    let i18n = urfin_i18n::current();
+    let Some(st) = state_of(t) else {
+        return div();
+    };
+    let mut args = FluentArgs::new();
+    args.set("path", t.loc.path.display().to_string());
+    let (glyph, color, title, text, buttons): StateLook = match &st {
+        FolderState::Empty => (
+            '\u{E8B7}',
+            Role::TextSecondary,
+            i18n.get("ui-state-empty"),
+            String::new(),
+            Vec::new(),
+        ),
+        FolderState::Denied => (
+            '\u{E72E}',
+            Role::Modified,
+            i18n.get("ui-state-denied"),
+            i18n.get("ui-state-denied-text"),
+            vec![(
+                "ui-state-back",
+                "Backspace",
+                urfin_core::Command::new("panel.up"),
+            )],
+        ),
+        FolderState::Offline => (
+            '\u{E968}',
+            Role::ContextRemote,
+            i18n.fmt("ui-state-offline", &args),
+            i18n.get("ui-state-offline-text"),
+            vec![(
+                "ui-state-retry",
+                "Ctrl+R",
+                urfin_core::Command::new("panel.refresh"),
+            )],
+        ),
+        FolderState::Failed(e) => (
+            '\u{E783}',
+            Role::CriticalFg,
+            i18n.get("ui-state-failed"),
+            e.clone(),
+            vec![(
+                "ui-state-retry",
+                "Ctrl+R",
+                urfin_core::Command::new("panel.refresh"),
+            )],
+        ),
+    };
+    let name = super::chrome::side_name(side);
+    let mut row = div().flex().gap(px(8.0)).mt(px(6.0));
+    for (i, (key, hotkey, cmd)) in buttons.into_iter().enumerate() {
+        let primary = i == 0;
+        row = row.child(
+            div()
+                .id(SharedString::from(format!("state-{name}-{i}")))
+                .h(px(30.0))
+                .px(px(14.0))
+                .flex()
+                .items_center()
+                .gap(px(8.0))
+                .rounded(px(4.0))
+                .border_1()
+                .border_color(theme.c(if primary {
+                    Role::AccentFill
+                } else {
+                    Role::StrokeControl
+                }))
+                .bg(theme.c(if primary {
+                    Role::AccentFill
+                } else {
+                    Role::LayerPanel
+                }))
+                .text_color(theme.c(if primary {
+                    Role::AccentOn
+                } else {
+                    Role::TextPrimary
+                }))
+                .child(SharedString::from(i18n.get(key)))
+                .child(
+                    div()
+                        .text_size(px(11.0))
+                        .opacity(0.8)
+                        .child(SharedString::new_static(hotkey)),
+                )
+                .on_click(cx.listener(move |h, _: &ClickEvent, w, cx| {
+                    h.run_all(
+                        vec![
+                            urfin_core::Command::new("panel.focus").arg("side", name),
+                            cmd.clone(),
+                        ],
+                        w,
+                        cx,
+                    );
+                })),
+        );
+    }
+    div()
+        .flex_1()
+        .flex()
+        .flex_col()
+        .items_center()
+        .justify_center()
+        .gap(px(10.0))
+        .px(px(40.0))
+        .pb(px(40.0))
+        .child(
+            div()
+                .size(px(56.0))
+                .rounded(px(28.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .bg(theme.c(Role::Header))
+                .border_1()
+                .border_color(theme.c(Role::StrokeDivider))
+                .font_family(ICON_FONT)
+                .text_size(px(24.0))
+                .text_color(theme.c(color))
+                .child(SharedString::from(glyph.to_string())),
+        )
+        .child(
+            div()
+                .text_size(px(15.0))
+                .font_weight(gpui_kit::FontWeight::MEDIUM)
+                .child(SharedString::from(title)),
+        )
+        .when(!text.is_empty(), |d| {
+            d.child(
+                div()
+                    .max_w(px(380.0))
+                    .text_center()
+                    .text_color(theme.c(Role::TextSecondary))
+                    .child(SharedString::from(text)),
+            )
+        })
+        .child(row)
+}
+
+/// Высота шапки панели: путь и, в Full, строка колонок (у состояния папки — без неё).
+pub(super) fn head_h(theme: &Theme, mode: ViewMode, state: bool) -> f32 {
     theme.m(Metric::HBreadcrumb)
-        + if matches!(mode, ViewMode::Full) {
+        + if matches!(mode, ViewMode::Full) && !state {
             theme.m(Metric::HColHeader)
         } else {
             0.0
@@ -358,7 +554,12 @@ fn path_bar(
     let mut args = FluentArgs::new();
     let st = &t.listing.stats;
     args.set("count", u64::from(st.files + st.dirs));
-    let count = urfin_i18n::current().fmt("ui-panel-count", &args);
+    // У состояния папки (ошибка, пусто) счётчика нет — путь и вид состояния (D-03).
+    let count = if state_of(t).is_some() {
+        String::new()
+    } else {
+        urfin_i18n::current().fmt("ui-panel-count", &args)
+    };
     bar.child(segs)
         .child(
             div()
@@ -464,14 +665,15 @@ struct Line {
     name: SharedString,
     size: Option<SharedString>,
     mtime: Option<SharedString>,
-    /// Помечена: фон `accent.subtle`, галочка, имя `accent.text` (S0-decisions №31).
-    marked: bool,
-    /// Курсор: `Some(true)` — активной панели (заливка и рамка 1 px), `Some(false)` — пассивной.
+    /// Полужирное имя: каталог, `..` или отмеченный.
+    strong: bool,
+    /// Курсор: `Some(true)` — активной панели (заливка `cursor`), `Some(false)` —
+    /// неактивной (та же заливка блёклее, №66).
     cursor: Option<bool>,
     color: Hsla,
     /// Иконка: каталог — акцент, скрытый и системный — третичный, прочее — вторичный.
     icon_color: Hsla,
-    /// Строка на сплошном акцентном курсоре (эксперимент `solid`): текст `accent.on`.
+    /// Строка курсора активной панели: колонки — `cursor_text`.
     on_accent: bool,
     /// Вместо имени — поле переименования.
     renaming: bool,
@@ -482,12 +684,8 @@ struct Line {
 struct Geo {
     row_h: f32,
     pad: f32,
-    /// Колонка галочки помеченных (как у egui-панели).
-    mark_size: f32,
-    stroke: f32,
     icon_w: f32,
     icon_size: f32,
-    radius: f32,
     size_w: f32,
     mtime_w: f32,
 }
@@ -530,7 +728,7 @@ const NAME_MIN: f32 = 120.0;
 /// Ширины колонок размера и даты для панели шириной `w` (0 — колонки нет).
 pub(super) fn fit_cols(theme: &Theme, mode: ViewMode, w: f32) -> (f32, f32) {
     let pad = theme.m(Metric::PadRowX) - ROW_MX;
-    let name_x = ROW_MX + pad + MARK_W + theme.m(Metric::WIcon) + 8.0;
+    let name_x = ROW_MX + pad + MARK_W + ICON_PX + ICON_GAP;
     let avail = w - ROW_MX - pad - name_x;
     let mut size = if matches!(mode, ViewMode::Full | ViewMode::Wide) {
         W_SIZE
@@ -551,21 +749,22 @@ pub(super) fn fit_cols(theme: &Theme, mode: ViewMode, w: f32) -> (f32, f32) {
     (size, mtime)
 }
 /// Ширина колонки галочки.
-const MARK_W: f32 = 12.0;
+/// Колонки галочки у отмеченных больше нет (№66): отметка — цвет и начертание.
+const MARK_W: f32 = 0.0;
+/// Иконка строки (D-03): 14 px, отступ до имени 8.
+const ICON_PX: f32 = 14.0;
+const ICON_GAP: f32 = 8.0;
 
 /// Цвета строк для `canvas`.
 #[derive(Clone, Copy)]
 struct Pal {
-    /// Эксперимент `URFIN_CURSOR=solid`: курсор активной панели — сплошной акцент.
-    solid: bool,
-    accent_fill: Hsla,
-    on_accent: Hsla,
+    /// Текст колонок на курсоре активной панели.
+    on_cursor: Hsla,
     secondary: Hsla,
-    marked: Hsla,
     cursor: Hsla,
     cursor_passive: Hsla,
-    stroke: Hsla,
-    accent: Hsla,
+    divider: Hsla,
+    icons: bool,
 }
 
 /// Видимая страница: Full/Wide — одна колонка, Brief/Medium — колонки сверху вниз.
@@ -582,6 +781,7 @@ fn list(
     cols: u32,
     field: Option<&super::field::Field>,
     glide: Option<f32>,
+    icon_mode: IconMode,
     cx: &Listen,
 ) -> Stateful<Div> {
     let total = t.rows();
@@ -589,14 +789,16 @@ fn list(
     let rows = rows.max(1);
     let cols = cols.max(1);
     let full = matches!(t.view_mode, ViewMode::Full | ViewMode::Wide);
+    let icons = icon_mode;
     let geo = Geo {
         row_h: theme.m(Metric::HRow),
         pad: theme.m(Metric::PadRowX) - ROW_MX,
-        mark_size: theme.m(Metric::TypeCaption),
-        stroke: theme.m(Metric::StrokeThin),
-        icon_w: theme.m(Metric::WIcon) + 8.0,
-        icon_size: theme.m(Metric::WIcon),
-        radius: theme.m(Metric::RadiusControl),
+        icon_w: if icons == IconMode::None {
+            0.0
+        } else {
+            ICON_PX + ICON_GAP
+        },
+        icon_size: ICON_PX,
         size_w: if full { W_SIZE } else { 0.0 },
         mtime_w: if matches!(t.view_mode, ViewMode::Full) {
             W_MTIME
@@ -605,7 +807,8 @@ fn list(
         },
     };
     let rename = super::field::rename_input(field, t);
-    let solid = cursor_mode().0;
+    let i18n = urfin_i18n::current();
+    let dir_size = SharedString::from(i18n.get("ui-size-dir"));
     let mut lines = Vec::with_capacity((rows * cols) as usize);
     let mut cell = Cell::new();
     for slot in 0..rows * cols {
@@ -625,6 +828,7 @@ fn list(
             }
             None => break,
         };
+        let dir = entry.is_none_or(|e| e.kind.is_dir_like());
         let mut col = |kind: ColKind| {
             entry.map(|e| {
                 cell.clear();
@@ -632,54 +836,58 @@ fn list(
                 SharedString::from(cell.as_str().to_owned())
             })
         };
-        let bytes = if full { col(ColKind::Size) } else { None };
+        let bytes = if !full {
+            None
+        } else if dir && entry.is_some() {
+            Some(dir_size.clone())
+        } else {
+            col(ColKind::Size)
+        };
         let when = if geo.mtime_w > 0.0 {
             col(ColKind::Mtime)
         } else {
             None
         };
+        // Курсор активной панели — текст `cursor_text` (№66); отмеченные — `accent`.
+        let on_cursor = cursor && active;
+        let kind_color = color.map_or_else(|| theme.c(Role::TextPrimary), super::theme::hsla);
         lines.push(Line {
             target: entry.map(|_| name.clone()),
             glyph: SharedString::from(glyph.to_string()),
             size: bytes,
             mtime: when,
             name,
-            marked,
+            strong: dir || marked,
             cursor: cursor.then_some(active),
-            on_accent: solid && cursor && active,
-            color: if solid && cursor && active {
-                theme.c(Role::AccentOn)
+            on_accent: on_cursor,
+            color: if on_cursor {
+                theme.c(Role::CursorText)
             } else if marked {
                 theme.c(Role::AccentText)
             } else {
-                color.map_or_else(|| theme.c(Role::TextPrimary), super::theme::hsla)
+                kind_color
             },
-            icon_color: theme.c(match entry {
-                _ if solid && cursor && active => Role::AccentOn,
-                Some(e)
-                    if e.attrs.has(urfin_core::Attrs::HIDDEN)
-                        || e.attrs.has(urfin_core::Attrs::SYSTEM) =>
-                {
-                    Role::TextTertiary
+            icon_color: if on_cursor {
+                theme.c(Role::CursorText)
+            } else {
+                match icons {
+                    IconMode::Color if dir => theme.c(Role::AccentText),
+                    IconMode::Color => kind_color,
+                    _ => theme.c(Role::TextSecondary),
                 }
-                Some(e) if e.kind.is_dir_like() => Role::AccentText,
-                _ => Role::TextSecondary,
-            }),
+            },
             renaming: cursor && rename.is_some(),
         });
     }
     let lines = Rc::new(lines);
     let bounds = Rc::new(std::cell::Cell::new(Bounds::<Pixels>::default()));
     let pal = Pal {
-        solid,
-        accent_fill: theme.c(Role::AccentFill),
-        on_accent: theme.c(Role::AccentOn),
+        on_cursor: theme.c(Role::CursorText),
         secondary: theme.c(Role::TextSecondary),
-        marked: theme.c(Role::AccentSubtle),
         cursor: theme.c(Role::FillCursor),
         cursor_passive: theme.c(Role::FillCursorPassive),
-        stroke: theme.c(Role::StrokeStrong),
-        accent: theme.c(Role::AccentText),
+        divider: theme.c(Role::StrokeDivider),
+        icons: icons != IconMode::None,
     };
     let paint_lines = lines.clone();
     let paint_bounds = bounds.clone();
@@ -816,7 +1024,10 @@ fn paint(
     let style = window.text_style();
     let size = style.font_size.to_pixels(window.rem_size());
     let font = style.font();
-    let check = SharedString::new_static("\u{E8FB}");
+    let strong = Font {
+        weight: gpui_kit::FontWeight::MEDIUM,
+        ..font.clone()
+    };
     let icons = gpui_kit::font(ICON_FONT);
     let row_h = px(geo.row_h);
     #[allow(clippy::cast_precision_loss, reason = "колонок единицы")]
@@ -852,61 +1063,48 @@ fn paint(
             b.origin.y + row_h * ((k as u32 % rows) as f32),
         )
     };
-    let bar = |x0: Pixels, y: Pixels| {
-        Bounds::new(
-            point(x0 + px(ROW_MX), y),
-            size2(px(col_w - 2.0 * ROW_MX), row_h),
-        )
-    };
     window.with_content_mask(Some(ContentMask { bounds: b }), |window| {
-        // Сначала все фоны, потом содержимое: скользящий курсор не перекрывает текст.
+        // Сначала фоны, потом содержимое: скользящий курсор не перекрывает текст. Курсор —
+        // заливка во всю строку без рамки (№66).
         for (k, l) in lines.iter().enumerate() {
             let (x0, y) = at(k);
-            if l.marked {
-                window.paint_quad(
-                    gpui_kit::fill(bar(x0, y), pal.marked).corner_radii(px(geo.radius)),
-                );
-            }
             if let Some(active) = l.cursor {
                 // Эксперимент `slide`: полоса между прежней и новой строкой.
                 let y = match glide {
                     Some(f) => b.origin.y + row_h * f,
                     None => y,
                 };
-                let q = if active && pal.solid {
-                    gpui_kit::fill(bar(x0, y), pal.accent_fill)
+                let fill = if active {
+                    pal.cursor
                 } else {
-                    let fill = if active {
-                        pal.cursor
-                    } else {
-                        pal.cursor_passive
-                    };
-                    let q = gpui_kit::fill(bar(x0, y), fill).corner_radii(px(geo.radius));
-                    if active {
-                        q.border_widths(px(geo.stroke)).border_color(pal.stroke)
-                    } else {
-                        q
-                    }
+                    pal.cursor_passive
                 };
-                window.paint_quad(q);
+                window.paint_quad(gpui_kit::fill(
+                    Bounds::new(point(x0, y), size2(px(col_w), row_h)),
+                    fill,
+                ));
             }
+        }
+        // Колонки Brief/Medium разделены линиями `border` (D-03).
+        for c in 1..cols {
+            #[allow(clippy::cast_precision_loss, reason = "колонок единицы")]
+            let x = b.origin.x + px(c as f32 * col_w);
+            window.paint_quad(gpui_kit::fill(
+                Bounds::new(point(x, b.origin.y), size2(px(1.0), b.size.height)),
+                pal.divider,
+            ));
         }
         for (k, l) in lines.iter().enumerate() {
             let (x0, y) = at(k);
             let secondary = if l.on_accent {
-                pal.on_accent
+                pal.on_cursor
             } else {
                 pal.secondary
             };
-            if l.marked {
-                let tone = if l.on_accent {
-                    pal.on_accent
-                } else {
-                    pal.accent
-                };
-                let mark = shape(window, &check, &icons, tone, px(geo.mark_size));
-                let _ = mark.paint(
-                    point(x0 + px(ROW_MX + geo.pad), y),
+            if pal.icons {
+                let icon = shape(window, &l.glyph, &icons, l.icon_color, px(geo.icon_size));
+                let _ = icon.paint(
+                    point(x0 + px(geo.icon_x()), y),
                     row_h,
                     TextAlign::Left,
                     None,
@@ -914,17 +1112,8 @@ fn paint(
                     cx,
                 );
             }
-            let icon = shape(window, &l.glyph, &icons, l.icon_color, px(geo.icon_size));
-            let _ = icon.paint(
-                point(x0 + px(geo.icon_x()), y),
-                row_h,
-                TextAlign::Left,
-                None,
-                window,
-                cx,
-            );
             if !l.renaming {
-                let f = &font;
+                let f = if l.strong { &strong } else { &font };
                 let mut line = shape(window, &l.name, f, l.color, size);
                 if line.width > name_w {
                     let runs = [run(l.name.len(), f, l.color)];
