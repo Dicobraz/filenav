@@ -119,6 +119,7 @@ cmd-ops-attrs = Attributes
 cmd-ops-touch = Set time
 cmd-ops-link = Make link
 cmd-ops-compare = Compare folders
+    .menu-key = p
 cmd-ops-sync = Synchronize folders
 cmd-ops-retry = Retry failed
 cmd-ops-priority = Operation priority

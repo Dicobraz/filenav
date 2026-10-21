@@ -5,9 +5,11 @@
 //! сделано» тостом. `file.open` — системным открытием (`ShellExecuteExW`) на
 //! `Lane::Interactive`.
 
+use std::sync::Arc;
+
 use compact_str::CompactString;
 use urfin_core::{
-    ArgSpec, Args, CmdError, Command, CommandId, CommandMeta, Cx, Handler, Lane, Level, Row,
+    ArgSpec, Args, CmdError, Command, CommandId, CommandMeta, Cx, Handler, Lane, Level, Row, Side,
     UiEvent, ValueKind,
 };
 
@@ -395,6 +397,19 @@ impl Handler for OpsHandler {
             "ops.priority" | "job.priority" | "ops.run_now" => self.job_control(cmd),
             "ops.multi_rename" => self.multi_rename(cx, cmd),
             "ops.link" => self.link(cx, cmd),
+            "ops.compare" => compare(cx, cmd.args.str("mode") == Some("content"), None),
+            "ops.sync" => {
+                let side = match cmd.args.str("dir") {
+                    Some("rl") => Side::Right,
+                    Some("lr") | None => Side::Left,
+                    Some(other) => {
+                        return Err(CmdError::Rejected(
+                            text("ops-sync-bad", &[("what", other)]).into(),
+                        ));
+                    }
+                };
+                compare(cx, false, Some(side))
+            }
             "ops.attrs" => attrs(cx, cmd),
             "ops.touch" => touch(cx, cmd),
             "ops.recover" => {
@@ -602,6 +617,111 @@ fn dest_error(e: DestError) -> CmdError {
 }
 
 /// Черновик операции в окне (S0 v3 №15): строка с полем или кнопками.
+/// `ops.compare {mode?}` (S5-24): сравнение каталогов панелей вне UI-потока
+/// (ФС сторон — для допуска времени; в режиме `content` — чтение файлов); итог —
+/// выделение в обеих панелях и тост. `sync` — сторона-источник `ops.sync`: после
+/// сравнения в ней остаётся выделенным то, что копировать, она становится
+/// активной, и открывается черновик копирования в другую панель (превью — само
+/// выделение; Enter — копия, конфликт «новее» — вопрос «Заменить, если новее»).
+fn compare(cx: &mut Cx<'_>, content: bool, sync: Option<Side>) -> Result<(), CmdError> {
+    let (l, r) = (
+        cx.state.panel(Side::Left).tab(),
+        cx.state.panel(Side::Right).tab(),
+    );
+    if !l.loc.is_local() || !r.loc.is_local() {
+        return Err(CmdError::Rejected(
+            text("ops-not-yet", &[("what", "vfs")]).into(),
+        ));
+    }
+    let (le, re) = (
+        Arc::clone(&l.listing.entries),
+        Arc::clone(&r.listing.entries),
+    );
+    let (lp, rp) = (l.loc.path.clone(), r.loc.path.clone());
+    let (lt, rt) = (l.id, r.id);
+    let sink = cx.rt.sink();
+    cx.rt.spawn(
+        Lane::Interactive,
+        "ops.compare",
+        cx.rt.token(),
+        move |tcx| {
+            use crate::ops::compare::{compare as cmp, content_checker, time_tolerance};
+            let fs = |p: &std::path::Path| urfin_vfs::volume::of(p).ok().map(|v| v.fs);
+            let tol = time_tolerance(fs(&lp)).max(time_tolerance(fs(&rp)));
+            let check = content.then(|| content_checker(lp.clone(), rp.clone()));
+            let res = cmp(
+                &le,
+                &re,
+                tol,
+                check.as_ref().map(|c| c as &dyn Fn(&str) -> Option<bool>),
+            );
+            let m = urfin_core::msg("ops.compare", move |cx| {
+                apply_compare(cx, lt, rt, &res, sync);
+            });
+            let _ = sink.send(m, &tcx.cancel);
+        },
+    );
+    Ok(())
+}
+
+/// Итог сравнения: выделение в табах `lt`/`rt` (если они ещё показывают те же
+/// каталоги) и тост; при `sync` — черновик копирования со стороны-источника.
+fn apply_compare(
+    cx: &mut Cx<'_>,
+    lt: urfin_core::TabId,
+    rt: urfin_core::TabId,
+    res: &crate::ops::compare::CompareResult,
+    sync: Option<Side>,
+) {
+    for (tab, keys, keep) in [
+        (lt, &res.select_left, sync != Some(Side::Right)),
+        (rt, &res.select_right, sync != Some(Side::Left)),
+    ] {
+        if let Some(t) = cx.state.tab_mut(tab) {
+            let listing = t.listing.clone();
+            t.selection.clear();
+            if keep {
+                t.selection.select_where(&listing, true, |e| {
+                    !e.kind.is_dir_like() && keys.contains(&crate::names::name_key(&e.name))
+                });
+            }
+        }
+    }
+    cx.state.touch();
+    let n = |v: u32| v.to_string();
+    cx.toast(
+        Level::Info,
+        text(
+            "ops-compare-result",
+            &[
+                ("only_left", &n(res.only_left)),
+                ("only_right", &n(res.only_right)),
+                ("newer_left", &n(res.newer_left)),
+                ("newer_right", &n(res.newer_right)),
+                ("differs", &n(res.differs)),
+                ("equal", &n(res.equal)),
+            ],
+        ),
+    );
+    let Some(side) = sync else {
+        return;
+    };
+    let count = if side == Side::Left {
+        &res.select_left
+    } else {
+        &res.select_right
+    }
+    .len();
+    if count == 0 {
+        cx.toast(Level::Info, text("ops-sync-nothing", &[]));
+        return;
+    }
+    cx.dispatch(
+        Command::new("panel.focus").arg("side", if side == Side::Left { "left" } else { "right" }),
+    );
+    cx.dispatch(Command::new("ops.copy"));
+}
+
 /// Черновик с начальным текстом поля (`ops.link`, `ops.touch`).
 fn draft_init(cx: &mut Cx<'_>, cmd: &Command, init: &str) {
     cx.ui(UiEvent::Ext {

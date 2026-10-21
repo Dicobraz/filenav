@@ -157,8 +157,8 @@
 | `ops.attrs` | `set?:str`, `clear?:str` | Attributes | Атрибуты | — | — |
 | `ops.touch` | `mtime?:str` | Set time | Изменить время | — | — |
 | `ops.link` | `kind?:str`, `dest?:str` | Make link | Создать ссылку | Alt+F6 | — |
-| `ops.compare` | `mode?:str` | Compare folders | Сравнить папки | — | — |
-| `ops.sync` | `dir?:str` | Synchronize folders | Синхронизировать папки | — | — |
+| `ops.compare` | `mode?:str` | Compare folders | Сравнить папки | — | commands |
+| `ops.sync` | `dir?:str` | Synchronize folders | Синхронизировать папки | — | commands |
 | `ops.retry` | `id:int` | Retry failed | Повторить неудавшиеся | — | — |
 | `ops.priority` | `id:int`, `prio?:str` | Operation priority | Приоритет операции | — | — |
 | `ops.run_now` | `id:int` | Run now | Запустить сейчас | — | — |
