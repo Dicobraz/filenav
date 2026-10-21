@@ -2,3 +2,5 @@
 
 #[cfg(windows)]
 pub mod conpty;
+#[cfg(windows)]
+pub mod registry;
