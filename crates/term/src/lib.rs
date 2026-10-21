@@ -8,6 +8,7 @@
 pub mod config;
 pub mod shells;
 pub mod sys;
+pub mod vt;
 
 pub use config::{CompleteConfig, HistoryConfig, ShellConfig, TermConfig};
 
