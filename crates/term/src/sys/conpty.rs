@@ -535,21 +535,40 @@ pub(crate) fn handle_count() -> u32 {
     n
 }
 
-/// Процессорное время текущего процесса, user + kernel (тест простоя).
 #[cfg(test)]
-pub(crate) fn cpu_time() -> Duration {
-    use windows_sys::Win32::Foundation::FILETIME;
-    use windows_sys::Win32::System::Threading::{GetCurrentProcess, GetProcessTimes};
-    let zero = FILETIME {
+const FILETIME_ZERO: windows_sys::Win32::Foundation::FILETIME =
+    windows_sys::Win32::Foundation::FILETIME {
         dwLowDateTime: 0,
         dwHighDateTime: 0,
     };
-    let mut times = [zero; 4];
+
+#[cfg(test)]
+fn ticks(f: windows_sys::Win32::Foundation::FILETIME) -> u64 {
+    u64::from(f.dwHighDateTime) << 32 | u64::from(f.dwLowDateTime)
+}
+
+/// Процессорное время текущего процесса, user + kernel (тест простоя).
+#[cfg(test)]
+pub(crate) fn cpu_time() -> Duration {
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, GetProcessTimes};
+    let mut times = [FILETIME_ZERO; 4];
     let [created, exited, kernel, user] = &mut times;
     // SAFETY: псевдохэндл текущего процесса; выходные — локальные.
     unsafe { GetProcessTimes(GetCurrentProcess(), created, exited, kernel, user) };
-    let ticks = |f: &FILETIME| u64::from(f.dwHighDateTime) << 32 | u64::from(f.dwLowDateTime);
-    Duration::from_nanos((ticks(kernel) + ticks(user)) * 100)
+    Duration::from_nanos((ticks(*kernel) + ticks(*user)) * 100)
+}
+
+/// Время всех ядер системы с загрузки: (простой, всего) в тиках 100 нс (тест
+/// циклов: занятость системы за интервал).
+#[cfg(test)]
+pub(crate) fn system_times() -> (u64, u64) {
+    use windows_sys::Win32::System::Threading::GetSystemTimes;
+    let mut times = [FILETIME_ZERO; 3];
+    let [idle, kernel, user] = &mut times;
+    // SAFETY: выходные — локальные.
+    unsafe { GetSystemTimes(idle, kernel, user) };
+    // Время ядра включает простой.
+    (ticks(*idle), ticks(*kernel) + ticks(*user))
 }
 
 #[cfg(test)]

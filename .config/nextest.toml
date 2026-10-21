@@ -5,11 +5,13 @@ slow-timeout = "30s"
 
 # Перф-тесты без соседей: шторм наблюдения (S4-14) мерит частоту перечитываний
 # под потоком созданий файлов (иначе пишущий поток голодает); перенос в пределах
-# тома (S5-08) — < 50 мс на job, соседи с записью на диск сбивают замер.
+# тома (S5-08) — < 50 мс на job, соседи с записью на диск сбивают замер; 100
+# циклов ConPTY (S6-02) — ≤ 1 с на цикл, соседи на всех ядрах (rayon) растягивают
+# запуск cmd.exe/conhost за секунду.
 [[profile.default.overrides]]
-filter = "test(storm_is_rate_limited) | test(move_same_volume_tree_is_one_rename)"
+filter = "test(storm_is_rate_limited) | test(move_same_volume_tree_is_one_rename) | test(hundred_cycles_no_leaks)"
 threads-required = "num-test-threads"
 
 [[profile.ci.overrides]]
-filter = "test(storm_is_rate_limited) | test(move_same_volume_tree_is_one_rename)"
+filter = "test(storm_is_rate_limited) | test(move_same_volume_tree_is_one_rename) | test(hundred_cycles_no_leaks)"
 threads-required = "num-test-threads"
