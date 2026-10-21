@@ -2,6 +2,7 @@
 
 use std::fmt::Write as _;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 
 use jiff::tz::{Offset, TimeZone};
@@ -272,34 +273,47 @@ fn global_switch_is_thread_safe() {
     assert_eq!(urfin_i18n::fmt::count(12_345), "12\u{a0}345");
     assert!(urfin_i18n::available().contains(&lang("ru")));
 
+    // Смены идут, пока каждый читатель не увидит оба языка (не меньше 200): под нагрузкой
+    // поток читателя может не получить квант за фиксированные 200 смен.
+    let (ru, en) = (1_u8, 2_u8);
     let start = urfin_i18n::epoch();
-    let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let stop = Arc::new(AtomicBool::new(false));
+    let seen: Arc<[AtomicU8; 4]> = Arc::default();
     let readers: Vec<_> = (0..4)
-        .map(|_| {
-            let stop = Arc::clone(&stop);
+        .map(|k| {
+            let (stop, seen) = (Arc::clone(&stop), Arc::clone(&seen));
             std::thread::spawn(move || {
-                let mut seen = 0;
-                while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                while !stop.load(Ordering::Relaxed) {
                     let text = urfin_i18n::tr!("ui-footer-selected", count = 3, bytes = "b");
-                    assert!(
-                        text == "3 выбрано · b" || text == "3 selected · b",
-                        "{text:?}"
-                    );
-                    seen += 1;
+                    let bit = match text.as_str() {
+                        "3 выбрано · b" => ru,
+                        "3 selected · b" => en,
+                        _ => panic!("{text:?}"),
+                    };
+                    seen[k].fetch_or(bit, Ordering::Relaxed);
                 }
-                seen
             })
         })
         .collect();
-    for i in 0..200 {
-        let warnings = urfin_i18n::set_language(if i % 2 == 0 { "en" } else { "ru" });
-        assert!(warnings.is_empty(), "{warnings:?}");
+    // Срок — только против зависания при поломке (под 40 параллельными копиями — ≤ 3 с).
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    let mut switches = 0;
+    while switches < 200 || seen.iter().any(|s| s.load(Ordering::Relaxed) != ru | en) {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "readers did not observe both languages: {seen:?}"
+        );
+        for tag in ["en", "ru"] {
+            let warnings = urfin_i18n::set_language(tag);
+            assert!(warnings.is_empty(), "{warnings:?}");
+            switches += 1;
+        }
     }
-    stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    stop.store(true, Ordering::Relaxed);
     for reader in readers {
-        assert!(reader.join().unwrap() > 0);
+        reader.join().unwrap();
     }
-    assert_eq!(urfin_i18n::epoch(), start + 200);
+    assert_eq!(urfin_i18n::epoch(), start + switches);
     assert_eq!(urfin_i18n::current().lang(), &lang("ru"));
     // Пользовательский каталог сохраняется при смене языка.
     assert_eq!(urfin_i18n::tr!("user-key"), "свой");
