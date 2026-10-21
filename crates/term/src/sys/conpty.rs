@@ -535,6 +535,23 @@ pub(crate) fn handle_count() -> u32 {
     n
 }
 
+/// Процессорное время текущего процесса, user + kernel (тест простоя).
+#[cfg(test)]
+pub(crate) fn cpu_time() -> Duration {
+    use windows_sys::Win32::Foundation::FILETIME;
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, GetProcessTimes};
+    let zero = FILETIME {
+        dwLowDateTime: 0,
+        dwHighDateTime: 0,
+    };
+    let mut times = [zero; 4];
+    let [created, exited, kernel, user] = &mut times;
+    // SAFETY: псевдохэндл текущего процесса; выходные — локальные.
+    unsafe { GetProcessTimes(GetCurrentProcess(), created, exited, kernel, user) };
+    let ticks = |f: &FILETIME| u64::from(f.dwHighDateTime) << 32 | u64::from(f.dwLowDateTime);
+    Duration::from_nanos((ticks(kernel) + ticks(user)) * 100)
+}
+
 #[cfg(test)]
 #[path = "conpty_tests.rs"]
 mod tests;
