@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+<title>Urfin</title>
+<rect x="0.5" y="0.5" width="31" height="31" rx="7" fill="#1E2A36" stroke="#33465A" stroke-width="1"/>
+<rect x="7" y="6" width="5" height="13" rx="2.5" fill="#6CC4F2"/>
+<rect x="20" y="6" width="5" height="13" rx="2.5" fill="#5596BA"/>
+<path d="M9.5 18.5a6.5 6.5 0 0 0 6.5 6.5" fill="none" stroke="#6CC4F2" stroke-width="3"/>
+<path d="M16 25.0a6.5 6.5 0 0 0 6.5 -6.5" fill="none" stroke="#5596BA" stroke-width="3"/>
+<rect x="8" y="10" width="3" height="2" rx="0.5" fill="#1E2A36" fill-opacity="0.55"/>
+</svg>
