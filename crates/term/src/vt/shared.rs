@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use alacritty_terminal::event::{Event, EventListener};
 use alacritty_terminal::grid::Dimensions;
 use alacritty_terminal::sync::FairMutex;
-use alacritty_terminal::term::{Config, Osc52, Term};
+use alacritty_terminal::term::{Config, Osc52, Term, TermMode};
 use alacritty_terminal::vte::ansi::Processor;
 use crossbeam_channel::Sender;
 
@@ -98,22 +98,27 @@ impl std::fmt::Debug for TermShared {
     }
 }
 
+/// Настройки эмулятора: скроллбэк и `term.osc52` (`off` | `copy`; вставку из
+/// буфера по OSC 52 не даём).
+pub fn term_config(scrollback: u32, osc52: &str) -> Config {
+    Config {
+        scrolling_history: scrollback as usize,
+        osc52: if osc52 == "off" {
+            Osc52::Disabled
+        } else {
+            Osc52::OnlyCopy
+        },
+        ..Config::default()
+    }
+}
+
 fn pack(s: PtySize) -> u32 {
     u32::from(s.cols) << 16 | u32::from(s.rows)
 }
 
 impl TermShared {
     pub fn new(size: PtySize, scrollback: u32, osc52: &str, listener: VtListener) -> TermShared {
-        let config = Config {
-            scrolling_history: scrollback as usize,
-            // `term.osc52`: `off` | `copy`; вставку из буфера по OSC 52 не даём.
-            osc52: if osc52 == "off" {
-                Osc52::Disabled
-            } else {
-                Osc52::OnlyCopy
-            },
-            ..Config::default()
-        };
+        let config = term_config(scrollback, osc52);
         TermShared {
             vt: FairMutex::new(Vt {
                 term: Term::new(config, &GridSize(size), listener),
@@ -139,6 +144,37 @@ impl TermShared {
         self.size.store(pack(size), Ordering::Release);
         self.epoch.fetch_add(1, Ordering::AcqRel);
         self.dirty.store(true, Ordering::Release);
+    }
+
+    /// Новый предел скроллбэка (фоновый сеанс — меньше, S6 §1.2): лишняя
+    /// история отбрасывается сразу.
+    pub fn set_scrollback(&self, scrollback: u32, osc52: &str) {
+        self.vt
+            .lock()
+            .term
+            .set_options(term_config(scrollback, osc52));
+    }
+
+    /// Свой текст в сетку, как будто его вывел процесс (строка «процесс завершён»).
+    pub fn inject(&self, bytes: &[u8]) {
+        {
+            let mut vt = self.vt.lock();
+            let vt = &mut *vt;
+            vt.processor.advance(&mut vt.term, bytes);
+        }
+        self.dirty.store(true, Ordering::Release);
+    }
+
+    /// Режимы терминала для кодировщика ввода.
+    pub fn input_modes(&self) -> crate::vt::input::Modes {
+        let vt = self.vt.lock();
+        let m = vt.term.mode();
+        crate::vt::input::Modes {
+            app_cursor: m.contains(TermMode::APP_CURSOR),
+            bracketed_paste: m.contains(TermMode::BRACKETED_PASTE),
+            focus_events: m.contains(TermMode::FOCUS_IN_OUT),
+            sgr_mouse: m.contains(TermMode::SGR_MOUSE),
+        }
     }
 
     /// Отметить изменения; `true` — флаг поднят этим вызовом (нужен poke).

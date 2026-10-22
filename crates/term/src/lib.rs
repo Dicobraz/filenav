@@ -6,6 +6,7 @@
 //! S6-02…S6-22 (`docs/TASKS-M3.md`).
 
 pub mod config;
+pub mod manager;
 pub mod session;
 pub mod shells;
 pub mod sys;
@@ -13,7 +14,11 @@ pub mod vt;
 
 pub use config::{CompleteConfig, HistoryConfig, ShellConfig, TermConfig};
 
-use urfin_core::{ArgSpec, CmdError, Command, CommandMeta, Core, Cx, Handler, ValueKind};
+use std::path::PathBuf;
+
+use urfin_core::{
+    ArgSpec, CmdError, Command, CommandMeta, Core, Cx, Handler, QuitDecision, ValueKind,
+};
 
 const fn arg(name: &'static str, kind: ValueKind, required: bool) -> ArgSpec {
     ArgSpec {
@@ -235,12 +240,12 @@ static CMDLINE_COMMANDS: [CommandMeta; 26] = [
     ),
 ];
 
-/// Состояние терминала в `AppState.ext` (S6 §1): сеансы появятся в S6-10.
+/// Состояние терминала в `AppState.ext` (S6 §1).
 #[derive(Debug, Default)]
 pub struct TermState {
     pub config: TermConfig,
-    /// События сеансов, пришедшие `Msg`, до разбора менеджером (S6-10).
-    pub inbox: Vec<(session::SessionId, session::SessionEvent)>,
+    /// Пул сеансов (S6-10).
+    pub sessions: manager::Manager,
 }
 
 fn not_yet(cmd: &Command) -> CmdError {
@@ -254,13 +259,14 @@ fn not_yet(cmd: &Command) -> CmdError {
 pub struct TermHandler {
     /// Конфиг до первого pump: тогда уходит в `TermState` (у `Core` нет доступа
     /// к состоянию до цикла).
-    pending: Option<TermConfig>,
+    pending: Option<(TermConfig, Option<PathBuf>)>,
 }
 
 impl TermHandler {
-    pub fn new(config: TermConfig) -> TermHandler {
+    /// `term_dir` — `state_dir/term` (кэш shells, статистика выбора); `None` — без диска.
+    pub fn new(config: TermConfig, term_dir: Option<PathBuf>) -> TermHandler {
         TermHandler {
-            pending: Some(config),
+            pending: Some((config, term_dir)),
         }
     }
 }
@@ -271,11 +277,22 @@ impl Handler for TermHandler {
     }
 
     fn on_pump(&mut self, cx: &mut Cx<'_>) {
-        if let Some(config) = self.pending.take() {
+        if let Some((config, dir)) = self.pending.take() {
             cx.state.ext.insert(TermState {
                 config,
-                inbox: Vec::new(),
+                sessions: manager::Manager::new(dir),
             });
+        }
+        let rt = cx.rt;
+        if let Some(st) = cx.state.ext.get_mut::<TermState>() {
+            st.sessions.pump(&st.config, rt);
+        }
+    }
+
+    fn on_quit(&mut self, cx: &mut Cx<'_>) -> QuitDecision {
+        match cx.state.ext.get_mut::<TermState>() {
+            Some(st) => st.sessions.quit_decision(),
+            None => QuitDecision::Allow,
         }
     }
 
@@ -283,8 +300,43 @@ impl Handler for TermHandler {
         &TERM_COMMANDS
     }
 
-    fn handle(&mut self, cmd: &Command, _cx: &mut Cx<'_>) -> Result<(), CmdError> {
-        Err(not_yet(cmd))
+    fn handle(&mut self, cmd: &Command, cx: &mut Cx<'_>) -> Result<(), CmdError> {
+        let cwd = manager::session_cwd(&cx.state.active_tab().loc);
+        let rt = cx.rt;
+        let Some(st) = cx.state.ext.get_mut::<TermState>() else {
+            return Err(not_yet(cmd));
+        };
+        let TermState { config, sessions } = st;
+        let a = &cmd.args;
+        match cmd.id.as_str() {
+            "term.shell" => sessions.open(config, rt, a.str("id"), true, cwd),
+            "term.new" => sessions.open(config, rt, a.str("shell"), false, cwd),
+            "term.next" => sessions.cycle(config, 1),
+            "term.prev" => sessions.cycle(config, -1),
+            "term.close" => {
+                let id = a
+                    .int("id")
+                    .map(|i| session::SessionId::try_from(i).unwrap_or(0));
+                sessions.close(config, id)
+            }
+            "term.restart" => sessions.restart(config, rt),
+            "term.kill" => sessions.kill(),
+            "term.input" => {
+                let text = a.str("text").unwrap_or_default();
+                sessions.write(config, rt, text.as_bytes().to_vec(), false)
+            }
+            "term.key" => {
+                let key = a.str("key").unwrap_or_default();
+                let bytes = manager::key_bytes(key, a.str("mods"), sessions.input_modes())
+                    .ok_or_else(|| CmdError::Arg {
+                        name: "key".into(),
+                        msg: "unknown key".into(),
+                    })?;
+                // Enter после «процесс завершён» только перезапускает.
+                sessions.write(config, rt, bytes, key.eq_ignore_ascii_case("enter"))
+            }
+            _ => Err(not_yet(cmd)),
+        }
     }
 }
 
@@ -307,9 +359,14 @@ impl Handler for CmdlineHandler {
 }
 
 /// Регистрирует handlers `term` и `cmdline`, состояние — в `AppState.ext`.
-/// Конфиг — из `config.section("term")`.
+/// Конфиг — из `config.section("term")`. Без каталога состояния: тесты.
 pub fn register(core: &mut Core, config: TermConfig) {
-    core.register(Box::new(TermHandler::new(config)));
+    register_with(core, config, None);
+}
+
+/// Как [`register`], с каталогом `state_dir/term` (кэш shells, статистика выбора).
+pub fn register_with(core: &mut Core, config: TermConfig, term_dir: Option<PathBuf>) {
+    core.register(Box::new(TermHandler::new(config, term_dir)));
     core.register(Box::new(CmdlineHandler));
 }
 

@@ -140,3 +140,14 @@ ops-job-trash-what = { $n ->
     [few] { $n } объекта
    *[many] { $n } объектов
 } → Корзина
+
+term-exited = [процесс завершён, код { $code }]
+term-exited-unknown = [процесс завершён]
+term-start-failed = Не удалось запустить { $shell }: { $error }
+term-unknown-shell = Неизвестный shell: { $id }
+term-no-shells = Shell не найден
+term-no-session = Нет сеанса терминала
+term-quit-title = В терминале работают процессы ({ $n })
+term-quit-body = «Завершить и выйти» закроет сеансы терминала и их программы
+term-quit-cancel = Отмена
+term-quit-terminate = Завершить и выйти

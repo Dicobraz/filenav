@@ -133,3 +133,14 @@ ops-job-trash-what = { $n ->
     [one] { $name }
    *[other] { $n } items
 } → Recycle Bin
+
+term-exited = [process exited, code { $code }]
+term-exited-unknown = [process exited]
+term-start-failed = Cannot start { $shell }: { $error }
+term-unknown-shell = Unknown shell: { $id }
+term-no-shells = No shells found
+term-no-session = No terminal session
+term-quit-title = Running processes in the terminal ({ $n })
+term-quit-body = “Terminate and exit” closes the terminal sessions and their programs
+term-quit-cancel = Cancel
+term-quit-terminate = Terminate and exit

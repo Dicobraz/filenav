@@ -304,12 +304,13 @@ pub(crate) fn register_handlers(
     }
     // Журналы job (S5-12): прерванные — баннер «Продолжить / Очистить» при старте.
     urfin_ops::register_with(core, ops, paths.map(|p| p.state_dir.join("jobs")));
-    // Терминал и строка ввода (S6): каркас, команды наполняются по TASKS-M3.
+    // Терминал и строка ввода (S6). С каталогом состояния — поиск shells и прогрев
+    // shell по умолчанию после первого кадра; `--smoke`/`--screens` — без них.
     let (term, warning) = config.section::<urfin_term::TermConfig>("term");
     if let Some(w) = warning {
         tracing::warn!(warning = ?w, "[term] config section ignored");
     }
-    urfin_term::register(core, term);
+    urfin_term::register_with(core, term, paths.map(|p| p.state_dir.join("term")));
 }
 
 /// Корень демо-дерева `FakeListing` для `--smoke`: детерминированный прогон без ФС.

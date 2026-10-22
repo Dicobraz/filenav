@@ -333,17 +333,9 @@ fn sync_update_times_out() {
     drop(w);
 }
 
-struct NoWake;
-
-impl urfin_core::Waker for NoWake {
-    fn wake(&self) {}
-    fn wake_after(&self, _: Duration) {}
-}
-
 /// Настоящий `cmd.exe`: вывод в сетке, 0 % CPU в простое, выход с кодом.
 #[test]
 fn real_cmd_session_idle_and_exit() {
-    let (rt, inbox) = Runtime::new(&urfin_core::RuntimeConfig::default(), Arc::new(NoWake));
     let sink = Arc::new(TestSink::default());
     let spec = SpawnSpec {
         program: r"C:\Windows\System32\cmd.exe".into(),
@@ -351,7 +343,7 @@ fn real_cmd_session_idle_and_exit() {
         cwd: None,
         env: Vec::new(),
     };
-    let s = Session::start(&rt, 1, &spec, &opts(None), sink.clone()).unwrap();
+    let s = Session::start(1, &spec, &opts(None), sink.clone()).unwrap();
     let t0 = Instant::now();
     while !text(s.shared()).contains("URFIN>") && t0.elapsed() < Duration::from_secs(10) {
         thread::sleep(Duration::from_millis(20));
@@ -377,8 +369,6 @@ fn real_cmd_session_idle_and_exit() {
         "{:?}",
         sink.events()
     );
-    drop(s);
-    rt.shutdown(inbox, Duration::from_secs(2));
 }
 
 /// vte 0.15.0 теряет `0` в `а0а`, если чанки режут оба символа; reader
