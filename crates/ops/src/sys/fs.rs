@@ -34,6 +34,10 @@ pub struct CopyFlags {
     /// Разреженный источник: копировать только данные (`COPY_FILE_ENABLE_SPARSE_COPY`,
     /// Windows 11 22H2+; старые системы флаг не знают — копия обычная).
     pub sparse: bool,
+    /// Докачка (S5-27): своя копия кусками с `fsync` каждые [`RESUME_STEP`];
+    /// прерванная оставляет файл, повтор с теми же путями дописывает с последней
+    /// сброшенной границы. (`COPY_FILE_RESTARTABLE` на Windows 11 недописанное удаляет.)
+    pub restartable: bool,
 }
 
 /// Копирует данные, альтернативные потоки, атрибуты и время изменения (как
@@ -56,6 +60,75 @@ pub fn copy_file(
 /// шифрованный, разреженный, сжатый): взять [`copy_file`].
 pub fn copy_small(src: &Path, dst: &Path, buf: &mut Vec<u8>) -> io::Result<bool> {
     imp::copy_small(src, dst, buf)
+}
+
+/// Граница сброса докачки (S5-27): данные до неё переживают и отключение питания.
+pub const RESUME_STEP: u64 = 256 << 20;
+
+/// Копия с докачкой (S5-27): с начала последнего несброшенного куска, кусками по 4 мегабайта,
+/// `fsync` на каждой границе [`RESUME_STEP`]; в конце — время изменения, атрибуты и
+/// метка «из интернета» (`Zone.Identifier`). `progress(сделано)` → `false` — прервать
+/// (файл остаётся для повтора).
+pub fn copy_resumable(
+    src: &Path,
+    dst: &Path,
+    progress: &mut dyn FnMut(u64) -> bool,
+) -> io::Result<()> {
+    use std::io::{Read, Seek, SeekFrom, Write};
+    let mut from = std::fs::File::open(src)?;
+    let meta = from.metadata()?;
+    let total = meta.len();
+    let mut to = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(dst)?;
+    let have = to.metadata()?.len();
+    let start = if have > total {
+        0
+    } else {
+        have / RESUME_STEP * RESUME_STEP
+    };
+    to.set_len(start)?;
+    from.seek(SeekFrom::Start(start))?;
+    to.seek(SeekFrom::Start(start))?;
+    let mut buf = vec![0u8; 4 << 20];
+    let mut done = start;
+    if !progress(done) {
+        return Err(io::ErrorKind::Interrupted.into());
+    }
+    loop {
+        let n = from.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        to.write_all(&buf[..n])?;
+        let before = done;
+        done += n as u64;
+        if done / RESUME_STEP != before / RESUME_STEP {
+            to.sync_data()?;
+        }
+        if !progress(done) {
+            to.sync_data()?;
+            return Err(io::ErrorKind::Interrupted.into());
+        }
+    }
+    to.sync_all()?;
+    to.set_modified(meta.modified()?)?;
+    drop(to);
+    // Метка «из интернета» — не терять (на FAT потоков нет — без неё).
+    let zone = |p: &Path| {
+        let mut s = p.as_os_str().to_owned();
+        s.push(":Zone.Identifier");
+        std::path::PathBuf::from(s)
+    };
+    if let Ok(z) = std::fs::read(zone(src)) {
+        let _ = std::fs::write(zone(dst), z);
+    }
+    if let Ok(a) = attrs(src) {
+        let _ = set_attrs(dst, a);
+    }
+    Ok(())
 }
 
 /// `CopyFile2` без колбэка (замер S5-14).
@@ -540,6 +613,9 @@ mod imp {
         flags: CopyFlags,
         mut progress: Progress<'_>,
     ) -> io::Result<()> {
+        if flags.restartable {
+            return super::copy_resumable(src, dst, &mut progress);
+        }
         let (s, d) = (wide(src), wide(dst));
         let mut f = 0;
         if flags.excl {
@@ -551,6 +627,7 @@ mod imp {
         if flags.no_buffering {
             f |= windows_sys::Win32::Storage::FileSystem::COPY_FILE_NO_BUFFERING;
         }
+
         if flags.sparse {
             // Разреженная копия — только у `CopyFile2`; старая система флаг не
             // примет (`ERROR_INVALID_PARAMETER`) — обычная копия ниже.
@@ -992,6 +1069,29 @@ mod tests {
         SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000_000)
     }
 
+    /// Докачка (S5-27): копия с `restartable`, прерванная посреди, оставляет файл;
+    /// повтор с теми же путями дописывает его и даёт точную копию.
+    #[test]
+    fn restartable_copy_resumes() {
+        let d = tempfile::Builder::new().prefix("urfin-").tempdir().unwrap();
+        let (src, dst) = (d.path().join("big"), d.path().join("part"));
+        let data: Vec<u8> = (0..(24u32 << 20)).map(|i| (i % 251) as u8).collect();
+        std::fs::write(&src, &data).unwrap();
+        let flags = CopyFlags {
+            restartable: true,
+            ..CopyFlags::default()
+        };
+        let e = copy_file(&src, &dst, flags, &mut |done| done < 8 << 20).unwrap_err();
+        assert_eq!(e.kind(), io::ErrorKind::Interrupted);
+        assert!(dst.exists(), "partial copy kept for resume");
+        copy_file(&src, &dst, flags, &mut |_| true).unwrap();
+        assert_eq!(std::fs::read(&dst).unwrap(), data);
+        assert_eq!(
+            std::fs::metadata(&dst).unwrap().modified().unwrap(),
+            std::fs::metadata(&src).unwrap().modified().unwrap()
+        );
+    }
+
     /// Признак завершённости (S5 §6.1): пока `CopyFileExW` пишет данные, время
     /// изменения назначения ещё не исходное — убитая посреди копия не
     /// выглядит готовой.
@@ -1033,9 +1133,7 @@ mod tests {
         std::fs::write(&dst, b"x").unwrap();
         let flags = CopyFlags {
             excl: true,
-            symlink: false,
-            no_buffering: false,
-            sparse: false,
+            ..CopyFlags::default()
         };
         let e = copy_file(&src, &dst, flags, &mut |_| true).unwrap_err();
         assert_eq!(e.kind(), io::ErrorKind::AlreadyExists);

@@ -58,6 +58,9 @@ pub(crate) enum Record {
         items: u64,
         bytes: u64,
     },
+    /// Временный файл копируется с докачкой (S5-27): при «Продолжить» не удаляется.
+    /// Новый вариант — в конце: старые журналы читаются как раньше.
+    Resumable(PathBuf),
 }
 
 /// Журнал живой job. `Sync`: временные файлы пишут воркеры.
@@ -208,6 +211,8 @@ pub(crate) struct Interrupted {
     pub counters: Option<(u64, u64, u64, u64)>,
     /// Временные файлы без `TempDone` — удалить.
     pub temps: Vec<PathBuf>,
+    /// Из них — с докачкой (S5-27): «Продолжить» дописывает, «Очистить» удаляет.
+    pub resumable: Vec<PathBuf>,
 }
 
 impl Interrupted {
@@ -217,9 +222,13 @@ impl Interrupted {
         (total > 0).then(|| bytes.min(total) * 100 / total)
     }
 
-    /// Удалить временные файлы прерванной job.
-    pub(crate) fn remove_temps(&self) {
+    /// Удалить временные файлы прерванной job; `keep` — с докачкой (оставить для
+    /// «Продолжить»).
+    pub(crate) fn remove_temps(&self, keep: bool) {
         for t in &self.temps {
+            if keep && self.resumable.contains(t) {
+                continue;
+            }
             match std::fs::remove_file(t) {
                 Ok(()) => {}
                 Err(e) if e.kind() == io::ErrorKind::NotFound => {}
@@ -240,6 +249,7 @@ fn interpret(path: &Path, records: Vec<Record>) -> Option<Interrupted> {
         header: *header,
         counters: None,
         temps: Vec::new(),
+        resumable: Vec::new(),
     };
     for r in it {
         match r {
@@ -251,7 +261,11 @@ fn interpret(path: &Path, records: Vec<Record>) -> Option<Interrupted> {
                 bytes_total,
             } => out.counters = Some((items, bytes, items_total, bytes_total)),
             Record::Temp(p) => out.temps.push(p),
-            Record::TempDone(p) => out.temps.retain(|t| *t != p),
+            Record::TempDone(p) => {
+                out.temps.retain(|t| *t != p);
+                out.resumable.retain(|t| *t != p);
+            }
+            Record::Resumable(p) => out.resumable.push(p),
             Record::Header(_) | Record::Root(_) => {}
         }
     }

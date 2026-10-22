@@ -260,6 +260,7 @@ impl OpsHandler {
             small_file: u64::from(self.cfg.small_file),
             journal_dir: self.journal_dir.clone(),
             strategy: crate::strategy::StrategyTable::from_config(&self.cfg),
+            resume_tag: None,
         };
         crate::ops::copy::start(&self.engine, cx, start);
         Ok(())
@@ -1159,9 +1160,12 @@ impl OpsHandler {
                 let start = match crate::journal::take(&path) {
                     Ok(Some((f, i))) => {
                         let start = i.and_then(|i| {
-                            i.remove_temps();
-                            go.then(|| crate::ops::copy::recovered(&i.header, small, dir))
-                                .flatten()
+                            // «Продолжить» оставляет недописанные с докачкой (S5-27).
+                            i.remove_temps(go);
+                            go.then(|| {
+                                crate::ops::copy::recovered(&i.header, &i.resumable, small, dir)
+                            })
+                            .flatten()
                         });
                         drop(f);
                         if let Err(e) = std::fs::remove_file(&path) {

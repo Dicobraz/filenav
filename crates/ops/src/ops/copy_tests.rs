@@ -148,6 +148,7 @@ fn transfer(
             small_file: 1 << 20,
             journal_dir: None,
             strategy: crate::strategy::StrategyTable::default(),
+            resume_tag: None,
         },
     )
 }
@@ -1501,9 +1502,9 @@ fn killed_copy_continues_without_recopy() {
     let found = journal::scan(&jdir);
     assert_eq!(found.len(), 1, "interrupted journal");
     let i = &found[0];
-    i.remove_temps();
+    i.remove_temps(false);
     std::fs::remove_file(&i.path).unwrap();
-    let start = recovered(&i.header, 1 << 20, Some(jdir.clone())).unwrap();
+    let start = recovered(&i.header, &i.resumable, 1 << 20, Some(jdir.clone())).unwrap();
     let mut h = H::new(64);
     let r = run(&mut h, Transfer::new(Mode::Copy, start));
     let s = done(&r);
@@ -1716,6 +1717,7 @@ fn bench_small_files() {
                 symlink: false,
                 no_buffering: false,
                 sparse: false,
+                restartable: false,
             };
             crate::sys::fs::copy_file(s, d, f, &mut |_| true)
         }),
@@ -1841,6 +1843,7 @@ fn bench_large_file() {
                     symlink: false,
                     no_buffering: nb,
                     sparse: false,
+                    restartable: false,
                 },
                 &mut |_| true,
             )
@@ -2312,4 +2315,12 @@ fn sparse_file_stays_sparse() {
     let on_disk = crate::sys::fs::disk_size(&c).unwrap();
     eprintln!("sparse copy: {on_disk} bytes on disk of {}", 64 << 20);
     assert!(on_disk < 8 << 20, "copy stays sparse: {on_disk}");
+}
+
+/// S5-27: метка job — из имени временного файла.
+#[test]
+fn temp_tag_round_trip() {
+    let p = temp_path(Path::new(r"C:\dig.iso"), "ab12");
+    assert_eq!(super::tag_of(&p).as_deref(), Some("ab12"));
+    assert_eq!(super::tag_of(Path::new(r"C:\d\plain.txt")), None);
 }
