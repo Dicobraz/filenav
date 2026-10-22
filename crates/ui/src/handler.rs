@@ -40,10 +40,30 @@ const fn meta(id: &'static str, title: &'static str, args: &'static [ArgSpec]) -
 const SIDE: ArgSpec = arg("side", ValueKind::Str, false);
 const ID: ArgSpec = arg("id", ValueKind::Int, false);
 
+/// Ссылок каталога, читаемых для колонки и статуса, не больше.
+const LINKS_MAX: usize = 2000;
+
 /// Вариантов дополнения не больше.
 const COMPLETE_MAX: usize = 12;
 
 static COMMANDS: &[CommandMeta] = &[
+    // Приветствие (D-02): показать (`--screens`, справка) и принять выбор.
+    meta(
+        "ui.welcome",
+        "Welcome",
+        &[
+            arg("kind", ValueKind::Str, false),
+            arg("from", ValueKind::Str, false),
+        ],
+    ),
+    meta(
+        "ui.welcome.done",
+        "Close welcome",
+        &[
+            arg("preset", ValueKind::Str, false),
+            arg("follow_os", ValueKind::Bool, false),
+        ],
+    ),
     // Поля ввода (№70): запомнить введённое, дополнить (Tab, Alt+↓ — история), закрыть.
     meta(
         "ui.field.remember",
@@ -233,6 +253,7 @@ impl Handler for UiHandler {
     }
 
     fn on_pump(&mut self, cx: &mut Cx<'_>) {
+        self.scan_links(cx);
         if !self
             .config
             .as_ref()
@@ -246,6 +267,7 @@ impl Handler for UiHandler {
                 st.policy = env.policy;
                 st.themes_dir = env.dir;
                 st.fields_file.clone_from(&env.fields);
+                st.welcome.clone_from(&env.welcome);
                 if let Some(file) = env.fields {
                     fs_tasks::spawn_fields_load(cx.rt, file);
                 }
@@ -269,6 +291,10 @@ impl Handler for UiHandler {
         crate::status::sync(cx);
     }
 
+    #[allow(
+        clippy::too_many_lines,
+        reason = "диспетчер команд ui: ветка на команду"
+    )]
     fn handle(&mut self, cmd: &Command, cx: &mut Cx<'_>) -> Result<(), CmdError> {
         if let Some(r) = theme_cmd::handle(cmd, cx) {
             return r;
@@ -276,6 +302,7 @@ impl Handler for UiHandler {
         let a = &cmd.args;
         match cmd.id.as_str() {
             "ui.menu" | "ui.menu.sort" | "ui.history.dirs" => self.menu(cx, cmd.id.as_str(), a),
+            "ui.welcome" | "ui.welcome.done" => welcome(cx, cmd.id.as_str(), a),
             "ui.field.remember" | "ui.complete" | "ui.complete.close" => {
                 self.field_cmd(cx, cmd.id.as_str(), a);
             }
@@ -425,6 +452,51 @@ impl UiHandler {
             st.menu = Some(menu);
             st.menu_side = crumbs.then_some(side);
         });
+    }
+
+    /// Ссылки панелей (D-03): листинг с ссылками сменился — прочитать их цели и вид
+    /// (junction или symlink) в Runtime; до ответа колонка показывает `<LINK>`.
+    fn scan_links(&mut self, cx: &mut Cx<'_>) {
+        for side in [Side::Left, Side::Right] {
+            let t = cx.state.panel(side).tab();
+            let generation = t.listing.generation.0;
+            let i = usize::from(side == Side::Right);
+            let known = cx
+                .state
+                .ext
+                .get::<crate::UiState>()
+                .map(|u| &u.links[i])
+                .is_some_and(|l| l.loc.as_ref() == Some(&t.loc) && l.generation == generation);
+            if known {
+                continue;
+            }
+            let names: Vec<compact_str::CompactString> = t
+                .listing
+                .entries
+                .iter()
+                .filter(|e| {
+                    matches!(
+                        e.kind,
+                        urfin_core::EntryKind::LinkDir
+                            | urfin_core::EntryKind::LinkFile
+                            | urfin_core::EntryKind::LinkBroken
+                    )
+                })
+                .take(LINKS_MAX)
+                .map(|e| e.name.clone())
+                .collect();
+            let loc = t.loc.clone();
+            let st = ui_state(cx);
+            st.links[i] = crate::state::Links {
+                loc: Some(loc.clone()),
+                generation,
+                items: std::collections::HashMap::new(),
+            };
+            cx.keep_rev();
+            if !names.is_empty() && loc.is_local() {
+                fs_tasks::spawn_links(cx.rt, Arc::clone(&self.vfs), side, loc, generation, names);
+            }
+        }
     }
 
     /// Поля ввода (№70): `ui.field.remember`, `ui.complete`, `ui.complete.close`.
@@ -635,3 +707,25 @@ fn prompt_id(cx: &Cx<'_>, a: &Args) -> Option<PromptId> {
 #[cfg(test)]
 #[path = "handler_tests.rs"]
 mod tests;
+
+/// Приветствие (D-02): `ui.welcome` — показать, `ui.welcome.done` — принять выбор
+/// (пресет клавиш, тема как в Windows) и закрыть.
+fn welcome(cx: &mut Cx<'_>, id: &str, a: &Args) {
+    if id == "ui.welcome" {
+        ui_state(cx).welcome = Some(match a.str("kind") {
+            Some("updated") => crate::state::Welcome::Updated {
+                from: a.str("from").unwrap_or("0.0.0").to_owned(),
+                to: crate::version().to_owned(),
+            },
+            _ => crate::state::Welcome::First,
+        });
+        return;
+    }
+    if let Some(p) = a.str("preset") {
+        cx.dispatch(Command::new("keymap.preset").arg("name", p));
+    }
+    if a.bool("follow_os") == Some(true) {
+        cx.dispatch(Command::new("ui.theme.follow_os"));
+    }
+    ui_state(cx).welcome = None;
+}

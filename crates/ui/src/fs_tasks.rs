@@ -334,3 +334,83 @@ pub fn spawn_fields_save(rt: &Runtime, file: std::path::PathBuf, text: String) {
         },
     );
 }
+
+/// Цели и вид ссылок `names` каталога `dir` (D-03): `stat(follow = false)` — тег reparse
+/// (junction или symlink) и цель; цели нет — «битая».
+pub fn spawn_links(
+    rt: &Runtime,
+    vfs: Arc<VfsRegistry>,
+    side: Side,
+    dir: Location,
+    generation: u64,
+    names: Vec<CompactString>,
+) {
+    rt.spawn(Lane::Bulk, "ui.links", CancelToken::new(), move |t| {
+        const JUNCTION: u32 = 0xA000_0003;
+        let Ok(fs) = vfs.get(&dir) else {
+            return;
+        };
+        let mut items = std::collections::HashMap::with_capacity(names.len());
+        for n in names {
+            if t.cancel.is_cancelled() {
+                return;
+            }
+            let p = Location::local(dir.path.join(n.as_str()));
+            let Ok(m) = fs.stat(&p, false) else {
+                continue;
+            };
+            let target = m.link_target.as_ref().map(|t| {
+                let s = t.display().to_string();
+                s.strip_prefix(r"\??\").map_or(s.clone(), str::to_owned)
+            });
+            let broken = m.link_target.as_ref().is_some_and(|t| {
+                let full = if t.is_absolute() {
+                    t.clone()
+                } else {
+                    dir.path.join(t)
+                };
+                let full = full
+                    .to_str()
+                    .and_then(|s| s.strip_prefix(r"\??\"))
+                    .map_or(full.clone(), std::path::PathBuf::from);
+                !full.exists()
+            });
+            items.insert(
+                n,
+                crate::state::LinkInfo {
+                    junction: m.reparse_tag == Some(JUNCTION),
+                    target,
+                    broken,
+                },
+            );
+        }
+        let msg = LinksRead {
+            side,
+            generation,
+            items,
+        };
+        let _ = t.sink.send(Box::new(msg), &t.cancel);
+    });
+}
+
+struct LinksRead {
+    side: Side,
+    generation: u64,
+    items: std::collections::HashMap<CompactString, crate::state::LinkInfo>,
+}
+
+impl Msg for LinksRead {
+    fn name(&self) -> &'static str {
+        "ui.links"
+    }
+
+    fn apply(self: Box<Self>, cx: &mut Cx<'_>) {
+        let i = usize::from(self.side == Side::Right);
+        let l = &mut ui_state(cx).links[i];
+        if l.generation == self.generation {
+            l.items = self.items;
+        } else {
+            cx.keep_rev();
+        }
+    }
+}

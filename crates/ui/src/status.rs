@@ -86,6 +86,21 @@ pub fn zones(s: &urfin_core::AppState, fmt: &FmtCfg) -> [String; 3] {
     let t = s.active_tab();
     let mut cell = Cell::default();
     let file = match t.current() {
+        Some(Row::Entry { entry, .. })
+            if let Some(l) = s.ext.get::<crate::UiState>().and_then(|u| {
+                u.links[usize::from(s.active == urfin_core::Side::Right)]
+                    .items
+                    .get(&entry.name)
+            }) =>
+        {
+            // Ссылка (D-03): цель — только здесь; битая — «цель не найдена».
+            let mut out = format!("{} → {}", entry.name, l.target.as_deref().unwrap_or("?"));
+            if l.broken {
+                out.push_str(" · ");
+                out.push_str(&i18n.get("ui-link-broken"));
+            }
+            out
+        }
         Some(Row::Entry { entry, .. }) => {
             let mut parts = vec![entry.name.to_string()];
             if !entry.kind.is_dir_like() {

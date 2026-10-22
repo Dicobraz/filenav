@@ -68,6 +68,29 @@ pub struct Complete {
     pub items: Vec<Cand>,
 }
 
+/// Приветствие внизу (D-02): первый запуск или обновление (локальное сравнение версий).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Welcome {
+    First,
+    Updated { from: String, to: String },
+}
+
+/// Ссылка в панели (D-03, `screen-linkview.png`): junction или symlink, цель, цели нет.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LinkInfo {
+    pub junction: bool,
+    pub target: Option<String>,
+    pub broken: bool,
+}
+
+/// Ссылки каталога панели: для какого листинга (папка, поколение) и по именам.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Links {
+    pub loc: Option<Location>,
+    pub generation: u64,
+    pub items: std::collections::HashMap<CompactString, LinkInfo>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct UiState {
     /// Зеркало `Focus::Overlay` (S0 v3 №1): открытый оверлей.
@@ -120,6 +143,10 @@ pub struct UiState {
     pub fields_file: Option<std::path::PathBuf>,
     /// Список дополнений открытого поля.
     pub complete: Option<Complete>,
+    /// Приветствие внизу (первый запуск, обновление).
+    pub welcome: Option<Welcome>,
+    /// Ссылки в панелях (по сторонам).
+    pub links: [Links; 2],
 }
 
 impl Default for UiState {
@@ -160,6 +187,8 @@ impl UiState {
             fields: crate::field_history::FieldHistory::default(),
             fields_file: None,
             complete: None,
+            welcome: None,
+            links: Default::default(),
         }
     }
 
