@@ -288,6 +288,10 @@ impl Handler for UiHandler {
                 st.welcome.clone_from(&env.welcome);
                 st.config_dir.clone_from(&env.config_dir);
                 st.log_dir.clone_from(&env.log_dir);
+                // Первый запуск: опция быстрой корзины — в конфиг (№79).
+                if matches!(env.welcome, Some(crate::state::Welcome::First)) {
+                    settings::set(&["ops", "experimental_fast_trash"], true).apply(cx);
+                }
                 if let Some(file) = env.fields {
                     fs_tasks::spawn_fields_load(cx.rt, file);
                 }
