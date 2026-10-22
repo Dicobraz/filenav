@@ -183,6 +183,9 @@ fn not_yet(cmd: &Command) -> CmdError {
 #[derive(Debug)]
 pub struct OpsHandler {
     cfg: OpsConfig,
+    /// Конфиг, из которого прочитан `cfg`: сменился (`app.reload_config`, настройки
+    /// D-08) — `[ops]` перечитывается, новые задачи идут с ним.
+    seen: Option<Arc<urfin_core::Config>>,
     engine: JobEngine,
     /// Каталог журналов job (S5-12).
     journal_dir: Option<std::path::PathBuf>,
@@ -199,6 +202,7 @@ impl OpsHandler {
         let engine = JobEngine::new(cfg.max_threads);
         OpsHandler {
             cfg,
+            seen: None,
             engine,
             journal_dir,
             scanned: false,
@@ -286,6 +290,17 @@ impl Handler for OpsHandler {
 
     /// Первый pump: прерванные job из журналов → баннер (S5 §6.3).
     fn on_pump(&mut self, cx: &mut Cx<'_>) {
+        let fresh = self
+            .seen
+            .as_ref()
+            .is_none_or(|c| !Arc::ptr_eq(c, &cx.state.config));
+        if fresh {
+            if self.seen.is_some() {
+                let (cfg, _) = cx.state.config.section::<OpsConfig>("ops");
+                self.cfg = cfg;
+            }
+            self.seen = Some(Arc::clone(&cx.state.config));
+        }
         if self.scanned {
             return;
         }
@@ -349,6 +364,10 @@ impl Handler for OpsHandler {
         &OPS_COMMANDS
     }
 
+    #[allow(
+        clippy::too_many_lines,
+        reason = "диспетчер команд ops: ветка на команду"
+    )]
     fn handle(&mut self, cmd: &Command, cx: &mut Cx<'_>) -> Result<(), CmdError> {
         let a = &cmd.args;
         match cmd.id.as_str() {
@@ -382,7 +401,13 @@ impl Handler for OpsHandler {
                     return Ok(());
                 }
                 if req.kind == OpKind::Trash && req.base.is_local() {
-                    crate::ops::trash::start(&self.engine, cx, req.base, req.items);
+                    crate::ops::trash::start(
+                        &self.engine,
+                        cx,
+                        req.base,
+                        req.items,
+                        self.cfg.experimental_fast_trash,
+                    );
                     return Ok(());
                 }
                 delete(cx, req)

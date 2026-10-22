@@ -32,6 +32,8 @@ pub(crate) struct Item {
 pub(crate) struct Trash {
     base: Location,
     items: Vec<CompactString>,
+    /// Быстрая корзина (S5-26, №79): сначала напрямую в `$Recycle.Bin`.
+    fast: bool,
 }
 
 /// Из handler (UI-поток, без I/O): job «в корзину».
@@ -40,6 +42,7 @@ pub(crate) fn start(
     cx: &mut Cx<'_>,
     base: Location,
     items: Vec<CompactString>,
+    fast: bool,
 ) -> JobId {
     let spec = JobSpec {
         kind: "trash",
@@ -56,7 +59,7 @@ pub(crate) fn start(
         priority: 0,
         owner_ns: "ops",
     };
-    eng.start(cx, spec, WORKERS, Trash { base, items })
+    eng.start(cx, spec, WORKERS, Trash { base, items, fast })
 }
 
 fn tr(key: &str, args: &[(&str, &str)]) -> String {
@@ -87,9 +90,17 @@ impl OpExec for Trash {
             .iter()
             .map(|n| self.base.path.join(n.as_str()))
             .collect();
-        let out = {
+        let (fast_done, out) = {
             let cx = p.cx();
             cx.progress().set_phase(urfin_core::Phase::Transfer);
+            // Быстрая корзина (S5-26): что перенесено напрямую — готово; остальное и
+            // любые ошибки — обычным путём Shell.
+            let (fast_done, paths) = if self.fast && !crate::sys::recycle_fast::policy_off() {
+                let f = crate::sys::recycle_fast::recycle(&paths);
+                (f.moved.len(), f.rest)
+            } else {
+                (0, paths)
+            };
             let out = match crate::sys::trash_win::recycle(&paths, &cx.cancel_token()) {
                 Ok(o) => o,
                 Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {
@@ -99,12 +110,12 @@ impl OpExec for Trash {
             };
             cx.touch(&self.base);
             let progress = cx.progress();
-            let n = (out.recycled.len() + out.failed.len()) as u64;
+            let n = (fast_done + out.recycled.len() + out.failed.len()) as u64;
             progress.items_total.fetch_add(n, Ordering::Relaxed);
             progress.items_done.fetch_add(n, Ordering::Relaxed);
-            out
+            (fast_done, out)
         };
-        for _ in &out.recycled {
+        for _ in 0..fast_done + out.recycled.len() {
             p.record(None, ItemResult::Done);
         }
         for (path, e) in out.failed {
@@ -193,6 +204,7 @@ mod tests {
         Trash {
             base: Location::local(base),
             items: items.iter().map(|s| CompactString::from(*s)).collect(),
+            fast: false,
         }
     }
 

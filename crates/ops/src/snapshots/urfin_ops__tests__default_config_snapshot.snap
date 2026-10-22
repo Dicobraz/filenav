@@ -6,7 +6,7 @@ delete_to_trash = true
 max_threads = 64
 small_file = 1048576
 large_file = 268435456
-experimental_fast_trash = false
+experimental_fast_trash = true
 
 [defaults]
 conflict = "Ask"

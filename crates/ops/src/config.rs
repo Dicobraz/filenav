@@ -37,7 +37,8 @@ impl Default for OpsConfig {
             strategy: BTreeMap::new(),
             small_file: 1 << 20,
             large_file: crate::strategy::LARGE_FILE,
-            experimental_fast_trash: false,
+            // S0-decisions №79: быстрая корзина по умолчанию включена.
+            experimental_fast_trash: true,
         }
     }
 }
