@@ -427,6 +427,7 @@ pub(super) fn compare_bar(
 /// Приветствие (`screen-firstrun.png`, `screen-whatsnew.png`): первый запуск — выбор
 /// клавиш Far / DN, «Тема как в Windows», Готово / Позже; обновление — «обновлён до X ·
 /// с Y», Закрыть.
+#[allow(clippy::too_many_lines, reason = "первый запуск и обновление — две ветки")]
 pub(super) fn welcome_bar(
     w: &crate::state::Welcome,
     dn: bool,
