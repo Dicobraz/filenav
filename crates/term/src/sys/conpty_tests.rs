@@ -58,11 +58,12 @@ fn settled_handle_count() -> u32 {
 
 /// Занятость всех ядер системы между замерами `system_times`, %.
 fn busy_percent(a: (u64, u64), b: (u64, u64)) -> u64 {
-    let total = b.1 - a.1;
+    // Счётчики `GetSystemTimes` на гибридном CPU за короткий интервал бывают
+    // немонотонны: общее время — меньше прежнего, простой — больше общего.
+    let total = b.1.saturating_sub(a.1);
     if total == 0 {
         return 0;
     }
-    // Дискретность счётчиков: простой за короткий интервал бывает чуть больше общего.
     100u64.saturating_sub(b.0.saturating_sub(a.0) * 100 / total)
 }
 

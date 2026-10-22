@@ -692,7 +692,7 @@ fn no_session() -> CmdError {
     CmdError::Rejected(tr("term-no-session", &[]).into())
 }
 
-fn tr(key: &str, args: &[(&str, &str)]) -> String {
+pub(crate) fn tr(key: &str, args: &[(&str, &str)]) -> String {
     let mut a = urfin_i18n::FluentArgs::new();
     for (k, v) in args {
         a.set(*k, (*v).to_owned());

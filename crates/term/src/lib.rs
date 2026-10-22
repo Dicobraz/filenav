@@ -273,6 +273,12 @@ pub struct TermState {
     pub(crate) alt: bool,
     /// Размер области терминала ждёт дебаунса (S6 §3.1).
     pub(crate) resize: Option<(sys::conpty::PtySize, Instant)>,
+    /// Многострочная вставка ждёт ответа «Вставить?» (shell без bracketed paste).
+    pub(crate) paste: Option<(
+        urfin_core::PromptId,
+        crossbeam_channel::Receiver<urfin_core::Reply>,
+        String,
+    )>,
 }
 
 impl TermState {
@@ -393,6 +399,7 @@ impl Handler for TermHandler {
             }
             _ => {}
         }
+        poll_paste(cx);
     }
 
     fn on_quit(&mut self, cx: &mut Cx<'_>) -> QuitDecision {
@@ -534,7 +541,13 @@ impl Handler for CmdlineHandler {
                 }
             }
             "cmdline.paste" => match a.str("text") {
-                Some(t) => line.insert(t),
+                Some(t) => {
+                    let t = t.trim_end_matches(['\r', '\n']);
+                    if t.contains('\n') {
+                        return paste_lines(cx, t);
+                    }
+                    line.insert(&printable(t));
+                }
                 None => cx.ui(UiEvent::Ext {
                     id: CommandId::from_static("clip.read"),
                     args: Args::default().with("then", "cmdline.paste"),
@@ -573,6 +586,99 @@ impl Handler for CmdlineHandler {
             _ => return Err(not_yet(cmd)),
         }
         Ok(())
+    }
+}
+
+/// Многострочная вставка (S6 §3.4): не в однострочную cmdline, а в терминал — панели
+/// гаснут, текст показывает и правит сам shell. Shell без bracketed paste (cmd)
+/// выполнил бы каждую строку сразу — сначала вопрос.
+fn paste_lines(cx: &mut Cx<'_>, text: &str) -> Result<(), CmdError> {
+    let Some(st) = cx.state.ext.get_mut::<TermState>() else {
+        return Ok(());
+    };
+    let shell = st
+        .sessions
+        .active()
+        .map(|s| s.shell.to_string())
+        .ok_or_else(|| CmdError::Rejected(manager::tr("term-no-session", &[]).into()))?;
+    if st.sessions.input_modes().bracketed_paste {
+        return paste_now(cx, text);
+    }
+    if let Some((id, ..)) = st.paste.take() {
+        cx.state.prompts.cancel(id);
+    }
+    let i18n = urfin_i18n::current();
+    let n = text.lines().count().to_string();
+    let choice = |id: &str, key: &str, k: char| urfin_core::Choice {
+        id: id.into(),
+        label: i18n.get(key).into(),
+        key: k,
+    };
+    let spec = urfin_core::PromptSpec {
+        anchor: urfin_core::Anchor::Cmdline,
+        title: manager::tr("term-paste-title", &[("n", &n), ("shell", &shell)]),
+        body: manager::tr("term-paste-body", &[("shell", &shell)]),
+        choices: [
+            choice("paste", "term-paste-insert", 'p'),
+            choice("cancel", "term-paste-cancel", 'c'),
+        ]
+        .into_iter()
+        .collect(),
+        default: 0,
+        input: None,
+        allow_all: false,
+        detail: None,
+        secret: false,
+    };
+    let (id, rx) = cx.state.prompts.open(spec, None);
+    if let Some(st) = cx.state.ext.get_mut::<TermState>() {
+        st.paste = Some((id, rx, text.to_owned()));
+    }
+    Ok(())
+}
+
+/// Вставить строки в PTY (в скобках вставки, если shell их включил) и показать
+/// терминал.
+fn paste_now(cx: &mut Cx<'_>, text: &str) -> Result<(), CmdError> {
+    let rt = cx.rt;
+    let Some(st) = cx.state.ext.get_mut::<TermState>() else {
+        return Ok(());
+    };
+    let modes = st.sessions.input_modes();
+    let body = text.replace("\r\n", "\n").replace('\n', "\r");
+    let mut bytes = Vec::with_capacity(body.len() + 12);
+    if modes.bracketed_paste {
+        bytes.extend_from_slice(b"\x1b[200~");
+        bytes.extend_from_slice(body.as_bytes());
+        bytes.extend_from_slice(b"\x1b[201~");
+    } else {
+        bytes.extend_from_slice(body.as_bytes());
+    }
+    st.sessions.write(&st.config, rt, bytes, false)?;
+    panels(cx, false);
+    Ok(())
+}
+
+/// Ответ на «Вставить строки?»: да — в терминал, нет или закрыто — забыть.
+fn poll_paste(cx: &mut Cx<'_>) {
+    let Some(st) = cx.state.ext.get_mut::<TermState>() else {
+        return;
+    };
+    let Some((_, rx, _)) = &st.paste else {
+        return;
+    };
+    let reply = match rx.try_recv() {
+        Ok(r) => Some(r),
+        Err(crossbeam_channel::TryRecvError::Empty) => return,
+        Err(crossbeam_channel::TryRecvError::Disconnected) => None,
+    };
+    let Some((_, _, text)) = st.paste.take() else {
+        return;
+    };
+    if reply.is_some_and(|r| r.choice == "paste")
+        && let Err(e) = paste_now(cx, &text)
+    {
+        cx.toast(urfin_core::Level::Error, e.to_string());
     }
 }
 

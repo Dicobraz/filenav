@@ -144,3 +144,7 @@ term-quit-title = Running processes in the terminal ({ $n })
 term-quit-body = “Terminate and exit” closes the terminal sessions and their programs
 term-quit-cancel = Cancel
 term-quit-terminate = Terminate and exit
+term-paste-title = Paste { $n } lines into { $shell }
+term-paste-body = { $shell } runs every line at once, without a review
+term-paste-insert = Paste
+term-paste-cancel = Cancel

@@ -339,4 +339,34 @@ fn submit_area_and_alt_screen_autoshow() {
         seen = panels_events(&mut h.core);
     }
     assert_eq!(seen, [Some(true)], "leaving alt-screen returns panels");
+
+    // Многострочная вставка в cmd (без bracketed paste): сначала вопрос; «Вставить» —
+    // строки в shell, панели гаснут. Одна строка с переводом в конце — в cmdline.
+    h.run(Command::new("cmdline.paste").arg("text", "echo URFIN_L1\r\necho URFIN_L2\r\n"));
+    assert!(
+        crate::cmdline_empty(h.core.state()),
+        "multi-line skips cmdline"
+    );
+    let id = h
+        .core
+        .state()
+        .prompts
+        .active()
+        .map(|p| p.id)
+        .expect("question");
+    let _ = panels_events(&mut h.core);
+    h.run(
+        Command::new("prompt.reply")
+            .arg("id", i64::try_from(id.0).unwrap())
+            .arg("choice", "paste"),
+    );
+    h.until("pasted lines ran", |m| {
+        active_has(m, "URFIN_L1") && active_has(m, "URFIN_L2")
+    });
+    assert_eq!(panels_events(&mut h.core), [Some(false)], "terminal shown");
+    h.run(Command::new("cmdline.paste").arg("text", "dir\r\n"));
+    assert_eq!(
+        h.core.state().ext.get::<TermState>().unwrap().line.text(),
+        "dir"
+    );
 }

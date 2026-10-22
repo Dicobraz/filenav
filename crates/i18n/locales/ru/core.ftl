@@ -151,3 +151,7 @@ term-quit-title = В терминале работают процессы ({ $n 
 term-quit-body = «Завершить и выйти» закроет сеансы терминала и их программы
 term-quit-cancel = Отмена
 term-quit-terminate = Завершить и выйти
+term-paste-title = Вставка в { $shell }: строк — { $n }
+term-paste-body = { $shell } выполнит каждую строку сразу, без проверки
+term-paste-insert = Вставить
+term-paste-cancel = Отмена
