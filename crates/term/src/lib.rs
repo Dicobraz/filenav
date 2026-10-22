@@ -246,6 +246,8 @@ pub struct TermState {
     pub config: TermConfig,
     /// Пул сеансов (S6-10).
     pub sessions: manager::Manager,
+    /// Сетка, показанная явно вместо активного сеанса (сцены `--screens`, S6-06).
+    pub preview: Option<std::sync::Arc<vt::shared::TermShared>>,
 }
 
 fn not_yet(cmd: &Command) -> CmdError {
@@ -281,6 +283,7 @@ impl Handler for TermHandler {
             cx.state.ext.insert(TermState {
                 config,
                 sessions: manager::Manager::new(dir),
+                preview: None,
             });
         }
         let rt = cx.rt;
@@ -306,7 +309,9 @@ impl Handler for TermHandler {
         let Some(st) = cx.state.ext.get_mut::<TermState>() else {
             return Err(not_yet(cmd));
         };
-        let TermState { config, sessions } = st;
+        let TermState {
+            config, sessions, ..
+        } = st;
         let a = &cmd.args;
         match cmd.id.as_str() {
             "term.shell" => sessions.open(config, rt, a.str("id"), true, cwd),

@@ -2,8 +2,9 @@
 //! копируется мгновенно. Handler регистрирует только app под `--screens`, поэтому в
 //! реестре команд и `docs/COMMANDS.md` его нет. `screens.jobs` — запустить три задачи,
 //! которые медленно «идут» сами, `stop=true` — отменить их. `screens.error kind=access|busy`
-//! — вопрос об ошибке операции (D-04), `screens.banner` — баннер журнала; `stop=true` —
-//! убрать.
+//! — вопрос об ошибке операции (D-04), `screens.banner` — баннер журнала,
+//! `screens.term kind=frames|unicode|colors` — экран терминала за спрятанными панелями
+//! (S6-06); `stop=true` — убрать.
 
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -48,11 +49,27 @@ static COMMANDS: &[CommandMeta] = &[
         args: &[STOP],
         repeatable: false,
     },
+    CommandMeta {
+        id: "screens.term",
+        title: "Demo terminal screen (--screens)",
+        category: "screens",
+        args: &[
+            STOP,
+            ArgSpec {
+                name: "kind",
+                kind: ValueKind::Str,
+                required: false,
+            },
+        ],
+        repeatable: false,
+    },
 ];
 
 /// Демо-задачи сцен.
 #[derive(Default)]
 pub struct DemoJobs {
+    /// Сколько раз показан экран терминала (`dense` в `--bench` каждый раз другой).
+    term_seed: usize,
     ids: Vec<JobId>,
     prompts: Vec<urfin_core::PromptId>,
 }
@@ -86,6 +103,23 @@ impl Handler for DemoJobs {
             }
             "screens.banner" => {
                 banner(cmd.args.bool("stop").unwrap_or(false), cx);
+                return Ok(());
+            }
+            "screens.term" => {
+                let kind = cmd
+                    .args
+                    .str("kind")
+                    .filter(|_| !cmd.args.bool("stop").unwrap_or(false));
+                self.term_seed += 1;
+                let seed = self.term_seed;
+                let shared = kind.and_then(|k| crate::demo_term::screen(k, seed));
+                let shown = shared.is_some();
+                if let Some(t) = cx.state.ext.get_mut::<urfin_term::TermState>() {
+                    t.preview = shared;
+                }
+                if let Some(u) = cx.state.ext.get_mut::<crate::UiState>() {
+                    u.panels_hidden = shown;
+                }
                 return Ok(());
             }
             _ => {}

@@ -390,9 +390,23 @@ const SCENES: &[Scene] = &[
         name: "screen-tabsmore",
         steps: &["ui.menu menu=tabs-left"],
     },
+    // Сетка терминала за спрятанными панелями (S6-06): экраны демо-командой.
+    Scene {
+        name: "term-frames",
+        steps: &["ui.cancel", "screens.term kind=frames"],
+    },
+    Scene {
+        name: "term-unicode",
+        steps: &["screens.term kind=unicode"],
+    },
+    Scene {
+        name: "term-colors",
+        steps: &["screens.term kind=colors"],
+    },
     Scene {
         name: "width-800-panels",
         steps: &[
+            "screens.term stop=true",
             "ui.cancel",
             "tab.close",
             "tab.close",

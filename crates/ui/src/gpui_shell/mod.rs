@@ -14,11 +14,13 @@ mod pouch;
 mod screens;
 mod settings;
 mod strip;
+mod term_view;
 mod theme;
 mod views;
 
 pub use theme::Theme;
 
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -164,6 +166,9 @@ pub struct CoreHost {
     prints: [[u64; 3]; 2],
     /// Протяжка с зажатой ПКМ (Far): панель, ставить или снимать пометку, последняя строка.
     rdrag: Option<(Side, bool, String)>,
+    /// Снапшот сетки терминала (S6-06) и чей он (адрес `TermShared`): пересобирается,
+    /// когда сеанс поднял флаг изменений или сменился.
+    term: Option<((usize, bool), Rc<urfin_term::vt::grid::Snapshot>)>,
     /// Где вызвано контекстное меню мышью (окно, px); Shift+F10 — у строки курсора.
     context_at: Option<(f32, f32)>,
     /// Эксперимент `slide`: где был курсор (таб, верх страницы, строка) и скольжение полосы.
@@ -264,6 +269,7 @@ impl CoreHost {
             panel_w: [0.0; 2],
             prints: [[0; 3]; 2],
             rdrag: None,
+            term: None,
             context_at: None,
             slot: [None; 2],
             slide: [None, None],
@@ -670,6 +676,52 @@ impl CoreHost {
             }
         }
         out.map(std::rc::Rc::new)
+    }
+
+    /// Снапшот видимого терминала: показанный явно (`TermState.preview`, сцены), иначе
+    /// активного сеанса. Пересобирается только по флагу изменений или смене сеанса.
+    fn term_snapshot(
+        cache: &mut Option<((usize, bool), Rc<urfin_term::vt::grid::Snapshot>)>,
+        dark: bool,
+        s: &urfin_core::AppState,
+    ) -> Option<Rc<urfin_term::vt::grid::Snapshot>> {
+        let st = s.ext.get::<urfin_term::TermState>()?;
+        let shared = st
+            .preview
+            .as_ref()
+            .or_else(|| st.sessions.active().and_then(|a| a.shared()));
+        let Some(shared) = shared else {
+            *cache = None;
+            return None;
+        };
+        let key = (Arc::as_ptr(shared) as usize, dark);
+        let dirty = shared.take_dirty();
+        match cache {
+            Some((k, snap)) if *k == key && !dirty => Some(snap.clone()),
+            _ => {
+                let t = std::time::Instant::now();
+                let d = if dark {
+                    urfin_term::vt::grid::Defaults {
+                        fg: [0xcc, 0xcc, 0xcc],
+                        bg: [0x0c, 0x0c, 0x0c],
+                        cursor: [0xff, 0xff, 0xff],
+                    }
+                } else {
+                    urfin_term::vt::grid::Defaults {
+                        fg: [0x1f, 0x1f, 0x1f],
+                        bg: [0xfa, 0xfa, 0xfa],
+                        cursor: [0x1f, 0x1f, 0x1f],
+                    }
+                };
+                let snap = Rc::new(shared.snapshot(&d));
+                crate::bench::GRID_NS.fetch_add(
+                    u64::try_from(t.elapsed().as_nanos()).unwrap_or(u64::MAX),
+                    std::sync::atomic::Ordering::Relaxed,
+                );
+                *cache = Some((key, snap.clone()));
+                Some(snap)
+            }
+        }
     }
 
     /// Левый край и ширина панелей по их ширинам (линия между ними — `WDivider`).
@@ -1976,14 +2028,27 @@ impl Render for CoreHost {
             .get::<crate::UiState>()
             .and_then(|u| u.settings.as_deref())
             .map(str::to_owned);
-        let main = match &settings_open {
-            Some(sec) => {
+        // Панели спрятаны (Ctrl+O) — за ними сетка терминала (S6-06).
+        let term_el = if widths == [None, None] {
+            Self::term_snapshot(&mut self.term, self.theme.tokens.dark(), s)
+        } else {
+            self.term = None;
+            None
+        };
+        let main = match (&settings_open, term_el) {
+            (Some(sec), _) => {
                 div()
                     .flex_1()
                     .min_h_0()
                     .child(settings::view(s, sec, &self.theme, &click_all))
             }
-            None => panels,
+            (None, Some(snap)) => panels.relative().child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .child(term_view::view(snap, self.theme.m(Metric::TypeMono))),
+            ),
+            (None, None) => panels,
         };
         let root = root
             .child(main)

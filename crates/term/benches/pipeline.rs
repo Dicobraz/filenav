@@ -1,6 +1,7 @@
 //! Бюджет S6-04: разбор вывода ≥ 100 МБ/с в release — `yes`-подобный поток
 //! (строка за строкой со скроллом) и цветной вывод вида `ls --color`; рядом —
-//! голый `alacritty_terminal` на том же потоке (накладные расходы pipeline).
+//! голый `alacritty_terminal` на том же потоке (накладные расходы pipeline). Бюджет
+//! S6-06: снапшот экрана 200×60 для рендера — доля от кадра ≤ 2 мс.
 //!
 //! Гибридный CPU стенда: на E-ядрах в разы медленнее — мерить, привязав процесс
 //! к P-ядрам (`docs/perf/s6-04-pipeline.md`).
@@ -75,6 +76,16 @@ fn bench(c: &mut Criterion) {
         b.iter(|| black_box(parse_inline(Cursor::new(&ls), &opts(), &Null)));
     });
     g.finish();
+    // Снапшот экрана для рендера (S6-06): 200×60 цветного вывода, под замком эмулятора.
+    let screen = parse_inline(Cursor::new(&ls[..256 * 1024]), &opts(), &Null);
+    let d = urfin_term::vt::grid::Defaults {
+        fg: [0xcc, 0xcc, 0xcc],
+        bg: [0x0c, 0x0c, 0x0c],
+        cursor: [0xff, 0xff, 0xff],
+    };
+    c.bench_function("grid/snapshot_200x60", |b| {
+        b.iter(|| black_box(screen.snapshot(&d)));
+    });
 }
 
 criterion_group!(benches, bench);
