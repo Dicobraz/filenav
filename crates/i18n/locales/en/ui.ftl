@@ -403,3 +403,22 @@ ui-tag-newer = newer
 ui-tag-only-here = only here
 ui-prompt-skip-all = Skip all such
 ui-job-waiting-for = waiting for an answer: { $what }
+
+## Frame: tabs, welcome, links (D-02, D-03)
+ui-tabs-more = Hidden tabs
+ui-keys-tab = Tab
+ui-welcome-title = Welcome to Urfin
+ui-welcome-keys = Keys
+ui-welcome-hint = Alt+letter — search, F10 — quit
+ui-welcome-theme = Theme as in Windows
+ui-welcome-done = Done
+ui-welcome-later = Later
+ui-welcome-updated = Urfin updated to { $to } · from { $from }
+ui-welcome-news = What's new
+ui-keys-preset = Far ↔ DN
+ui-keys-flag = Check box
+ui-keys-next-field = Next field
+ui-link-broken = target not found
+ui-size-symlink = <SYMLINK>
+ui-size-junction = <JUNCTION>
+ui-size-link = <LINK>

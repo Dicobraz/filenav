@@ -170,6 +170,11 @@ impl Render for PanelView {
                         .filter(|_| s.active == side)
                         .and_then(|m| urfin_core::Mask::parse(m.trim()).ok()),
                     notes: std::rc::Rc::clone(&h.notes[usize::from(side == Side::Right)]),
+                    links: s
+                        .ext
+                        .get::<crate::UiState>()
+                        .map(|u| u.links[usize::from(side == Side::Right)].clone())
+                        .unwrap_or_default(),
                 },
                 &l,
             )),
@@ -188,6 +193,8 @@ pub(super) struct Highlight {
     /// Заметки после имени по имени элемента (D-04): превью переименования, метки
     /// сравнения, действие плана синхронизации.
     pub notes: std::rc::Rc<std::collections::HashMap<String, Note>>,
+    /// Ссылки каталога (D-03): вид и «битая».
+    pub links: crate::state::Links,
 }
 
 /// Заметка после имени в строке списка.
@@ -241,6 +248,12 @@ pub(super) fn fingerprint(
             )
                 .hash(&mut h);
             (t.selection.len(), t.selection.bytes()).hash(&mut h);
+            if let Some(u) = s.ext.get::<crate::UiState>() {
+                u.links[usize::from(side == Side::Right)]
+                    .items
+                    .len()
+                    .hash(&mut h);
+            }
             // Подсветка префикса быстрого поиска (D-04).
             if let Some(q) = s
                 .ext
@@ -1041,6 +1054,7 @@ fn list(
         },
     };
     let rename = super::field::rename_input(field, t);
+    let dir_links = Some(&hl.links);
     let i18n = urfin_i18n::current();
     let dir_size = SharedString::from(i18n.get("ui-size-dir"));
     let mut lines = Vec::with_capacity((rows * cols) as usize);
@@ -1070,8 +1084,27 @@ fn list(
                 SharedString::from(cell.as_str().to_owned())
             })
         };
+        // Ссылка (D-03, `screen-linkview.png`): вид в колонке размера, битая — `modified`.
+        let link = entry.filter(|e| {
+            matches!(
+                e.kind,
+                urfin_core::EntryKind::LinkDir
+                    | urfin_core::EntryKind::LinkFile
+                    | urfin_core::EntryKind::LinkBroken
+            )
+        });
+        let link_info = link.and_then(|e| dir_links.and_then(|l| l.items.get(&e.name)));
+        let broken = link.is_some_and(|e| {
+            e.kind == urfin_core::EntryKind::LinkBroken || link_info.is_some_and(|l| l.broken)
+        });
         let bytes = if !full {
             None
+        } else if link.is_some() {
+            Some(SharedString::from(i18n.get(match link_info {
+                Some(l) if l.junction => "ui-size-junction",
+                Some(_) => "ui-size-symlink",
+                None => "ui-size-link",
+            })))
         } else if dir && entry.is_some() {
             Some(dir_size.clone())
         } else {
@@ -1108,6 +1141,8 @@ fn list(
             on_accent: on_cursor,
             color: if on_cursor {
                 theme.c(Role::CursorText)
+            } else if broken {
+                theme.c(Role::Modified)
             } else if marked {
                 theme.c(Role::AccentText)
             } else {

@@ -20,6 +20,8 @@ pub struct ThemeEnv {
     pub policy: ThemePolicy,
     /// История полей ввода (`<state_dir>/fields.toml`, №70).
     pub fields: Option<PathBuf>,
+    /// Приветствие при старте (первый запуск, обновление; D-02).
+    pub welcome: Option<crate::state::Welcome>,
 }
 
 fn tr(key: &str, args: &[(&str, &str)]) -> String {

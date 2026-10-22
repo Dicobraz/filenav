@@ -119,6 +119,10 @@ impl std::fmt::Debug for Launch {
 
 /// Владелец `Core` в окне GPUI (ADR-0018): `pump` по сигналу, `cx.notify()` — только
 /// когда состояние изменилось.
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "флаги окна и строк — независимые"
+)]
 pub struct CoreHost {
     core: Option<Core>,
     signal: Arc<Signal>,
@@ -187,6 +191,9 @@ pub struct CoreHost {
     notes: [std::rc::Rc<std::collections::HashMap<String, panel::Note>>; 2],
     /// Строк превью во встроенной строке (дерево F7) — для высоты строки.
     strip_rows: usize,
+    /// Выбор в приветствии: клавиши DN (иначе Far), тема как в Windows.
+    welcome_dn: bool,
+    welcome_follow: bool,
 }
 
 impl std::fmt::Debug for CoreHost {
@@ -272,6 +279,8 @@ impl CoreHost {
             compare: None,
             notes: Default::default(),
             strip_rows: 0,
+            welcome_dn: false,
+            welcome_follow: true,
         }
     }
 
@@ -436,6 +445,57 @@ impl CoreHost {
             );
         }
         Some(pouch::pouch(theme, x, y, CONFLICT_W, None, body))
+    }
+
+    /// Клавиши приветствия (D-02); `true` — клавиша его.
+    fn welcome_key(
+        &mut self,
+        ks: &gpui_kit::Keystroke,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(core) = self.core.as_ref() else {
+            return false;
+        };
+        let st = core.state();
+        let Some(w) = st
+            .ext
+            .get::<crate::UiState>()
+            .and_then(|u| u.welcome.as_ref())
+        else {
+            return false;
+        };
+        if self.field.is_some() || st.prompts.active().is_some() {
+            return false;
+        }
+        let first = matches!(w, crate::state::Welcome::First);
+        let cmd = match ks.key.as_str() {
+            "left" | "right" if first => {
+                self.welcome_dn = !self.welcome_dn;
+                None
+            }
+            "space" if first => {
+                self.welcome_follow = !self.welcome_follow;
+                None
+            }
+            "enter" if first => {
+                let mut c = Command::new("ui.welcome.done")
+                    .arg("preset", if self.welcome_dn { "dn" } else { "far" });
+                if self.welcome_follow {
+                    c = c.arg("follow_os", true);
+                }
+                Some(c)
+            }
+            "enter" | "escape" => Some(Command::new("ui.welcome.done")),
+            _ => return false,
+        };
+        self.input.skip();
+        if let Some(c) = cmd {
+            self.out.push(c.from(urfin_core::Origin::Key));
+            self.after_input(None, window, cx);
+        }
+        cx.notify();
+        true
     }
 
     /// Клавиши строки сравнения (D-04); `true` — клавиша её.
@@ -1226,6 +1286,10 @@ impl CoreHost {
             cx.notify();
             return true;
         }
+        // Приветствие (D-02): ← → — Far/DN, Пробел — тема, Enter — готово, Esc — позже.
+        if self.welcome_key(ks, window, cx) {
+            return true;
+        }
         // Строка сравнения (D-04): Enter — →, Shift+Enter — ←, Esc — закрыть.
         if self.compare_key(ks, window, cx) {
             return true;
@@ -1576,6 +1640,8 @@ impl Render for CoreHost {
         }
         let dark = self.theme.generation();
         let widths = Self::layout(&self.theme, s, f32::from(window.viewport_size().width));
+        // Ширина наборов табов — как в заголовке (`chrome::panel_tabs`), для «› N» (№67).
+        self.menu.tabs_avail = chrome::tabs_avail(widths);
         // Ширина текста для корешков меню (D-05).
         let font = window.text_style().font();
         let text_system = window.text_system().clone();
@@ -1773,6 +1839,27 @@ impl Render for CoreHost {
             )
             .or_else(|| strip::quick(s, &self.theme))
             .or_else(|| {
+                let w = s.ext.get::<crate::UiState>()?.welcome.as_ref()?;
+                let pick = |what: u8| -> overlays::Handler {
+                    Box::new(cx.listener(move |h: &mut CoreHost, _: &ClickEvent, _, cx| {
+                        match what {
+                            0 => h.welcome_dn = false,
+                            1 => h.welcome_dn = true,
+                            _ => h.welcome_follow = !h.welcome_follow,
+                        }
+                        cx.notify();
+                    }))
+                };
+                Some(strip::welcome_bar(
+                    w,
+                    self.welcome_dn,
+                    self.welcome_follow,
+                    &self.theme,
+                    &click_all,
+                    &pick,
+                ))
+            })
+            .or_else(|| {
                 let c = self.compare.as_ref()?;
                 let close: overlays::Handler =
                     Box::new(cx.listener(|h: &mut CoreHost, _: &ClickEvent, _, cx| {
@@ -1858,6 +1945,7 @@ impl Render for CoreHost {
                             self.keybar.items(self.mods),
                             self.mods,
                             dark,
+                            f32::from(window.viewport_size().width) < chrome::NARROW_W,
                         ),
                         &mut self.bottom_print,
                     )),

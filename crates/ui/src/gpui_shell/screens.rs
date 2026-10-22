@@ -308,6 +308,72 @@ const SCENES: &[Scene] = &[
         name: "sync-closed",
         steps: &["ui.cancel", "sel.none"],
     },
+    // Каркас (D-02, D-03): приветствие, много табов, ссылки, узкое окно.
+    Scene {
+        name: "screen-firstrun",
+        steps: &["ui.cancel", "sel.none", "ui.welcome kind=first"],
+    },
+    Scene {
+        name: "screen-whatsnew",
+        steps: &["ui.welcome kind=updated from=0.0.9"],
+    },
+    Scene {
+        name: "link-make",
+        steps: &[
+            "ui.welcome.done",
+            "panel.focus side=left",
+            "panel.cursor.to name=Projects",
+            "ops.link kind=junction dest=old-builds",
+        ],
+    },
+    Scene {
+        name: "screen-linkview",
+        steps: &["panel.refresh", "panel.cursor.to name=old-builds"],
+    },
+    Scene {
+        name: "screen-tabsmany",
+        steps: &[
+            "panel.focus side=left",
+            "tab.dup",
+            "panel.cursor.to name=Projects",
+            "panel.enter",
+            "tab.dup",
+            "panel.back",
+            "panel.cursor.to name=Документы",
+            "panel.enter",
+            "tab.dup",
+            "panel.back",
+            "panel.cursor.to name=Фото",
+            "panel.enter",
+            "tab.dup",
+            "panel.back",
+            "panel.cursor.to name=.git",
+            "panel.enter",
+            "tab.dup",
+            "panel.back",
+            "panel.cursor.to name=Projects",
+            "panel.enter",
+            "tab.dup",
+            "panel.back",
+        ],
+    },
+    Scene {
+        name: "screen-tabsmore",
+        steps: &["ui.menu menu=tabs-left"],
+    },
+    Scene {
+        name: "width-800-panels",
+        steps: &[
+            "ui.cancel",
+            "tab.close",
+            "tab.close",
+            "tab.close",
+            "tab.close",
+            "tab.close",
+            "tab.close",
+            "resize 800x760",
+        ],
+    },
     Scene {
         name: "narrow",
         steps: &[

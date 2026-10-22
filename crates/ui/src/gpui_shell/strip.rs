@@ -102,6 +102,10 @@ pub(super) fn cover(s: &AppState, rows: usize, compare: bool) -> Option<(Scope, 
             _ => (Scope::Panel(s.active), H_ONE),
         });
     }
+    // Приветствие (D-02) — на всю ширину.
+    if s.ext.get::<UiState>().is_some_and(|u| u.welcome.is_some()) {
+        return Some((Scope::Full, H_ONE));
+    }
     // Итог сравнения (D-04, `screen-compare.png`) — на всю ширину.
     if compare {
         return Some((Scope::Full, H_ONE));
@@ -417,5 +421,137 @@ pub(super) fn compare_bar(
             )
             .on_click(close),
         );
+    container(theme, Tone::Plain, 16.0, 10.0).child(row)
+}
+
+/// Приветствие (`screen-firstrun.png`, `screen-whatsnew.png`): первый запуск — выбор
+/// клавиш Far / DN, «Тема как в Windows», Готово / Позже; обновление — «обновлён до X ·
+/// с Y», Закрыть.
+#[allow(
+    clippy::too_many_lines,
+    reason = "первый запуск и обновление — две ветки"
+)]
+pub(super) fn welcome_bar(
+    w: &crate::state::Welcome,
+    dn: bool,
+    follow: bool,
+    theme: &Theme,
+    click: super::overlays::ClickAll<'_>,
+    pick: &dyn Fn(u8) -> super::overlays::Handler,
+) -> Div {
+    let i18n = urfin_i18n::current();
+    let icon = div()
+        .font_family("Segoe Fluent Icons")
+        .text_color(theme.c(Role::AccentText))
+        .child(SharedString::new_static("\u{E8A1}"));
+    let note = |t: String| {
+        div()
+            .whitespace_nowrap()
+            .text_size(px(12.5))
+            .text_color(theme.c(Role::TextSecondary))
+            .child(SharedString::from(t))
+    };
+    let mut row = div()
+        .flex()
+        .flex_wrap()
+        .items_center()
+        .gap(px(12.0))
+        .child(icon);
+    match w {
+        crate::state::Welcome::First => {
+            let seg = |id: &str, label: &'static str, on: bool, which: u8| {
+                div()
+                    .id(SharedString::from(id.to_owned()))
+                    .h(px(28.0))
+                    .px(px(12.0))
+                    .flex()
+                    .items_center()
+                    .when(on, |d| d.bg(theme.c(Role::FillCursor)))
+                    .child(SharedString::new_static(label))
+                    .on_click(pick(which))
+            };
+            let done = {
+                let mut c =
+                    Command::new("ui.welcome.done").arg("preset", if dn { "dn" } else { "far" });
+                if follow {
+                    c = c.arg("follow_os", true);
+                }
+                c
+            };
+            row = row
+                .child(
+                    div()
+                        .font_weight(gpui_kit::FontWeight::MEDIUM)
+                        .child(SharedString::from(i18n.get("ui-welcome-title"))),
+                )
+                .child(note(i18n.get("ui-welcome-keys")))
+                .child(
+                    div()
+                        .flex()
+                        .rounded(px(4.0))
+                        .border_1()
+                        .border_color(theme.c(Role::StrokeControl))
+                        .overflow_hidden()
+                        .child(seg("welcome-far", "Far", !dn, 0))
+                        .child(
+                            seg("welcome-dn", "DN", dn, 1)
+                                .border_l_1()
+                                .border_color(theme.c(Role::StrokeControl)),
+                        ),
+                )
+                .child(note(i18n.get("ui-welcome-hint")))
+                .child(
+                    check(
+                        theme,
+                        "welcome-theme".into(),
+                        follow,
+                        i18n.get("ui-welcome-theme"),
+                        true,
+                    )
+                    .on_click(pick(2)),
+                )
+                .child(
+                    button(
+                        theme,
+                        "welcome-done".into(),
+                        i18n.get("ui-welcome-done"),
+                        "Enter",
+                        Btn::Primary,
+                    )
+                    .on_click(click(vec![done])),
+                )
+                .child(
+                    button(
+                        theme,
+                        "welcome-later".into(),
+                        i18n.get("ui-welcome-later"),
+                        "Esc",
+                        Btn::Normal,
+                    )
+                    .on_click(click(vec![Command::new("ui.welcome.done")])),
+                );
+        }
+        crate::state::Welcome::Updated { from, to } => {
+            let mut a = urfin_i18n::FluentArgs::new();
+            a.set("from", from.clone());
+            a.set("to", to.clone());
+            row = row
+                .child(
+                    div()
+                        .font_weight(gpui_kit::FontWeight::MEDIUM)
+                        .child(SharedString::from(i18n.fmt("ui-welcome-updated", &a))),
+                )
+                .child(
+                    button(
+                        theme,
+                        "welcome-close".into(),
+                        i18n.get("ui-button-close"),
+                        "Esc",
+                        Btn::Primary,
+                    )
+                    .on_click(click(vec![Command::new("ui.welcome.done")])),
+                );
+        }
+    }
     container(theme, Tone::Plain, 16.0, 10.0).child(row)
 }

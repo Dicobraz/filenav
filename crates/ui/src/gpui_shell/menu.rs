@@ -34,6 +34,8 @@ pub(super) enum Kind {
     Bookmarks(Side),
     History(Side),
     Context(Side),
+    /// Скрытые табы панели (№67).
+    Tabs(Side),
 }
 
 impl Kind {
@@ -50,6 +52,7 @@ impl Kind {
             "history" => Kind::History(active),
             "context" => Kind::Context(active),
             s if s.starts_with("sort-") => Kind::Sort(side(&s[5..])),
+            s if s.starts_with("tabs-") => Kind::Tabs(side(&s[5..])),
             _ => Kind::Bar,
         }
     }
@@ -127,6 +130,8 @@ pub(super) struct Menu {
     query: String,
     /// Пункты контекстного меню, что есть в реестре.
     context: Vec<(Command, &'static str)>,
+    /// Ширина наборов табов по сторонам (последний кадр) — для скрытых табов (№67).
+    pub tabs_avail: [f32; 2],
 }
 
 /// Контекстное меню (`screen-context.png`): команда и ключ подписи; разделитель — пустой
@@ -173,6 +178,7 @@ impl Menu {
             sel: None,
             query: String::new(),
             context,
+            tabs_avail: [600.0; 2],
         }
     }
 
@@ -288,6 +294,28 @@ impl Menu {
                     .map(|l| place_row(l, side, &i18n))
                     .collect();
                 self.filtered(out)
+            }
+            Kind::Tabs(side) => {
+                let p = s.panel(side);
+                let avail = self.tabs_avail[usize::from(side == Side::Right)];
+                let titles = super::chrome::tab_titles(s, side);
+                super::chrome::tab_layout(s, side, avail)
+                    .hidden()
+                    .map(|i| {
+                        let mut r = Row::new(
+                            titles[i].clone(),
+                            vec![
+                                close(),
+                                Command::new("tab.goto")
+                                    .arg("side", side_name(side))
+                                    .arg("n", i64::try_from(i + 1).unwrap_or(1)),
+                            ],
+                        );
+                        r.mark = Mark::Digit(u8::try_from((i + 1) % 10).unwrap_or(0));
+                        r.detail = Some((path_text(&p.tabs[i].loc), false));
+                        r
+                    })
+                    .collect()
             }
             Kind::Context(_) => {
                 let mut out = Vec::new();
@@ -485,7 +513,7 @@ impl Menu {
                 theme,
             ));
         }
-        let detail_x = matches!(kind, Kind::Bookmarks(_) | Kind::History(_));
+        let detail_x = matches!(kind, Kind::Bookmarks(_) | Kind::History(_) | Kind::Tabs(_));
         for (i, r) in rows.iter().enumerate() {
             if r.sep {
                 body = body.child(
@@ -658,6 +686,31 @@ impl Menu {
                                     .text_color(theme.c(Role::TextSecondary))
                                     .child(SharedString::new_static("▾")),
                             )
+                            .into_any_element(),
+                    }),
+                    body,
+                )
+            }
+            Kind::Tabs(side) => {
+                let (px0, _) = panel(side);
+                let avail = self.tabs_avail[usize::from(side == Side::Right)];
+                let more = super::chrome::tab_layout(s, side, avail)
+                    .more_x
+                    .unwrap_or(0.0);
+                let ax = px0 + super::chrome::TITLE_PAD_L + more;
+                let (left, nx) = place(ax, 44.0, W_PLACES, geo.win_w, 0.0);
+                let hidden = super::chrome::tab_layout(s, side, avail).hidden().count();
+                pouch(
+                    theme,
+                    left,
+                    4.0,
+                    W_PLACES,
+                    Some(Notch {
+                        x: nx,
+                        w: 44.0,
+                        h: geo.top - 4.0,
+                        content: notch_text(format!("› {hidden}"))
+                            .font_weight(gpui_kit::FontWeight::MEDIUM)
                             .into_any_element(),
                     }),
                     body,

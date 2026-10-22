@@ -23,7 +23,116 @@ const W_TAB_MAX: f32 = 220.0;
 const TAB_PAD_X: f32 = 14.0;
 const TAB_RADIUS: f32 = 7.0;
 /// Отступ заголовка слева.
-const TITLE_PAD_L: f32 = 12.0;
+pub(super) const TITLE_PAD_L: f32 = 12.0;
+/// Таб не уже (№67) и «+», «› N» справа от набора.
+const W_TAB_MIN: f32 = 84.0;
+const W_PLUS: f32 = 32.0;
+const W_MORE: f32 = 46.0;
+const TAB_GAP: f32 = 2.0;
+/// Окно уже — keybar показывает F3–F9 слева, статус — без средней зоны (№68).
+pub(super) const NARROW_W: f32 = 900.0;
+
+/// Раскладка набора табов (№67): ширина видимых (`None` — скрыт) и левый край «› N».
+pub(super) struct TabLayout {
+    pub widths: Vec<Option<f32>>,
+    pub more_x: Option<f32>,
+}
+
+impl TabLayout {
+    pub(super) fn hidden(&self) -> impl Iterator<Item = usize> + '_ {
+        self.widths
+            .iter()
+            .enumerate()
+            .filter(|(_, w)| w.is_none())
+            .map(|(i, _)| i)
+    }
+}
+
+/// Ширина наборов табов по сторонам для ширин панелей (как в [`panel_tabs`]).
+pub(super) fn tabs_avail(widths: [Option<f32>; 2]) -> [f32; 2] {
+    let caption = 3.0 * W_CAPTION;
+    match widths {
+        [Some(l), Some(r)] => [l - TITLE_PAD_L, r - TITLE_PAD_L - caption],
+        [Some(w), None] | [None, Some(w)] => [w - TITLE_PAD_L - caption; 2],
+        [None, None] => [0.0; 2],
+    }
+}
+
+/// Названия табов панели: одноимённые — «имя · родитель» (№67).
+pub(super) fn tab_titles(s: &AppState, side: Side) -> Vec<String> {
+    let p = s.panel(side);
+    let names: Vec<String> = p.tabs.iter().map(tab_title).collect();
+    p.tabs
+        .iter()
+        .zip(&names)
+        .map(|(t, n)| {
+            let dup = names.iter().filter(|m| m.eq_ignore_ascii_case(n)).count() > 1;
+            match t.loc.path.parent().and_then(|q| q.file_name()) {
+                Some(parent) if dup => format!("{n} · {}", parent.to_string_lossy()),
+                _ => n.clone(),
+            }
+        })
+        .collect()
+}
+
+/// Ширина таба по тексту (оценка без раскладки шрифта: 7 px на знак).
+fn natural(title: &str, close: bool) -> f32 {
+    #[allow(clippy::cast_precision_loss, reason = "длина названия")]
+    let text = title.chars().count() as f32 * 7.0;
+    (text + 2.0 * TAB_PAD_X + if close { 20.0 } else { 0.0 }).min(W_TAB_MAX)
+}
+
+/// Раскладка табов в ширину `avail`: влезают — по тексту; нет — поровну, не уже 84;
+/// и так нет — окно табов вокруг активного, остальные — в «› N» (№67).
+#[allow(clippy::many_single_char_names, reason = "состояние, панель, ширины")]
+pub(super) fn tab_layout(s: &AppState, side: Side, avail: f32) -> TabLayout {
+    let p = s.panel(side);
+    let titles = tab_titles(s, side);
+    let focus = s.active == side;
+    let n = titles.len();
+    let nat: Vec<f32> = titles
+        .iter()
+        .enumerate()
+        .map(|(i, t)| natural(t, i == p.active && focus))
+        .collect();
+    #[allow(clippy::cast_precision_loss, reason = "табов десятки")]
+    let gaps = n.saturating_sub(1) as f32 * TAB_GAP;
+    let room = avail - W_PLUS - gaps;
+    if nat.iter().sum::<f32>() <= room {
+        return TabLayout {
+            widths: nat.into_iter().map(Some).collect(),
+            more_x: None,
+        };
+    }
+    #[allow(clippy::cast_precision_loss, reason = "табов десятки")]
+    let even = room / n.max(1) as f32;
+    if even >= W_TAB_MIN {
+        return TabLayout {
+            widths: nat.into_iter().map(|w| Some(w.min(even))).collect(),
+            more_x: None,
+        };
+    }
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "сколько табов влезает"
+    )]
+    let k = (((avail - W_PLUS - W_MORE) / (W_TAB_MIN + TAB_GAP))
+        .floor()
+        .max(1.0)) as usize;
+    let start = (p.active + 1).saturating_sub(k);
+    let mut widths = vec![None; n];
+    let mut x = 0.0;
+    for (i, w) in widths.iter_mut().enumerate().skip(start).take(k) {
+        *w = Some(W_TAB_MIN);
+        let _ = i;
+        x += W_TAB_MIN + TAB_GAP;
+    }
+    TabLayout {
+        widths,
+        more_x: Some(x + W_PLUS),
+    }
+}
 /// «Закрыть» при наведении — красный Windows.
 const CLOSE_HOVER: u32 = 0x00c4_2b1c;
 
@@ -39,14 +148,22 @@ pub(super) fn tab_title(t: &Tab) -> String {
 /// активной панели — фон `panel`, текст и крестик; активный таб другой панели — фон
 /// `panel`, `secondary`, без крестика; остальные — без фона, `secondary`. Свой «+».
 /// `width` — ширина набора (по панели); `None` — до конца заголовка.
+#[allow(
+    clippy::too_many_lines,
+    reason = "табы, «+», «› N», зона перетаскивания"
+)]
 fn tabs(
     s: &AppState,
     side: Side,
     theme: &Theme,
     click: &impl Fn(Command) -> super::overlays::Handler,
     width: Option<f32>,
+    avail: f32,
 ) -> Div {
     let p = s.panel(side);
+    let layout = tab_layout(s, side, avail);
+    let titles = tab_titles(s, side);
+    let squeezed = layout.more_x.is_some();
     let focus = s.active == side;
     let name = side_name(side);
     let mut row = div()
@@ -61,12 +178,18 @@ fn tabs(
         None => row.flex_1(),
     };
     for (i, t) in p.tabs.iter().enumerate() {
+        let Some(tw) = layout.widths.get(i).copied().flatten() else {
+            continue;
+        };
         let active = i == p.active;
         let id = SharedString::from(format!("tab-{name}-{}", t.id.0));
         let tab = div()
             .id(id)
             .h(px(theme.m(Metric::HTab)))
-            .max_w(px(W_TAB_MAX))
+            // Сжатые табы — ровно по раскладке: «› N» встаёт туда, где его ждёт «мешочек».
+            .when(squeezed, |d| d.w(px(tw)))
+            .max_w(px(tw))
+            .flex_none()
             .min_w_0()
             .flex()
             .items_center()
@@ -88,7 +211,7 @@ fn tabs(
                     .overflow_hidden()
                     .whitespace_nowrap()
                     .text_ellipsis()
-                    .child(SharedString::from(tab_title(t))),
+                    .child(SharedString::from(titles[i].clone())),
             )
             .when(active && focus, |d| {
                 d.child(
@@ -107,6 +230,7 @@ fn tabs(
             ));
         row = row.child(tab);
     }
+    let hidden = layout.hidden().count();
     row.child(
         div()
             .id(SharedString::from(format!("tab-new-{name}")))
@@ -119,6 +243,26 @@ fn tabs(
             .child(SharedString::new_static("+"))
             .on_click(click(Command::new("tab.new").arg("side", name))),
     )
+    // Переполнение (№67): «› N» — «мешочек» со скрытыми табами.
+    .when(hidden > 0, |d| {
+        d.child(
+            div()
+                .id(SharedString::from(format!("tabs-more-{name}")))
+                .h(px(theme.m(Metric::HTab) - 4.0))
+                .px(px(10.0))
+                .flex()
+                .items_center()
+                .gap(px(4.0))
+                .rounded_t(px(TAB_RADIUS))
+                .bg(theme.c(Role::LayerPanel))
+                .font_weight(gpui_kit::FontWeight::MEDIUM)
+                .child(SharedString::new_static("›"))
+                .child(SharedString::from(hidden.to_string()))
+                .on_click(click(
+                    Command::new("ui.menu").arg("menu", format!("tabs-{name}").as_str()),
+                )),
+        )
+    })
     // Пустое место справа от табов — заголовок окна: перетаскивание, двойной клик — развернуть.
     .child(
         div()
@@ -168,8 +312,15 @@ pub(super) fn panel_tabs(
 ) -> Div {
     let row = div().flex_1().min_w_0().h_full().flex().flex_row();
     match widths {
-        [Some(l), Some(_)] => row
-            .child(tabs(s, Side::Left, theme, click, Some(l - TITLE_PAD_L)))
+        [Some(l), Some(r)] => row
+            .child(tabs(
+                s,
+                Side::Left,
+                theme,
+                click,
+                Some(l - TITLE_PAD_L),
+                l - TITLE_PAD_L,
+            ))
             .child(
                 div()
                     .w(px(1.0))
@@ -186,10 +337,31 @@ pub(super) fn panel_tabs(
                     .h_full()
                     .pl(px(TITLE_PAD_L))
                     .flex()
-                    .child(tabs(s, Side::Right, theme, click, None)),
+                    .child(tabs(
+                        s,
+                        Side::Right,
+                        theme,
+                        click,
+                        None,
+                        r - TITLE_PAD_L - 3.0 * W_CAPTION,
+                    )),
             ),
-        [Some(_), None] => row.child(tabs(s, Side::Left, theme, click, None)),
-        [None, Some(_)] => row.child(tabs(s, Side::Right, theme, click, None)),
+        [Some(w), None] => row.child(tabs(
+            s,
+            Side::Left,
+            theme,
+            click,
+            None,
+            w - TITLE_PAD_L - 3.0 * W_CAPTION,
+        )),
+        [None, Some(w)] => row.child(tabs(
+            s,
+            Side::Right,
+            theme,
+            click,
+            None,
+            w - TITLE_PAD_L - 3.0 * W_CAPTION,
+        )),
         [None, None] => row.child(
             div()
                 .id("drag-term")
@@ -294,7 +466,7 @@ pub(super) fn cmdline(s: &AppState, theme: &Theme) -> Div {
 }
 
 /// Статус-строка (D-02, №61): свойства файла · выделение · свободно; фон `header`.
-pub(super) fn status(zones: &[String; 3], theme: &Theme) -> Div {
+pub(super) fn status(zones: &[String; 3], narrow: bool, theme: &Theme) -> Div {
     div()
         .h(px(theme.m(Metric::HStatus)))
         .flex_none()
@@ -307,10 +479,19 @@ pub(super) fn status(zones: &[String; 3], theme: &Theme) -> Div {
         .border_color(theme.c(Role::StrokeDivider))
         .text_size(px(SMALL_TEXT))
         .text_color(theme.c(Role::TextSecondary))
-        .children(zones.iter().map(|z| {
+        .children(zones.iter().enumerate().map(|(i, z)| {
+            // Узкое окно: средняя зона прячется первой (№68).
+            let text = if narrow && i == 1 {
+                String::new()
+            } else {
+                z.clone()
+            };
             div()
+                .min_w_0()
+                .overflow_hidden()
                 .whitespace_nowrap()
-                .child(SharedString::from(z.clone()))
+                .text_ellipsis()
+                .child(SharedString::from(text))
         }))
 }
 
@@ -330,6 +511,14 @@ pub(super) fn strip_keys(s: &AppState) -> Option<Vec<(String, String)>> {
         ]);
     }
     let ui = s.ext.get::<crate::UiState>();
+    // Приветствие (D-02, `screen-firstrun.png`).
+    if ui.is_some_and(|u| u.welcome.is_some()) && ui.is_some_and(|u| u.draft.is_none()) {
+        return Some(vec![
+            ("← →".into(), i18n.get("ui-keys-preset")),
+            (i18n.get("ui-key-space"), i18n.get("ui-keys-flag")),
+            ("Tab".into(), i18n.get("ui-keys-next-field")),
+        ]);
+    }
     // Раскрытый список задач (F11, D-06).
     if ui.is_some_and(|u| u.jobs_expanded) {
         return Some(vec![
@@ -372,6 +561,11 @@ pub(super) fn strip_keys(s: &AppState) -> Option<Vec<(String, String)>> {
                 k("Shift+Enter", "ui-keys-other-panel"),
                 k("Esc", "ui-keys-close"),
             ],
+            super::menu::Kind::Tabs(_) => vec![
+                k("↑ ↓", "ui-keys-tab"),
+                k("Enter", "ui-keys-go"),
+                k("Esc", "ui-keys-close"),
+            ],
             super::menu::Kind::Context(_) => vec![
                 k("↑ ↓", "ui-keys-item"),
                 k("Enter", "ui-keys-choose"),
@@ -398,6 +592,7 @@ pub(super) fn keybar(
     items: &[Item],
     mods: Mods,
     extra: Option<&[(String, String)]>,
+    narrow: bool,
     theme: &Theme,
     click: &impl Fn(Command) -> super::overlays::Handler,
 ) -> Div {
@@ -425,9 +620,11 @@ pub(super) fn keybar(
                     .child(SharedString::from(v.clone()))
             }));
     }
-    let mut shown: Vec<&Item> = items.iter().filter(|i| (1..=10).contains(&i.n)).collect();
+    // Узкое окно — F3–F9 слева (F1, F2, F10 — через F9; №68).
+    let keys = if narrow { 3..=9 } else { 1..=10 };
+    let mut shown: Vec<&Item> = items.iter().filter(|i| keys.contains(&i.n)).collect();
     shown.sort_by_key(|i| i.n);
-    let full = shown.len() >= 10;
+    let full = shown.len() >= 10 && !narrow;
     let mut bar = div()
         .h(px(theme.m(Metric::HKeybar)))
         .flex_none()
@@ -480,7 +677,8 @@ pub(super) struct ChromeView {
 }
 
 impl Render for ChromeView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let narrow = f32::from(window.viewport_size().width) < NARROW_W;
         let Some(host) = self.host.upgrade() else {
             return div();
         };
@@ -501,11 +699,12 @@ impl Render for ChromeView {
             .flex()
             .flex_col()
             .child(cmdline(s, &h.theme))
-            .child(status(&zones, &h.theme))
+            .child(status(&zones, narrow, &h.theme))
             .child(keybar(
                 h.keybar.items(h.mods),
                 h.mods,
                 strip_keys(s).as_deref(),
+                narrow,
                 &h.theme,
                 &click,
             ))
@@ -520,10 +719,18 @@ pub(super) fn bottom_print(
     items: &[Item],
     mods: Mods,
     look: u64,
+    narrow: bool,
 ) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::hash::DefaultHasher::new();
-    (look, urfin_i18n::epoch(), format!("{mods:?}"), zones).hash(&mut h);
+    (
+        look,
+        urfin_i18n::epoch(),
+        format!("{mods:?}"),
+        zones,
+        narrow,
+    )
+        .hash(&mut h);
     strip_keys(s).hash(&mut h);
     s.panel(s.active).tab().loc.path.hash(&mut h);
     for it in items {

@@ -136,6 +136,28 @@ pub fn run(launch: Launch) {
     );
 }
 
+/// Приветствие (D-02): файла версии нет — первый запуск, версия другая — обновление;
+/// файл переписывается текущей версией (без сети, S0 «офлайн»).
+fn welcome(paths: &urfin_core::Paths) -> Option<urfin_ui::state::Welcome> {
+    let file = paths.state_dir.join("version");
+    let now = urfin_ui::version();
+    let was = std::fs::read_to_string(&file).ok();
+    if was.as_deref().map(str::trim) != Some(now) {
+        let _ = std::fs::create_dir_all(&paths.state_dir);
+        if let Err(e) = std::fs::write(&file, now) {
+            tracing::warn!(error = %e, "version file not written");
+        }
+    }
+    match was.as_deref().map(str::trim) {
+        None => Some(urfin_ui::state::Welcome::First),
+        Some(v) if v != now => Some(urfin_ui::state::Welcome::Updated {
+            from: v.to_owned(),
+            to: now.to_owned(),
+        }),
+        Some(_) => None,
+    }
+}
+
 /// `--screens`: обе панели — на демо-дерево (одно и то же на любой машине).
 fn open_demo_tree(core: &mut Core) {
     // Задачи для job-бара (D-06): только у сцен.
@@ -174,5 +196,6 @@ fn theme_env(
             locked: probe.policy.locked,
         },
         fields: Some(paths.state_dir.join("fields.toml")),
+        welcome: welcome(paths),
     }
 }
