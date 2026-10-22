@@ -1203,8 +1203,10 @@ fn move_same_volume_tree_is_one_rename() {
         assert!(!from.join("tree").exists());
         best = best.min(r.report.elapsed);
     }
+    // Одно переименование доказывает `items == 1`; время — только грубый сторож
+    // (обход 2000 файлов занял бы секунды), с запасом на загруженную машину и CI.
     assert!(
-        best < Duration::from_millis(50),
+        best < Duration::from_millis(500),
         "same-volume move took {best:?}"
     );
     assert_eq!(snapshot(&b.join("tree")), before);
