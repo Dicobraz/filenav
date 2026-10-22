@@ -67,15 +67,8 @@ pub fn run(launch: Launch) {
     for c in open {
         core.dispatch(c);
     }
-    // Бенч: обе панели — на каталог замера, курсор в начало.
     if let Some(dir) = &bench {
-        for side in ["left", "right"] {
-            core.dispatch(
-                Command::new("panel.go")
-                    .arg("side", side)
-                    .arg("path", urfin_core::Location::local(dir.clone())),
-            );
-        }
+        open_bench(&mut core, dir);
     }
     if screens.is_some() {
         open_demo_tree(&mut core);
@@ -155,6 +148,19 @@ fn welcome(paths: &urfin_core::Paths) -> Option<urfin_ui::state::Welcome> {
             to: now.to_owned(),
         }),
         Some(_) => None,
+    }
+}
+
+/// `--bench`: обе панели — на каталог замера; демо-экран терминала (`screens.term`) —
+/// для фазы `term` (S6-06).
+fn open_bench(core: &mut Core, dir: &std::path::Path) {
+    urfin_ui::register_demo(core);
+    for side in ["left", "right"] {
+        core.dispatch(
+            Command::new("panel.go")
+                .arg("side", side)
+                .arg("path", urfin_core::Location::local(dir.to_path_buf())),
+        );
     }
 }
 

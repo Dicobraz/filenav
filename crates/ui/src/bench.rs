@@ -1,11 +1,14 @@
 //! `--bench` (G-07, S0 v5 №10): один сценарий для интерфейса GPUI и сборки `egui-final`,
 //! чтобы сравнение было честным (рецепт pets «Бенч»). Окно открыто на каталоге из 100k
 //! файлов; фазы: прогрев → листание по 3 строки за кадр → страница вниз каждый кадр →
-//! ресайз туда-обратно → простой. Итог — одна строка `key=value` в stdout.
+//! ресайз туда-обратно → терминал (S6-06: панели спрятаны, сетка 200×60 плотного
+//! цветного текста меняется каждый кадр — полная пересборка) → простой. Итог — одна
+//! строка `key=value` в stdout.
 //!
 //! Модуль не знает об окне: окно на каждом кадре зовёт [`Bench::frame`] и выполняет
 //! шаг (команды Core, размер окна), CPU и память меряет [`crate::sys::cpu`].
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use urfin_core::Command;
@@ -14,6 +17,10 @@ const WARMUP: usize = 30;
 const LIST_FRAMES: usize = 400;
 const PAGE_FRAMES: usize = 200;
 const RESIZE_FRAMES: usize = 120;
+const TERM_FRAMES: usize = 200;
+
+/// Снапшот и отрисовка сетки терминала за кадр, нс (копит окно, забирает фаза `term`).
+pub(crate) static GRID_NS: AtomicU64 = AtomicU64::new(0);
 const IDLE_SETTLE: Duration = Duration::from_secs(3);
 const IDLE: Duration = Duration::from_secs(10);
 
@@ -38,6 +45,7 @@ enum Ph {
     List,
     Page,
     Resize,
+    Term,
     Settle,
     Idle,
     Done,
@@ -48,6 +56,8 @@ struct Phase {
     frames: Vec<f32>,
     /// Сборка дерева в `render`, мс.
     builds: Vec<f32>,
+    /// Снапшот и отрисовка сетки терминала, мс (фаза `term`).
+    grid: Vec<f32>,
     started: Option<(Instant, f64, f64)>,
     cpu: f32,
     ui_cpu: f32,
@@ -114,6 +124,7 @@ pub struct Bench {
     list: Phase,
     page: Phase,
     resize: Phase,
+    term: Phase,
     idle: Phase,
     idle_frames: usize,
     idle_until: Option<Instant>,
@@ -141,6 +152,7 @@ impl Bench {
             list: Phase::default(),
             page: Phase::default(),
             resize: Phase::default(),
+            term: Phase::default(),
             idle: Phase::default(),
             idle_frames: 0,
             idle_until: None,
@@ -161,13 +173,20 @@ impl Bench {
             Ph::List => Some(&mut self.list),
             Ph::Page => Some(&mut self.page),
             Ph::Resize => Some(&mut self.resize),
+            Ph::Term => Some(&mut self.term),
             _ => None,
         };
+        let grid = GRID_NS.swap(0, Ordering::Relaxed);
+        let term = self.ph == Ph::Term;
         if let Some(p) = phase {
             if self.n == 1 {
                 p.start(now);
             } else if let Some(dt) = dt {
                 p.frames.push(dt);
+                if term {
+                    #[allow(clippy::cast_precision_loss, reason = "мс")]
+                    p.grid.push(grid as f32 / 1e6);
+                }
             }
         }
         match self.ph {
@@ -197,8 +216,7 @@ impl Bench {
             }
             Ph::Resize => {
                 if self.n >= RESIZE_FRAMES {
-                    self.next(Ph::Settle, now);
-                    self.idle_until = Some(now + IDLE_SETTLE);
+                    self.next(Ph::Term, now);
                     return Step::Resize(self.size.0, self.size.1);
                 }
                 // 30 кадров уже, 30 обратно, и так дважды: шаг 8 px.
@@ -206,6 +224,14 @@ impl Bench {
                 let k = (self.n % 60) as f32;
                 let d = if k < 30.0 { k } else { 60.0 - k } * 8.0;
                 Step::Resize(self.size.0 - d, self.size.1 - d / 2.0)
+            }
+            Ph::Term => {
+                if self.n >= TERM_FRAMES {
+                    self.next(Ph::Settle, now);
+                    self.idle_until = Some(now + IDLE_SETTLE);
+                    return Step::Cmds(vec![Command::new("screens.term").arg("stop", true)]);
+                }
+                Step::Cmds(vec![Command::new("screens.term").arg("kind", "dense")])
             }
             Ph::Settle => {
                 let until = self.idle_until.unwrap_or(now);
@@ -238,6 +264,7 @@ impl Bench {
             Ph::List => &mut self.list,
             Ph::Page => &mut self.page,
             Ph::Resize => &mut self.resize,
+            Ph::Term => &mut self.term,
             _ => return,
         };
         p.builds.push(d.as_secs_f32() * 1000.0);
@@ -248,6 +275,7 @@ impl Bench {
             Ph::List => self.list.stop(now),
             Ph::Page => self.page.stop(now),
             Ph::Resize => self.resize.stop(now),
+            Ph::Term => self.term.stop(now),
             _ => {}
         }
         #[cfg(windows)]
@@ -274,10 +302,13 @@ impl Bench {
         #[allow(clippy::cast_precision_loss, reason = "МБ")]
         let mb = |b: u64| b as f64 / 1_048_576.0;
         format!(
-            "{} {} {} idle_frames={} idle_cpu={:.2} peak_ws_mb={:.1} peak_private_mb={:.1} exe_mb={:.2}",
+            "{} {} {} {} term_grid_p50={:.2} term_grid_p99={:.2} idle_frames={} idle_cpu={:.2} peak_ws_mb={:.1} peak_private_mb={:.1} exe_mb={:.2}",
             self.list.report("list"),
             self.page.report("page"),
             self.resize.report("resize"),
+            self.term.report("term"),
+            pct(&self.term.grid, 0.5),
+            pct(&self.term.grid, 0.99),
             self.idle_frames.saturating_sub(1),
             self.idle.cpu,
             mb(ws),
@@ -301,7 +332,15 @@ mod tests {
             t += Duration::from_millis(7);
             match b.frame(t) {
                 Step::Done(r) => {
-                    for k in ["list_p99", "page_p99", "resize_p99", "idle_cpu", "exe_mb"] {
+                    for k in [
+                        "list_p99",
+                        "page_p99",
+                        "resize_p99",
+                        "term_p99",
+                        "term_grid_p99",
+                        "idle_cpu",
+                        "exe_mb",
+                    ] {
                         assert!(r.contains(k), "{r}");
                     }
                     assert!(resized > 0);
