@@ -107,10 +107,12 @@
 | `prompt.reply` | `id:int`, `choice:str`, `input?:str`, `all?:bool` | Answer | Ответить | — | — |
 | `prompt.cancel` | `id:int` | Dismiss | Закрыть | — | — |
 
-## `ui` (39)
+## `ui` (41)
 
 | Команда | Аргументы | EN | RU | Клавиши (Far) | Меню F9 |
 |---|---|---|---|---|---|
+| `ui.settings` | `section?:str`, `close?:bool` | Settings | Settings | — | — |
+| `ui.setting` | `key:str`, `value:str` | Change a setting | Change a setting | — | — |
 | `ui.welcome` | `kind?:str`, `from?:str` | Welcome | Welcome | — | — |
 | `ui.welcome.done` | `preset?:str`, `follow_os?:bool` | Close welcome | Close welcome | — | — |
 | `ui.field.remember` | `kind:str`, `text:str` | Remember field input | Remember field input | — | — |

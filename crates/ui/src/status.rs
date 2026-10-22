@@ -83,6 +83,18 @@ impl Msg for FreeRead {
 /// Тексты трёх зон: файл под курсором, выделение, свободное место.
 pub fn zones(s: &urfin_core::AppState, fmt: &FmtCfg) -> [String; 3] {
     let i18n = urfin_i18n::current();
+    // Настройки (D-08): файл конфига слева, «Применяется сразу» справа.
+    if let Some(u) = s
+        .ext
+        .get::<crate::UiState>()
+        .filter(|u| u.settings.is_some())
+    {
+        let file = u
+            .config_dir
+            .as_ref()
+            .map_or_else(String::new, |d| d.join("config.toml").display().to_string());
+        return [file, String::new(), i18n.get("ui-set-applies-now")];
+    }
     let t = s.active_tab();
     let mut cell = Cell::default();
     let file = match t.current() {

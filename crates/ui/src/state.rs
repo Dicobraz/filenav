@@ -147,6 +147,11 @@ pub struct UiState {
     pub welcome: Option<Welcome>,
     /// Ссылки в панелях (по сторонам).
     pub links: [Links; 2],
+    /// Открытая вкладка настроек и её раздел (D-08).
+    pub settings: Option<CompactString>,
+    /// Каталоги конфига и журнала — для «О программе».
+    pub config_dir: Option<std::path::PathBuf>,
+    pub log_dir: Option<std::path::PathBuf>,
 }
 
 impl Default for UiState {
@@ -189,6 +194,9 @@ impl UiState {
             complete: None,
             welcome: None,
             links: Default::default(),
+            settings: None,
+            config_dir: None,
+            log_dir: None,
         }
     }
 
