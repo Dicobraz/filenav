@@ -177,6 +177,11 @@ impl TermShared {
         }
     }
 
+    /// Включён альтернативный экран (vim, mc, less): вид «экран» (S6 §3.2).
+    pub fn alt_screen(&self) -> bool {
+        self.vt.lock().term.mode().contains(TermMode::ALT_SCREEN)
+    }
+
     /// Отметить изменения; `true` — флаг поднят этим вызовом (нужен poke).
     pub fn mark_dirty(&self) -> bool {
         !self.dirty.swap(true, Ordering::AcqRel)

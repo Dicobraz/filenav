@@ -136,6 +136,33 @@ impl ModTracker {
     }
 }
 
+/// Клавиша печатает символ (буквы, цифры, знаки, пробел), а не управляет.
+fn prints(key: Key) -> bool {
+    !matches!(
+        key,
+        Key::ArrowDown
+            | Key::ArrowLeft
+            | Key::ArrowRight
+            | Key::ArrowUp
+            | Key::Escape
+            | Key::Tab
+            | Key::Backspace
+            | Key::Enter
+            | Key::Insert
+            | Key::Delete
+            | Key::Home
+            | Key::End
+            | Key::PageUp
+            | Key::PageDown
+            | Key::Copy
+            | Key::Cut
+            | Key::Paste
+    ) && !key
+        .name()
+        .strip_prefix('F')
+        .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+}
+
 fn mods_of(m: crate::ev::Modifiers) -> Mods {
     let mut out = Mods::empty();
     out.set(Mods::CTRL, m.ctrl);
@@ -405,8 +432,38 @@ impl KeyInput {
         let mods = self.mods.with_sides(mods_of(modifiers));
         // `NumEnter` без своей привязки — это `Enter`, `GrayMinus` — `Minus`.
         self.fallback = (code != base).then(|| Stroke::new(base, mods));
-        let pass = !self.feed(Stroke::new(code, mods), repeat, st, now, out, None);
+        let mut pass = !self.feed(Stroke::new(code, mods), repeat, st, now, out, None);
         self.fallback = None;
+        // Терминал (ADR-0015): без своей привязки — в PTY. Печатное приходит текстом
+        // (раскладка, AltGr), сюда — непечатные клавиши и Ctrl/Alt+клавиша.
+        if pass && st.focus == Focus::Terminal && self.km.has_command("term.key") {
+            let ctrl = mods.contains(Mods::CTRL);
+            let alt = mods.contains(Mods::ALT);
+            if !prints(key) || ctrl != alt {
+                let mut m = Vec::new();
+                for (f, n) in [
+                    (Mods::CTRL, "ctrl"),
+                    (Mods::ALT, "alt"),
+                    (Mods::SHIFT, "shift"),
+                ] {
+                    if mods.contains(f) {
+                        m.push(n);
+                    }
+                }
+                // Имя кодировщика: знак для клавиш-знаков (`[`), иначе имя (`up`, `f5`).
+                let sym = key.symbol_or_name();
+                let name = if sym.len() == 1 { sym } else { key.name() };
+                let mut c = Command::new("term.key")
+                    .arg("key", name.to_ascii_lowercase())
+                    .from(Origin::Key);
+                if !m.is_empty() {
+                    c = c.arg("mods", m.join("+"));
+                }
+                out.push(c);
+                self.suppress_text = true;
+                pass = false;
+            }
+        }
         match i {
             Some(i) => self.down[i].passed |= pass,
             None => self.down.push(Down { key, passed: pass }),
@@ -496,6 +553,7 @@ impl KeyInput {
                 "keymap.qs.start"
             }
             Focus::Panel => "cmdline.insert",
+            Focus::Terminal => "term.input",
             _ => return true,
         };
         if !self.km.has_command(id) {

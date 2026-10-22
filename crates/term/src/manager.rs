@@ -22,7 +22,7 @@ use urfin_core::{
 
 use crate::TermState;
 use crate::config::TermConfig;
-use crate::session::{CoreSink, Session, SessionEvent, SessionId, SessionOpts};
+use crate::session::{CoreSink, OscEvent, Session, SessionEvent, SessionId, SessionOpts};
 use crate::shells::{self, ShellSpec, SystemProbe};
 use crate::sys::conpty::{PtySize, SpawnSpec};
 use crate::vt::input::{self, Mods};
@@ -60,6 +60,11 @@ pub struct Slot {
     shared: Option<Arc<TermShared>>,
     /// Ввод до старта процесса.
     queued: Vec<u8>,
+    /// Shell прислал маркер промпта `A`: интеграция работает (S6 §5); нет — вид
+    /// «экран» и raw-ввод (S6 §3.2).
+    pub integrated: bool,
+    /// Команда выполняется: отправлена или `C`, до `D` (S6 §3.3).
+    pub running: bool,
 }
 
 impl Slot {
@@ -95,6 +100,8 @@ pub struct Manager {
     usage: BTreeMap<CompactString, u32>,
     term_dir: Option<PathBuf>,
     born: Option<Instant>,
+    /// Размер области терминала окна (S6-08); `None` — окно ещё не разложено.
+    area: Option<PtySize>,
     discovering: bool,
     warmed: bool,
     deferred: Vec<Deferred>,
@@ -277,6 +284,8 @@ impl Manager {
             session: None,
             shared: None,
             queued: Vec::new(),
+            integrated: false,
+            running: false,
         });
         if activate {
             self.set_active(cfg, id);
@@ -284,7 +293,7 @@ impl Manager {
         let nonce = nonce();
         let spawn = spawn_spec(&spec, cwd, id, &nonce);
         let opts = SessionOpts {
-            size: START_SIZE,
+            size: self.area.unwrap_or(START_SIZE),
             scrollback: if activate {
                 cfg.scrollback
             } else {
@@ -419,6 +428,32 @@ impl Manager {
         Ok(())
     }
 
+    /// Область терминала окна (S6-08): размер всех сеансов. Видимость панелей и
+    /// высота cmdline на него не влияют — TUI не перерисовываются от Ctrl+O.
+    pub(crate) fn resize(&mut self, size: PtySize) {
+        self.area = Some(size);
+        for s in &self.slots {
+            if let Some(sess) = &s.session {
+                sess.resize(size);
+            } else if let Some(sh) = &s.shared {
+                sh.resize(size);
+            }
+        }
+    }
+
+    pub fn area(&self) -> Option<PtySize> {
+        self.area
+    }
+
+    /// Команда отправлена в активный сеанс (submit): до `D` — «выполняется».
+    pub(crate) fn mark_running(&mut self) {
+        if let Some(id) = self.active
+            && let Some(s) = self.slot_mut(id)
+        {
+            s.running = true;
+        }
+    }
+
     /// Режимы ввода активного сеанса.
     pub(crate) fn input_modes(&self) -> input::Modes {
         self.active()
@@ -458,9 +493,11 @@ impl Manager {
         }
     }
 
-    fn on_event(&mut self, id: SessionId, ev: SessionEvent) {
+    /// Событие сеанса; `true` — у активного сеанса закончилась команда (`D`).
+    fn on_event(&mut self, id: SessionId, ev: SessionEvent) -> bool {
+        let active = self.active == Some(id);
         let Some(slot) = self.slot_mut(id) else {
-            return;
+            return false;
         };
         match ev {
             SessionEvent::Exited(code) => {
@@ -475,9 +512,24 @@ impl Manager {
                 }
             }
             SessionEvent::Title(t) => slot.title = t,
-            // Буфер обмена — S6-07, события интеграции — S6-11…S6-14.
-            SessionEvent::Clipboard(_) | SessionEvent::Bell | SessionEvent::Osc { .. } => {}
+            SessionEvent::Osc { event, .. } => match event {
+                OscEvent::PromptStart => {
+                    slot.integrated = true;
+                    slot.running = false;
+                }
+                OscEvent::Executed => slot.running = true,
+                OscEvent::Finished(_) => {
+                    let was = slot.running;
+                    slot.running = false;
+                    return active && was;
+                }
+                // Cwd, история, свойства — S6-11…S6-16.
+                _ => {}
+            },
+            // Буфер обмена — S6-07.
+            SessionEvent::Clipboard(_) | SessionEvent::Bell => {}
         }
+        false
     }
 
     /// Вето выхода: есть сеансы с работающими процессами.
@@ -700,8 +752,16 @@ impl Msg for ShellsMsg {
 
 /// Событие сеанса (`SessionMsg`).
 pub(crate) fn on_session_event(cx: &mut Cx<'_>, id: SessionId, ev: SessionEvent) {
-    if let Some(st) = cx.state.ext.get_mut::<TermState>() {
-        st.sessions.on_event(id, ev);
+    let Some(st) = cx.state.ext.get_mut::<TermState>() else {
+        return;
+    };
+    if st.sessions.on_event(id, ev) {
+        // Команда кончилась: короткая — автопоказ не нужен; спрятанные им панели —
+        // назад (S6 §3.3).
+        st.submitted = None;
+        if std::mem::take(&mut st.auto_hidden) && st.config.return_to_panels {
+            crate::panels(cx, true);
+        }
     }
 }
 

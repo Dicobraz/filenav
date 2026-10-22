@@ -17,6 +17,9 @@ use urfin_term::vt::grid::{Cell, CursorKind, Snapshot};
 
 /// Моноширинный шрифт терминала (S6, системный Cascadia Mono).
 const MONO: &str = "Cascadia Mono";
+/// Поля вокруг сетки, px.
+pub(super) const PAD_X: f32 = 8.0;
+pub(super) const PAD_Y: f32 = 4.0;
 
 fn hsla([r, g, b]: [u8; 3]) -> Hsla {
     gpui_kit::Rgba {
@@ -81,7 +84,7 @@ fn paint(
     window.paint_quad(gpui_kit::fill(b, bg));
     let font = gpui_kit::font(MONO);
     let (cw, ch) = metrics(text_px, window);
-    let origin = b.origin + point(px(8.0), px(4.0));
+    let origin = b.origin + point(px(PAD_X), px(PAD_Y));
     let at = |row: usize, col: usize| {
         #[allow(clippy::cast_precision_loss, reason = "номер ячейки")]
         let p = point(origin.x + cw * col as f32, origin.y + ch * row as f32);

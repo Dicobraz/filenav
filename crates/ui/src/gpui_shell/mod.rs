@@ -169,6 +169,8 @@ pub struct CoreHost {
     /// Снапшот сетки терминала (S6-06) и чей он (адрес `TermShared`): пересобирается,
     /// когда сеанс поднял флаг изменений или сменился.
     term: Option<((usize, bool), Rc<urfin_term::vt::grid::Snapshot>)>,
+    /// Последний отправленный размер области терминала, ячеек (S6-08).
+    term_area: (u16, u16),
     /// Где вызвано контекстное меню мышью (окно, px); Shift+F10 — у строки курсора.
     context_at: Option<(f32, f32)>,
     /// Эксперимент `slide`: где был курсор (таб, верх страницы, строка) и скольжение полосы.
@@ -270,6 +272,7 @@ impl CoreHost {
             prints: [[0; 3]; 2],
             rdrag: None,
             term: None,
+            term_area: (0, 0),
             context_at: None,
             slot: [None; 2],
             slide: [None, None],
@@ -762,6 +765,40 @@ impl CoreHost {
         }
     }
 
+    /// Область терминала (S6 §3.1) — вся площадь между заголовком и статус-строкой,
+    /// с рядом cmdline: от видимости панелей и cmdline не зависит. Размер в ячейках —
+    /// в Core (`term.resize`, дебаунс там).
+    fn sync_term_area(&mut self, window: &mut Window) {
+        let Some(core) = self.core.as_mut() else {
+            return;
+        };
+        let size = window.viewport_size();
+        let (cw, ch) = term_view::metrics(self.theme.m(Metric::TypeMono), window);
+        let w = f32::from(size.width) - 2.0 * term_view::PAD_X;
+        let h = f32::from(size.height)
+            - self.theme.m(Metric::HTitlebar)
+            - self.theme.m(Metric::HStatus)
+            - self.theme.m(Metric::HKeybar)
+            - 2.0 * term_view::PAD_Y;
+        #[allow(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "ячеек в окне — до тысяч"
+        )]
+        let cells =
+            |len: f32, cell: gpui_kit::Pixels| (len / f32::from(cell)).floor().max(2.0) as u16;
+        let area = (cells(w, cw), cells(h, ch));
+        if area == self.term_area {
+            return;
+        }
+        self.term_area = area;
+        core.dispatch(
+            Command::new("term.resize")
+                .arg("cols", i64::from(area.0))
+                .arg("rows", i64::from(area.1)),
+        );
+    }
+
     /// Сетка каждой панели — в Core (`panel.viewport`): по ней он держит курсор в
     /// видимой странице и считает PgUp/PgDn и ←/→ в колонках.
     fn sync_viewport(&mut self, window: &Window) {
@@ -824,6 +861,7 @@ impl CoreHost {
         self.take_events(cx);
         // Режим вида мог смениться: сетка панели другая.
         self.sync_viewport(window);
+        self.sync_term_area(window);
         let Some(core) = self.core.as_ref() else {
             return;
         };
@@ -842,6 +880,7 @@ impl CoreHost {
     }
 
     /// События UI из Core: тосты (дедлайн — будильником); job-бар ≤ 30 кадров/с.
+    #[allow(clippy::too_many_lines, reason = "разбор событий Core — одна таблица")]
     fn take_events(&mut self, cx: &mut Context<Self>) {
         let Some(core) = self.core.as_mut() else {
             return;
@@ -859,6 +898,11 @@ impl CoreHost {
                 urfin_core::UiEvent::Toast { level, text } => {
                     self.toasts.push(overlays::Toast::new(level, text, now));
                     cx.notify();
+                }
+                urfin_core::UiEvent::Ext { id, args }
+                    if matches!(id.as_str(), "term.panels" | "clip.write" | "clip.read") =>
+                {
+                    drafts.extend(term_ext(id.as_str(), &args, cx));
                 }
                 // Черновик операции (F5/F6/F7/F8): строка с полем или кнопками (S2-15).
                 urfin_core::UiEvent::Ext { id, args }
@@ -1550,6 +1594,36 @@ fn in_window(
         .is_ok()
 }
 
+/// Просьбы терминала к окну: `term.panels` — спрятать или вернуть панели (автопоказ
+/// S6-08, `term.toggle`); `clip.write` — строку в буфер обмена, `clip.read` — текст
+/// буфера в команду `then` (S6-15). Итог — команды Core.
+fn term_ext(id: &str, args: &urfin_core::Args, cx: &mut Context<CoreHost>) -> Option<Command> {
+    match id {
+        "term.panels" => {
+            let mut c = Command::new("ui.panels.toggle_all");
+            if let Some(show) = args.bool("show") {
+                c = c.arg("show", show);
+            }
+            Some(c)
+        }
+        "clip.write" => {
+            let text = args.str("text").unwrap_or_default().to_owned();
+            cx.write_to_clipboard(gpui_kit::ClipboardItem::new_string(text));
+            None
+        }
+        "clip.read" => {
+            let then = match args.str("then") {
+                Some("cmdline.paste") => "cmdline.paste",
+                Some("term.paste") => "term.paste",
+                _ => return None,
+            };
+            let text = cx.read_from_clipboard().and_then(|c| c.text())?;
+            Some(Command::new(then).arg("text", text))
+        }
+        _ => None,
+    }
+}
+
 /// View в кадре: отпечаток тот же — из кэша gpui (без раскладки и paint), изменился —
 /// рисуется заново. `notify` дочерней view из `render` родителя сработал бы только в
 /// следующем кадре, поэтому изменённая view в этом кадре идёт без `cached`.
@@ -2066,7 +2140,7 @@ impl Render for CoreHost {
             .child(
                 div()
                     .flex_none()
-                    .h(px(if settings_open.is_some() {
+                    .h(px(if chrome::cmdline_hidden(s) {
                         0.0
                     } else {
                         self.theme.m(Metric::HCmdline)

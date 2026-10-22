@@ -276,3 +276,67 @@ fn pool_switch_exit_restart_and_quit_veto() {
     assert!(matches!(h.core.quit_decision(), QuitDecision::Allow));
     assert!(h.mgr().slots().is_empty(), "allowed quit closes the pool");
 }
+
+fn panels_events(core: &mut Core) -> Vec<Option<bool>> {
+    core.take_ui_events()
+        .into_iter()
+        .filter_map(|e| match e {
+            urfin_core::UiEvent::Ext { id, args } if id.as_str() == "term.panels" => {
+                Some(args.bool("show"))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// Приёмка S6-15/S6-08 на настоящем cmd: размер области — у PTY и сетки; строка
+/// набирается командами `cmdline.*` и уходит в shell по submit; alt-screen прячет
+/// панели, выход из него — возвращает.
+#[test]
+fn submit_area_and_alt_screen_autoshow() {
+    let mut h = H::new();
+    h.until("warm-up session", running);
+    h.run(Command::new("term.shell").arg("id", "cmd"));
+    h.until("cmd active", running);
+    h.run(Command::new("term.resize").arg("cols", 100).arg("rows", 40));
+    h.until("area applied", |m| {
+        m.area()
+            == Some(PtySize {
+                cols: 100,
+                rows: 40,
+            })
+            && m.active().and_then(Slot::shared).is_some_and(|s| {
+                s.size()
+                    == PtySize {
+                        cols: 100,
+                        rows: 40,
+                    }
+            })
+    });
+
+    assert!(crate::cmdline_empty(h.core.state()));
+    h.run(Command::new("cmdline.insert").arg("text", "echo URFIN_SUBMIT"));
+    assert!(!crate::cmdline_empty(h.core.state()));
+    h.run(Command::new("cmdline.exec"));
+    assert!(crate::cmdline_empty(h.core.state()));
+    h.until("submitted output", |m| active_has(m, "URFIN_SUBMIT"));
+
+    let _ = panels_events(&mut h.core);
+    let shared = h.mgr().active().and_then(Slot::shared).unwrap().clone();
+    shared.inject(b"\x1b[?1049h");
+    let t0 = Instant::now();
+    let mut seen = Vec::new();
+    while seen.is_empty() && t0.elapsed() < Duration::from_secs(5) {
+        h.core.pump(Duration::from_millis(1));
+        seen = panels_events(&mut h.core);
+    }
+    assert_eq!(seen, [Some(false)], "alt-screen hides panels");
+    shared.inject(b"\x1b[?1049l");
+    let t0 = Instant::now();
+    seen.clear();
+    while seen.is_empty() && t0.elapsed() < Duration::from_secs(5) {
+        h.core.pump(Duration::from_millis(1));
+        seen = panels_events(&mut h.core);
+    }
+    assert_eq!(seen, [Some(true)], "leaving alt-screen returns panels");
+}

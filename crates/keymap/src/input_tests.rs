@@ -46,6 +46,8 @@ static METAS: &[CommandMeta] = &[
     meta("cmdline.insert", TEXT, false),
     meta("keymap.qs.start", TEXT, false),
     meta("keymap.qs.input", TEXT, false),
+    meta("term.input", TEXT, false),
+    meta("term.key", &[], true),
 ];
 
 const PRESET: &str = r#"format = 1
@@ -278,6 +280,34 @@ fn cmdline_keeps_text() {
     let f = run(&mut ki, &st, evs.clone());
     assert_eq!(f.cmds, Vec::<String>::new());
     assert_eq!(f.events, evs);
+}
+
+/// Терминал (ADR-0015): привязок `panel` и `global` нет — непечатные клавиши и
+/// Ctrl+буква уходят в PTY (`term.key`), печать — текстом (`term.input`), без дублей.
+#[test]
+fn terminal_gets_raw_keys() {
+    let mut ki = input();
+    let st = state(Focus::Terminal);
+    let f = run(
+        &mut ki,
+        &st,
+        vec![
+            press(Key::ArrowUp, Modifiers::NONE),
+            press(Key::F5, Modifiers::NONE),
+            press(Key::C, Modifiers::CTRL),
+            press(Key::A, Modifiers::NONE),
+            Event::Text("ф".into()),
+        ],
+    );
+    assert_eq!(
+        f.cmds,
+        [
+            "term.key key=up",
+            "term.key key=f5",
+            "term.key key=c mods=ctrl",
+            "term.input text=ф",
+        ]
+    );
 }
 
 /// Во время IME-композиции ничего не матчится; после Commit — снова.

@@ -42,6 +42,10 @@ static KNOWN: &[CommandMeta] = &[
     meta("arc.enter", &[], false),
     meta("arc.extract", &[], false),
     meta("cmdline.apply", &[], false),
+    meta("cmdline.backspace", &[], true),
+    meta("cmdline.delete", &[], true),
+    meta("cmdline.undo", &[], true),
+    meta("cmdline.redo", &[], true),
     meta("cmdline.clear", &[], false),
     meta("cmdline.copy", &[], false),
     meta("cmdline.cursor.left", &[], true),
@@ -258,6 +262,15 @@ static KNOWN: &[CommandMeta] = &[
     meta("tab.next", &[arg("side", ValueKind::Str, false)], false),
     meta("tab.prev", &[arg("side", ValueKind::Str, false)], false),
     meta("term.focus", &[], false),
+    meta(
+        "term.key",
+        &[
+            arg("key", ValueKind::Str, true),
+            arg("mods", ValueKind::Str, false),
+        ],
+        true,
+    ),
+    meta("term.input", &[arg("text", ValueKind::Str, true)], false),
     meta("ui.cancel", &[], false),
     meta(
         "ui.copy_names",

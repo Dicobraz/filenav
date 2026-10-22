@@ -403,10 +403,19 @@ const SCENES: &[Scene] = &[
         name: "term-colors",
         steps: &["screens.term kind=colors"],
     },
+    // Набранная строка (S6-15): курсор-блок посреди строки, на слове.
+    Scene {
+        name: "cmdline-typed",
+        steps: &[
+            "screens.term stop=true",
+            "cmdline.insert text=\"dir /b *.toml\"",
+            "cmdline.word.left",
+        ],
+    },
     Scene {
         name: "width-800-panels",
         steps: &[
-            "screens.term stop=true",
+            "cmdline.clear",
             "ui.cancel",
             "tab.close",
             "tab.close",

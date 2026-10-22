@@ -56,7 +56,9 @@ pub fn run(launch: Launch) {
     if let Some(w) = warning {
         tracing::warn!(key = %w.key, msg = %w.msg, "[keymap] section ignored");
     }
-    let keys = urfin_keymap::register(&mut core, paths, cfg, FlagRegistry::with_builtin());
+    let mut flags = FlagRegistry::with_builtin();
+    flags.register("cmdline_empty", urfin_term::cmdline_empty);
+    let keys = urfin_keymap::register(&mut core, paths, cfg, flags);
     let (ui_cfg, _) = config.section::<urfin_ui::config::UiCfg>("ui");
     let theme = gpui_shell::Theme::new(&probe, &ui_cfg);
     let context = if screens.is_none() {
