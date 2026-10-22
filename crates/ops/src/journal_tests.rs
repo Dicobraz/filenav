@@ -104,3 +104,25 @@ fn live_journals_are_untouched_done_are_removed() {
     live.finish(1, 1);
     assert!(!live.path().exists(), "finish removes the journal");
 }
+
+/// S5-27: временный файл с докачкой «Продолжить» оставляет, «Очистить» удаляет.
+#[test]
+fn resumable_temps_survive_continue() {
+    let d = tmp();
+    let jdir = d.path().join("jobs");
+    let (big, small) = (d.path().join(".big.fnv~t1"), d.path().join(".s.fnv~t1"));
+    std::fs::write(&big, b"partial").unwrap();
+    std::fs::write(&small, b"x").unwrap();
+    let j = Journal::create(&jdir, header(d.path())).unwrap();
+    j.append_now(&Record::Temp(big.clone()));
+    j.append_now(&Record::Resumable(big.clone()));
+    j.append_now(&Record::Temp(small.clone()));
+    j.keep();
+    let found = scan(&jdir);
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].resumable, vec![big.clone()]);
+    found[0].remove_temps(true);
+    assert!(big.exists() && !small.exists());
+    found[0].remove_temps(false);
+    assert!(!big.exists());
+}

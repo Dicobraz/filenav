@@ -161,7 +161,12 @@ struct Info {
     fat: bool,
     /// Корень назначения: свободное место (S5-20).
     root: PathBuf,
+    /// Назначение — сеть или USB: крупные файлы — с докачкой (S5-27).
+    resumable_dest: bool,
 }
+
+/// Докачка — для файлов от гигабайта (S5-27).
+const RESUME_MIN: u64 = 1 << 30;
 
 /// Наибольший файл FAT32.
 const FAT32_MAX_FILE: u64 = 0xFFFF_FFFF;
@@ -263,6 +268,9 @@ pub(crate) struct Start {
     pub journal_dir: Option<PathBuf>,
     /// Движки по размеру файла (`[ops.strategy]`, S5-14).
     pub strategy: crate::strategy::StrategyTable,
+    /// «Продолжить» (S5-27): метка прерванной job — её временные файлы с докачкой
+    /// дописываются, а не копируются заново.
+    pub resume_tag: Option<String>,
 }
 
 /// «Продолжить» прерванную job (S5 §6.3): тот же запрос; файлы, равные
@@ -270,6 +278,7 @@ pub(crate) struct Start {
 /// копируются заново без вопросов.
 pub(crate) fn recovered(
     h: &journal::Header,
+    resumable: &[PathBuf],
     small_file: u64,
     journal_dir: Option<PathBuf>,
 ) -> Option<Start> {
@@ -287,7 +296,15 @@ pub(crate) fn recovered(
         small_file,
         journal_dir,
         strategy: crate::strategy::StrategyTable::default(),
+        resume_tag: resumable.iter().find_map(|p| tag_of(p)),
     })
+}
+
+/// Метка job по имени временного файла (`.имя.fnv~<метка>`, [`temp_path`]).
+fn tag_of(p: &Path) -> Option<String> {
+    let name = p.file_name()?.to_str()?;
+    let (_, tag) = name.rsplit_once(".fnv~")?;
+    (!tag.is_empty()).then(|| tag.to_owned())
 }
 
 /// Как повторить упавшее: режим и опции исходной job (хранится с отчётом).
@@ -466,7 +483,7 @@ impl Transfer {
             mask: s.mask,
             small: s.small_file,
             pairs: Vec::new(),
-            tag: new_tag(),
+            tag: s.resume_tag.unwrap_or_else(new_tag),
             aimd: Mutex::default(),
             journal_dir: s.journal_dir,
             roots: Mutex::default(),
@@ -488,6 +505,12 @@ impl Transfer {
 
     fn info(&self) -> &Info {
         self.info.get_or_init(Info::default)
+    }
+
+    /// Копировать с докачкой (S5-27): файл не меньше [`RESUME_MIN`], назначение — сеть
+    /// или USB.
+    fn resumable(&self, it: &Item) -> bool {
+        it.size >= RESUME_MIN && self.info().resumable_dest
     }
 
     fn op(&self) -> ItemOp {
@@ -702,15 +725,23 @@ impl Transfer {
                 return self.data(it, dst, true, cx);
             }
             let fresh = temp_path(dst, &self.tag);
-            match std::fs::remove_file(&fresh) {
-                Err(e) if e.kind() != io::ErrorKind::NotFound => {
-                    // Осталась от прерванной job с той же меткой и не удаляется.
-                    return Err(e);
+            // Докачка (S5-27): крупный файл на сеть или USB; недописанный временный
+            // файл прерванной job с той же меткой — дописывается.
+            let resume = self.resumable(it);
+            if !resume {
+                match std::fs::remove_file(&fresh) {
+                    Err(e) if e.kind() != io::ErrorKind::NotFound => {
+                        // Осталась от прерванной job с той же меткой и не удаляется.
+                        return Err(e);
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
             if let Some(j) = self.journal.get() {
                 j.append_now(&Record::Temp(fresh.clone()));
+                if resume {
+                    j.append_now(&Record::Resumable(fresh.clone()));
+                }
             }
             self.data(it, &fresh, false, cx)?;
             *temp = Some(fresh.clone());
@@ -927,6 +958,7 @@ impl Transfer {
             // для заметных файлов.
             sparse: it.size >= self.small
                 && sys::attrs(&it.src).is_ok_and(|a| a & ATTR_SPARSE != 0),
+            restartable: !excl && self.resumable(it),
         };
         let r = sys::copy_file(&it.src, to, flags, &mut |done| {
             if done > last {
@@ -2034,6 +2066,7 @@ impl Transfer {
                 Some(FsKind::Fat32 | FsKind::ExFat)
             ),
             root: root.to_path_buf(),
+            resumable_dest: matches!(media[1], Media::Net | Media::Usb),
         });
         slots
     }
