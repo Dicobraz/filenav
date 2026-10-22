@@ -47,6 +47,24 @@ const LINKS_MAX: usize = 2000;
 const COMPLETE_MAX: usize = 12;
 
 static COMMANDS: &[CommandMeta] = &[
+    // Настройки (D-08): вкладка с разделом; `close` — закрыть. `ui.setting` — записать
+    // ключ конфига и перечитать (применяется сразу).
+    meta(
+        "ui.settings",
+        "Settings",
+        &[
+            arg("section", ValueKind::Str, false),
+            arg("close", ValueKind::Bool, false),
+        ],
+    ),
+    meta(
+        "ui.setting",
+        "Change a setting",
+        &[
+            arg("key", ValueKind::Str, true),
+            arg("value", ValueKind::Str, true),
+        ],
+    ),
     // Приветствие (D-02): показать (`--screens`, справка) и принять выбор.
     meta(
         "ui.welcome",
@@ -268,6 +286,8 @@ impl Handler for UiHandler {
                 st.themes_dir = env.dir;
                 st.fields_file.clone_from(&env.fields);
                 st.welcome.clone_from(&env.welcome);
+                st.config_dir.clone_from(&env.config_dir);
+                st.log_dir.clone_from(&env.log_dir);
                 if let Some(file) = env.fields {
                     fs_tasks::spawn_fields_load(cx.rt, file);
                 }
@@ -303,6 +323,7 @@ impl Handler for UiHandler {
         match cmd.id.as_str() {
             "ui.menu" | "ui.menu.sort" | "ui.history.dirs" => self.menu(cx, cmd.id.as_str(), a),
             "ui.welcome" | "ui.welcome.done" => welcome(cx, cmd.id.as_str(), a),
+            "ui.settings" | "ui.setting" => settings_cmd(cx, cmd.id.as_str(), a),
             "ui.field.remember" | "ui.complete" | "ui.complete.close" => {
                 self.field_cmd(cx, cmd.id.as_str(), a);
             }
@@ -382,16 +403,8 @@ impl Handler for UiHandler {
             id if id.starts_with("ui.tree.") => {
                 crate::views::tree_command(cx, &self.vfs, &mut self.views, id, a.int("n"));
             }
-            "ui.about" => {
-                let i18n = urfin_i18n::current();
-                let text = format!(
-                    "{} {} — {}",
-                    i18n.get("ui-about-name"),
-                    env!("CARGO_PKG_VERSION"),
-                    i18n.get("ui-about-aka")
-                );
-                cx.toast(Level::Info, text);
-            }
+            // «О программе» — раздел настроек (D-08).
+            "ui.about" => ui_state(cx).settings = Some("about".into()),
             "ui.columns" => {
                 let set = a.str("set").unwrap_or_default();
                 ui_state(cx).columns = Some(set.into());
@@ -728,4 +741,33 @@ fn welcome(cx: &mut Cx<'_>, id: &str, a: &Args) {
         cx.dispatch(Command::new("ui.theme.follow_os"));
     }
     ui_state(cx).welcome = None;
+}
+
+/// Настройки (D-08): `ui.settings` — открыть раздел или закрыть; `ui.setting` — записать
+/// ключ (`panels.sort.key`) в конфиг и перечитать его.
+fn settings_cmd(cx: &mut Cx<'_>, id: &str, a: &Args) {
+    if id == "ui.settings" {
+        let st = ui_state(cx);
+        st.settings = if a.bool("close") == Some(true) {
+            None
+        } else {
+            Some(a.str("section").unwrap_or("view").into())
+        };
+        return;
+    }
+    let (Some(key), Some(value)) = (a.str("key"), a.str("value")) else {
+        cx.keep_rev();
+        return;
+    };
+    let path: Vec<&str> = key.split('.').collect();
+    let msg = match value {
+        "true" => settings::set(&path, true),
+        "false" => settings::set(&path, false),
+        v => match v.parse::<i64>() {
+            Ok(n) => settings::set(&path, n),
+            Err(_) => settings::set(&path, v),
+        },
+    };
+    msg.apply(cx);
+    cx.dispatch(Command::new("app.reload_config"));
 }

@@ -197,5 +197,7 @@ fn theme_env(
         },
         fields: Some(paths.state_dir.join("fields.toml")),
         welcome: welcome(paths),
+        config_dir: Some(paths.config_dir.clone()),
+        log_dir: Some(paths.log_dir.clone()),
     }
 }

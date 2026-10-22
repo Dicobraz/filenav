@@ -12,6 +12,7 @@ mod overlays;
 mod panel;
 mod pouch;
 mod screens;
+mod settings;
 mod strip;
 mod theme;
 mod views;
@@ -445,6 +446,46 @@ impl CoreHost {
             );
         }
         Some(pouch::pouch(theme, x, y, CONFLICT_W, None, body))
+    }
+
+    /// Клавиши вкладки настроек (D-08); `true` — клавиша её.
+    fn settings_key(
+        &mut self,
+        ks: &gpui_kit::Keystroke,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(core) = self.core.as_ref() else {
+            return false;
+        };
+        if let Some(sec) = core
+            .state()
+            .ext
+            .get::<crate::UiState>()
+            .and_then(|u| u.settings.as_deref())
+        {
+            let dir = match ks.key.as_str() {
+                "tab" if ks.modifiers.shift => Some(-1),
+                "up" => Some(-1),
+                "tab" | "down" => Some(1),
+                _ => None,
+            };
+            let cmd = match (ks.key.as_str(), dir) {
+                ("escape", _) => Some(Command::new("ui.settings").arg("close", true)),
+                (_, Some(d)) => {
+                    Some(Command::new("ui.settings").arg("section", settings::step(sec, d)))
+                }
+                _ => None,
+            };
+            self.input.skip();
+            if let Some(c) = cmd {
+                self.out.push(c.from(urfin_core::Origin::Key));
+                self.after_input(None, window, cx);
+            }
+            cx.notify();
+            return true;
+        }
+        false
     }
 
     /// Клавиши приветствия (D-02); `true` — клавиша его.
@@ -1286,6 +1327,10 @@ impl CoreHost {
             cx.notify();
             return true;
         }
+        // Настройки (D-08): Tab, ↑↓ — раздел, Esc — закрыть; остальное — не панелям.
+        if self.settings_key(ks, window, cx) {
+            return true;
+        }
         // Приветствие (D-02): ← → — Far/DN, Пробел — тема, Enter — готово, Esc — позже.
         if self.welcome_key(ks, window, cx) {
             return true;
@@ -1668,7 +1713,15 @@ impl Render for CoreHost {
         let (bar_row, bar_at) = bar.map_or((None, Vec::new()), |(r, at)| (Some(r), at));
         // Табы — без кэша: в их пустом месте зона перетаскивания окна, а кэш gpui
         // `WindowControlArea` не повторяет.
-        let content = chrome::panel_tabs(s, &self.theme, &click, widths);
+        let content = if s
+            .ext
+            .get::<crate::UiState>()
+            .is_some_and(|u| u.settings.is_some())
+        {
+            chrome::settings_tab(&self.theme, &click)
+        } else {
+            chrome::panel_tabs(s, &self.theme, &click, widths)
+        };
         // Контекст (T-01-5): полоса 3 px поверх верха окна и метка у кнопок; не отключается.
         let badge = self.context.map(|ctx| {
             let (role, key) = match ctx {
@@ -1917,8 +1970,23 @@ impl Render for CoreHost {
         }
         // Зона событий внизу (№63), снизу вверх: keybar, статус, командная строка, job-бар,
         // строка-вопрос или баннер; тосты — справа над ней.
+        // Настройки (D-08) — вкладка на место панелей.
+        let settings_open = s
+            .ext
+            .get::<crate::UiState>()
+            .and_then(|u| u.settings.as_deref())
+            .map(str::to_owned);
+        let main = match &settings_open {
+            Some(sec) => {
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .child(settings::view(s, sec, &self.theme, &click_all))
+            }
+            None => panels,
+        };
         let root = root
-            .child(panels)
+            .child(main)
             .children(completion_el)
             .children(conflict_el)
             .children(overlays::toasts(&self.toasts, &self.theme, toast_lift))
@@ -1933,8 +2001,11 @@ impl Render for CoreHost {
             .child(
                 div()
                     .flex_none()
-                    .h(px(self.theme.m(Metric::HCmdline)
-                        + self.theme.m(Metric::HStatus)
+                    .h(px(if settings_open.is_some() {
+                        0.0
+                    } else {
+                        self.theme.m(Metric::HCmdline)
+                    } + self.theme.m(Metric::HStatus)
                         + self.theme.m(Metric::HKeybar)))
                     .flex()
                     .child(cached(

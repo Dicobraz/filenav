@@ -22,6 +22,9 @@ pub struct ThemeEnv {
     pub fields: Option<PathBuf>,
     /// Приветствие при старте (первый запуск, обновление; D-02).
     pub welcome: Option<crate::state::Welcome>,
+    /// Каталоги конфига и журнала («О программе», D-08).
+    pub config_dir: Option<PathBuf>,
+    pub log_dir: Option<PathBuf>,
 }
 
 fn tr(key: &str, args: &[(&str, &str)]) -> String {

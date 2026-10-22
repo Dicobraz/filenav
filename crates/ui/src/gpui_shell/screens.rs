@@ -308,6 +308,35 @@ const SCENES: &[Scene] = &[
         name: "sync-closed",
         steps: &["ui.cancel", "sel.none"],
     },
+    // Настройки (D-08): разделы.
+    Scene {
+        name: "screen-settings",
+        steps: &["ui.cancel", "ui.settings section=view"],
+    },
+    Scene {
+        name: "screen-settings-panels",
+        steps: &["ui.settings section=panels"],
+    },
+    Scene {
+        name: "screen-settings-ops",
+        steps: &["ui.settings section=ops"],
+    },
+    Scene {
+        name: "screen-settings-policies",
+        steps: &["ui.settings section=policies"],
+    },
+    Scene {
+        name: "screen-settings-a11y",
+        steps: &["ui.settings section=a11y"],
+    },
+    Scene {
+        name: "screen-about",
+        steps: &["ui.about"],
+    },
+    Scene {
+        name: "settings-closed",
+        steps: &["ui.settings close=true"],
+    },
     // Каркас (D-02, D-03): приветствие, много табов, ссылки, узкое окно.
     Scene {
         name: "screen-firstrun",

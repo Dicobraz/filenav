@@ -301,6 +301,62 @@ fn caption(
         .child(SharedString::from(glyph.to_string()))
 }
 
+/// Заголовок вкладки настроек (D-08): значок панелей (вернуться) и таб «Настройки ×».
+pub(super) fn settings_tab(
+    theme: &Theme,
+    click: &impl Fn(Command) -> super::overlays::Handler,
+) -> Div {
+    let i18n = urfin_i18n::current();
+    let close = || Command::new("ui.settings").arg("close", true);
+    div()
+        .flex_1()
+        .min_w_0()
+        .h_full()
+        .flex()
+        .items_end()
+        .gap(px(6.0))
+        .child(
+            div()
+                .id("settings-back")
+                .h(px(theme.m(Metric::HTab)))
+                .px(px(TAB_PAD_X))
+                .flex()
+                .items_center()
+                .font_family(ICON_FONT)
+                .text_size(px(12.0))
+                .text_color(theme.c(Role::TextSecondary))
+                .child(SharedString::new_static("\u{E8A1}"))
+                .on_click(click(close())),
+        )
+        .child(
+            div()
+                .id("settings-tab")
+                .h(px(theme.m(Metric::HTab)))
+                .px(px(TAB_PAD_X))
+                .flex()
+                .items_center()
+                .gap(px(10.0))
+                .rounded_t(px(TAB_RADIUS))
+                .bg(theme.c(Role::LayerPanel))
+                .child(SharedString::from(i18n.get("ui-set-title")))
+                .child(
+                    div()
+                        .id("settings-close")
+                        .text_size(px(11.0))
+                        .text_color(theme.c(Role::TextSecondary))
+                        .child(SharedString::new_static("×"))
+                        .on_click(click(close())),
+                ),
+        )
+        .child(
+            div()
+                .id("drag-settings")
+                .flex_1()
+                .h_full()
+                .window_control_area(WindowControlArea::Drag),
+        )
+}
+
 /// Наборы табов (содержимое заголовка, когда меню F9 закрыто): у каждой панели над ней,
 /// граница — по сплиттеру (линия 1×16). Скрытая панель — без набора; в терминале
 /// (Ctrl+O) табов нет (D-02).
@@ -511,6 +567,13 @@ pub(super) fn strip_keys(s: &AppState) -> Option<Vec<(String, String)>> {
         ]);
     }
     let ui = s.ext.get::<crate::UiState>();
+    // Настройки (D-08).
+    if ui.is_some_and(|u| u.settings.is_some()) {
+        return Some(vec![
+            ("Tab".into(), i18n.get("ui-keys-section")),
+            ("Esc".into(), i18n.get("ui-keys-close")),
+        ]);
+    }
     // Приветствие (D-02, `screen-firstrun.png`).
     if ui.is_some_and(|u| u.welcome.is_some()) && ui.is_some_and(|u| u.draft.is_none()) {
         return Some(vec![
@@ -698,7 +761,12 @@ impl Render for ChromeView {
             .size_full()
             .flex()
             .flex_col()
-            .child(cmdline(s, &h.theme))
+            .when(
+                s.ext
+                    .get::<crate::UiState>()
+                    .is_none_or(|u| u.settings.is_none()),
+                |d| d.child(cmdline(s, &h.theme)),
+            )
             .child(status(&zones, narrow, &h.theme))
             .child(keybar(
                 h.keybar.items(h.mods),
