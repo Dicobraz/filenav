@@ -2,6 +2,9 @@
 
 #[cfg(windows)]
 pub(crate) mod recycle_fast;
+/// Клон блоков ReFS (S5-15).
+#[cfg(windows)]
+pub(crate) mod refs_clone;
 #[cfg(windows)]
 pub(crate) mod trash_win;
 #[cfg(windows)]

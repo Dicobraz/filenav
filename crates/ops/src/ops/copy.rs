@@ -163,6 +163,8 @@ struct Info {
     root: PathBuf,
     /// Назначение — сеть или USB: крупные файлы — с докачкой (S5-27).
     resumable_dest: bool,
+    /// Тот же том `ReFS` (Dev Drive): клон блоков вместо копии (S5-15); размер кластера.
+    clone_cluster: Option<u32>,
 }
 
 /// Докачка — для файлов от гигабайта (S5-27).
@@ -948,6 +950,17 @@ impl Transfer {
                 cx.add_bytes(it.size);
                 return Ok(());
             }
+        }
+        // Тот же том `ReFS` (S5-15): клон блоков; не вышло — обычная копия. Проверка
+        // хэшем клону не нужна (S5 §4.1) — клон только без неё.
+        #[cfg(windows)]
+        if let Some(cluster) = self.info().clone_cluster
+            && it.size >= self.small
+            && !matches!(self.opts.verify, crate::api::Verify::Hash(_))
+            && crate::sys::refs_clone::clone_file(&it.src, to, cluster)?
+        {
+            cx.add_bytes(it.size);
+            return Ok(());
         }
         let mut last = 0u64;
         let flags = sys::CopyFlags {
@@ -2067,6 +2080,12 @@ impl Transfer {
             ),
             root: root.to_path_buf(),
             resumable_dest: matches!(media[1], Media::Net | Media::Usb),
+            clone_cluster: vd
+                .as_ref()
+                .filter(|v| {
+                    same && v.fs == FsKind::Refs && v.caps.has(urfin_vfs::volume::VolCaps::CLONE)
+                })
+                .map(|v| v.cluster),
         });
         slots
     }
