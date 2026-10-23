@@ -231,6 +231,7 @@ ui-panel-count = { $count } { $count ->
 ui-status-selected = Выделено { $count } из { $total }
 ui-status-selected-bytes = Выделено { $count } из { $total } · { $bytes }
 ui-status-free = { $root } { $bytes } свободно
+ui-status-shell-cwd = shell: { $dir }
 ui-status-dir = { $name } · { $count } { $count ->
     [one] объект
     [few] объекта

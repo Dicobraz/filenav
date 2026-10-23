@@ -408,7 +408,12 @@ impl Handler for UiHandler {
             "ui.panels.toggle_all" => {
                 let st = ui_state(cx);
                 let hidden = a.bool("show").map_or(!st.panels_hidden, |show| !show);
+                let was = st.panels_hidden;
                 st.panels_hidden = hidden;
+                if hidden && !was {
+                    // Показан терминал: shell — в каталог панели (S6 §5.1).
+                    urfin_term::sync_cwd(cx);
+                }
                 // Вид «экран» (S6 §3.2): ввод — в терминал; панели вернулись — в панель.
                 let screen = cx
                     .state

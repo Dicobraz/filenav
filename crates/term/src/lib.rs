@@ -317,6 +317,19 @@ impl TermState {
     }
 }
 
+/// Терминал показан (Ctrl+O): shell — в каталог активной панели, тихо (S6 §5.1).
+/// Без хуков (cmd) — до submit: видимый cd на каждый Ctrl+O был бы мусором в выводе.
+pub fn sync_cwd(cx: &mut Cx<'_>) {
+    let want = manager::session_cwd(&cx.state.active_tab().loc);
+    let rt = cx.rt;
+    if let Some(st) = cx.state.ext.get_mut::<TermState>() {
+        let TermState {
+            config, sessions, ..
+        } = st;
+        sessions.sync_quiet(config, rt, want);
+    }
+}
+
 /// Флаг keymap `cmdline_empty` (S3: Enter на пустой строке — `panel.enter`).
 pub fn cmdline_empty(st: &AppState) -> bool {
     st.ext.get::<TermState>().is_none_or(|t| t.line.is_empty())

@@ -50,6 +50,15 @@ pub enum SlotState {
     Failed,
 }
 
+/// Итог события сеанса.
+#[derive(Debug, Default)]
+pub(crate) struct Effect {
+    /// У активного сеанса закончилась команда (`D`).
+    pub finished: bool,
+    /// Shell активного сеанса сам перешёл в другой каталог (S6 §5.1 shell → панель).
+    pub cwd: Option<PathBuf>,
+}
+
 /// Сеанс в пуле.
 #[allow(clippy::struct_excessive_bools, reason = "независимые признаки сеанса")]
 #[derive(Debug)]
@@ -83,6 +92,10 @@ pub struct Slot {
     expects_marks: bool,
     /// Код последней команды из `D` (`Some(None)` — shell его не сообщает, cmd).
     pub last_exit: Option<Option<i32>>,
+    /// Каталог нашего cd, ответ на который ещё не пришёл (S6 §5.1 `pending_sync`).
+    pending_sync: Option<PathBuf>,
+    /// Первый `FnCwd` уже был (стартовый каталог — не переход shell).
+    cwd_seen: bool,
 }
 
 impl Slot {
@@ -120,6 +133,8 @@ pub struct Manager {
     born: Option<Instant>,
     /// Каталог активной панели на последнем pump.
     home: Option<PathBuf>,
+    /// Сколько cd в shell отправила синхронизация (приёмка S6-14: ровно один).
+    pub(crate) syncs: u32,
     /// Размер области терминала окна (S6-08); `None` — окно ещё не разложено.
     area: Option<PtySize>,
     discovering: bool,
@@ -316,6 +331,8 @@ impl Manager {
             started: Instant::now(),
             expects_marks: false,
             last_exit: None,
+            pending_sync: None,
+            cwd_seen: false,
         });
         if activate {
             self.set_active(cfg, id);
@@ -544,6 +561,23 @@ impl Manager {
         bytes: Vec<u8>,
         want: Option<PathBuf>,
     ) -> Result<(), CmdError> {
+        self.sync_then(cfg, rt, bytes, want, true)
+    }
+
+    /// Ленивая синхронизация без команды (S6 §5.1: при показе терминала, Ctrl+O) —
+    /// только тихая: видимый cd в выводе при каждом Ctrl+O был бы мусором.
+    pub(crate) fn sync_quiet(&mut self, cfg: &TermConfig, rt: &Runtime, want: Option<PathBuf>) {
+        let _ = self.sync_then(cfg, rt, Vec::new(), want, false);
+    }
+
+    fn sync_then(
+        &mut self,
+        cfg: &TermConfig,
+        rt: &Runtime,
+        bytes: Vec<u8>,
+        want: Option<PathBuf>,
+        visible: bool,
+    ) -> Result<(), CmdError> {
         let sync = matches!(cfg.sync_cwd.as_str(), "both" | "panel_to_shell");
         let kind = self
             .active()
@@ -551,9 +585,9 @@ impl Manager {
             .map(|k| k.kind.clone());
         let term_dir = self.term_dir.clone();
         let cd = self.active().and_then(|slot| {
-            let want = want.filter(|_| sync && slot.integrated)?;
+            let want = want.filter(|_| sync && slot.integrated && !slot.running)?;
             let have = slot.cwd.as_ref()?;
-            if same_path(have, &want) {
+            if same_path(have, &want) || slot.pending_sync.as_ref() == Some(&want) {
                 return None;
             }
             Some((
@@ -564,16 +598,31 @@ impl Manager {
                 slot.mount_root.clone(),
             ))
         });
+        let write = |m: &mut Manager, bytes: Vec<u8>| {
+            if bytes.is_empty() {
+                Ok(())
+            } else {
+                m.write(cfg, rt, bytes, false)
+            }
+        };
         let Some((id, hooks, want, style, root)) = cd else {
-            return self.write(cfg, rt, bytes, false);
+            return write(self, bytes);
         };
         let text = crate::integ::to_shell(&want, &style, root.as_deref());
         let quiet =
             hooks && !matches!(kind, Some(shells::ShellKind::Cmd) | None) && term_dir.is_some();
+        if !quiet && !visible {
+            return write(self, bytes);
+        }
+        // Ответный `FnCwd` этого cd — эхо, не переход shell (панель не трогать).
+        if let Some(s) = self.slot_mut(id) {
+            s.pending_sync = Some(want);
+        }
+        self.syncs += 1;
         if !quiet {
             let line = visible_cd(kind.as_ref(), &text);
             self.write(cfg, rt, line.into_bytes(), false)?;
-            return self.write(cfg, rt, bytes, false);
+            return write(self, bytes);
         }
         let Some(tx) = self
             .slots
@@ -593,7 +642,9 @@ impl Manager {
             {
                 let _ = tx.send(crate::session::WriterCmd::Bytes(b"\x1b[24;8~".to_vec()));
             }
-            let _ = tx.send(crate::session::WriterCmd::Bytes(bytes));
+            if !bytes.is_empty() {
+                let _ = tx.send(crate::session::WriterCmd::Bytes(bytes));
+            }
         });
         Ok(())
     }
@@ -638,11 +689,11 @@ impl Manager {
         }
     }
 
-    /// Событие сеанса; `true` — у активного сеанса закончилась команда (`D`).
-    fn on_event(&mut self, id: SessionId, ev: SessionEvent) -> bool {
+    /// Событие сеанса: что из него следует для окна и панели.
+    fn on_event(&mut self, id: SessionId, ev: SessionEvent) -> Effect {
         let active = self.active == Some(id);
         let Some(slot) = self.slot_mut(id) else {
-            return false;
+            return Effect::default();
         };
         match ev {
             SessionEvent::Exited(code) => {
@@ -676,18 +727,41 @@ impl Manager {
                     slot.last_exit = Some(code);
                     let was = slot.running;
                     slot.running = false;
-                    return active && was;
+                    return Effect {
+                        finished: active && was,
+                        cwd: None,
+                    };
                 }
                 // С интеграцией верим только своему маркеру (nonce проверен
                 // сканером); без неё — OSC 7 / 9;9 / iTerm (S6 §5.1).
                 OscEvent::Cwd { path, source } => {
-                    if source == crate::session::CwdSource::FnCwd || !slot.expects_marks {
-                        slot.cwd = crate::integ::to_windows(
-                            &path,
-                            &slot.path_style,
-                            slot.mount_root.as_deref(),
-                        );
+                    if source != crate::session::CwdSource::FnCwd && slot.expects_marks {
+                        return Effect::default();
                     }
+                    let Some(new) = crate::integ::to_windows(
+                        &path,
+                        &slot.path_style,
+                        slot.mount_root.as_deref(),
+                    ) else {
+                        return Effect::default();
+                    };
+                    let moved = slot.cwd.as_ref().is_none_or(|c| !same_path(c, &new));
+                    slot.cwd = Some(new.clone());
+                    // Эхо нашего же cd (S6 §5.1 `pending_sync`) — панель уже там.
+                    if slot
+                        .pending_sync
+                        .take()
+                        .is_some_and(|p| same_path(&p, &new))
+                    {
+                        return Effect::default();
+                    }
+                    // Первый промпт — не переход: shell стартовал там, где сказали.
+                    let first = !slot.cwd_seen;
+                    slot.cwd_seen = true;
+                    return Effect {
+                        finished: false,
+                        cwd: (active && moved && !first).then_some(new),
+                    };
                 }
                 OscEvent::Prop(k, v) => match k.as_str() {
                     "FnHook" => slot.hooks = v != "0",
@@ -700,7 +774,7 @@ impl Manager {
             // Буфер обмена — S6-07.
             SessionEvent::Clipboard(_) | SessionEvent::Bell => {}
         }
-        false
+        Effect::default()
     }
 
     /// Вето выхода: есть сеансы с работающими процессами.
@@ -966,12 +1040,26 @@ pub(crate) fn on_session_event(cx: &mut Cx<'_>, id: SessionId, ev: SessionEvent)
     let Some(st) = cx.state.ext.get_mut::<TermState>() else {
         return;
     };
-    if st.sessions.on_event(id, ev) {
+    let effect = st.sessions.on_event(id, ev);
+    let follow = matches!(st.config.sync_cwd.as_str(), "both" | "shell_to_panel");
+    if effect.finished {
         // Команда кончилась: короткая — автопоказ не нужен; спрятанные им панели —
         // назад (S6 §3.3).
         st.submitted = None;
         if std::mem::take(&mut st.auto_hidden) && st.config.return_to_panels {
             crate::panels(cx, true);
+        }
+    }
+    // Shell сам сменил каталог (`cd ..`): активная панель — туда же (S6 §5.1). Таб на
+    // архиве или sftp тоже уходит. Обратного cd не будет: панель совпадёт с shell.
+    if let Some(p) = effect.cwd.filter(|_| follow) {
+        let tab = cx.state.active_tab();
+        if !(tab.loc.is_local() && same_path(&tab.loc.path, &p)) {
+            cx.dispatch(
+                urfin_core::Command::new("panel.go")
+                    .arg("path", Location::local(p))
+                    .from(urfin_core::Origin::Internal),
+            );
         }
     }
 }
