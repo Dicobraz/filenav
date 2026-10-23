@@ -78,6 +78,9 @@ body{margin:0}
 <sc-if value="{{stRec}}" hint-placeholder-val="{{ false }}">
 <span role="status" aria-label="Идёт запись сеанса, 4 мин 12 с" style="{{stChip}}"><span style="display: inline-flex; color: {{t.k}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.2"></circle><circle cx="8" cy="8" r="3.4" fill="currentColor"></circle></svg></span><span>Запись <span style="font-weight: 600">04:12</span></span><span style="display: inline-flex; align-items: center; gap: 4px; color: {{t.s}}; font-size: 11.5px"><svg width="11" height="11" viewBox="0 0 16 16" aria-label="Задано политикой организации"><rect x="3" y="7" width="10" height="7.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"></rect><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.3"></path></svg>обязательна · политика · TOML</span></span>
 </sc-if>
+<sc-if value="{{stHlChip}}" hint-placeholder-val="{{ false }}">
+<span role="status" style="{{stChipN}}"><span style="display: inline-flex; color: {{t.a}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 13.5h12" stroke="currentColor" stroke-width="1.4"></path><path d="M4.5 11l5.8-7.6 2 1.6-5.8 7.6H4.5z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"></path></svg></span><span>Подсветка вывода</span><span style="color: {{t.s}}; font-size: 11.5px">Ctrl+Alt+H</span></span>
+</sc-if>
 </div>
 </sc-if>
 <div style="margin-left: auto; flex: none; align-self: flex-start; display: flex; align-items: center">
@@ -2345,7 +2348,8 @@ stRecPill: "height: 20px; box-sizing: border-box; padding: 0 8px; display: inlin
 stRecPol: "display: inline-flex; align-items: center; gap: 5px; color: " + t.s + "; font-size: 12px; white-space: nowrap",
 stChip: "height: 26px; box-sizing: border-box; display: inline-flex; align-items: center; gap: 8px; padding: 0 0 0 8px; border: 1px solid " + t.rem + "; border-radius: 4px; background: " + t.wbg + "; color: " + t.t + "; font-size: 12.5px; white-space: nowrap",
 stChipBtn: "height: 24px; margin-left: 2px; padding: 0 8px; border: 0; border-left: 1px solid " + t.rem + "; background: transparent; color: " + t.t + "; font: inherit; font-size: 12px",
-stTitleOn: screen === "sshmulti" || screen === "sshrec",
+stTitleOn: screen === "sshmulti" || screen === "sshrec" || screen === "termhl", stHlChip: true,
+stChipN: "height: 26px; box-sizing: border-box; display: inline-flex; align-items: center; gap: 8px; padding: 0 8px; border: 1px solid " + t.b + "; border-radius: 4px; background: " + t.h + "; color: " + t.t + "; font-size: 12.5px; white-space: nowrap",
 stWarn: "flex: none; height: 46px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 0 14px; background: " + t.wbg + "; border-top: 2px solid " + t.rem + "; font-size: 13px",
 stSessList: "width: 200px; flex: none; display: flex; flex-direction: column; gap: 2px; padding: 8px 6px; box-sizing: border-box; border-right: 1px solid " + t.b + "; background: " + t.h + "; font-size: 13px",
 stOut: "flex: 1; min-width: 0; padding: 8px 12px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; font-family: " + mono + "; font-size: 13px; color: " + t.t,
@@ -3338,7 +3342,7 @@ sshpair: ["ssh.exe · ключ ed25519 из агента","папка: /var/www/
 sshmulti: ["Группа: 3 сеанса из 4","первая команда подтверждена в 14:05","UTF-8 · 136×31"],
 sshrec: ["Запись: %USERPROFILE%\\Urfin\\recordings\\srv1-2026-10-23-1402.cast","1,2 МБ","asciicast v2"],
 sshrecview: ["admin@srv1 · 132×30","записано 23.10.26 14:02 · 12:47","1,2 МБ"],
-termhl: ["pwsh 7.5 · интеграция с оболочкой","Подсветка вывода: вкл.","Скроллбэк 1 204 строки"],
+termhl: ["pwsh 7.5 · интеграция с оболочкой","","Скроллбэк 1 204 строки"],
 sftppanel: ["current → releases/42","Выделено 0 из 12","admin@srv1.corp.local · ssh-ed25519 · ключ из агента (Pageant)"],
 sftplost: ["current → releases/42","Выделено 0 из 12","admin@srv1.corp.local · ssh-ed25519 · ключ из агента (Pageant)"],
 sftpcopy: ["index.html · 2,1 КБ · 23.10.26 11:02","Выделено 3 из 10 · 14,2 МБ","C: 214 ГБ свободно"],
