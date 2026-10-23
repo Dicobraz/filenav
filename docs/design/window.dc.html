@@ -2302,7 +2302,7 @@ rowStyle: "height: " + rowH + "px; flex: none; display: flex; align-items: cente
 briefStyle: "height: " + rowH + "px; display: flex; align-items: center; gap: 8px; padding: 0 10px; overflow: hidden; white-space: nowrap; font-weight: " + ((kind === "d" || kind === "up") ? 500 : 400) + "; background: " + (isM ? selBg : "transparent") + (isC ? curRing : "") + "; color: " + col
 };
 });
-const actPath = "color: " + t.t + "; border-bottom: 2px solid " + t.a + "; padding-bottom: 3px; margin-bottom: -5px", pasPath = "color: " + t.s;
+const actPath = "color: " + t.t + "; text-decoration: underline 2px " + t.a + "; text-underline-offset: 6px; text-decoration-skip-ink: none", pasPath = "color: " + t.s;
 const SRC = ["..","app.rs","breadcrumb.rs","cache.rs","cmdline.rs","columns.rs","commands.rs","conflict.rs","drives.rs","editor.rs","file_list.rs","fonts.rs","icons.rs","info.rs","job_bar.rs","keybar.rs","layout.rs","lib.rs","menu.rs","panel.rs","prompt_bar.rs","quick_search.rs","quick_view.rs","settings.rs","status.rs","tabs.rs","theme.rs","toast.rs","tree.rs","viewer.rs","widgets.rs","window.rs","sys"].map((n) => n === ".." ? ["..","up","",""] : (n === "sys" ? ["sys","d","",""] : [n,"f","",""]));
 const DES = [["..","up","",""],["screens","d","","20.10.26 20:31"],["DESIGN.md","f","9,8 КБ","20.10.26 20:35"],["window.dc.html","f","48,1 КБ","20.10.26 20:31"]];
 const P = (o) => Object.assign({ vis: "", isFull: false, isBrief: false, isTree: false, isInfo: false, isQv: false, isState: false, bhBag: false, drives: false, tag: "", packedCol: false }, o);
