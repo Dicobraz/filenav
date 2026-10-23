@@ -244,6 +244,7 @@ strip = false
 [patch.crates-io]
 # Windows-платформа gpui с патчами Pets (ADR-0018, G-02; pets/crates/pets-gpui-windows):
 # кадры по запросу — поток vsync спит без запросов кадра (0 % CPU в простое), живой
-# ресайз, шейдеры в exe байткодом (компиляция при сборке), принудительный WARP
-# (`GPUI_FORCE_WARP=1`), поток vsync будится с новым окном. Обновлять вместе с gpui-kit.
-gpui-pre-windows = { git = "https://github.com/Dicobraz/pets", rev = "f762a5f3e53626154cbd0ad7964c8f5962121d0a" }
+# ресайз (новая область до кадра — фоном окна, не чёрной), шейдеры в exe байткодом
+# (компиляция при сборке), принудительный WARP (`GPUI_FORCE_WARP=1`), поток vsync будится
+# с новым окном, ленивые текстуры путей. Обновлять вместе с gpui-kit.
+gpui-pre-windows = { git = "https://github.com/Dicobraz/pets", rev = "a280d8587d91c2b90a06499b29247f4d300dd740" }
