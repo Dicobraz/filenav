@@ -33,9 +33,9 @@
 | `verify` | `Verify` | `none`/`size`/`hash` / REG_SZ | минимальная проверка после записи | принято (№66) |
 | `du_elevated_helper` | `DuElevatedHelper` | bool / DWORD | false — досчёт с правами администратора запрещён | предложено (ADR-0021) |
 | `du_elevated_mft` | `DuElevatedMft` | bool / DWORD | false — быстрый обход тома (MFT) запрещён | предложено (ADR-0021) |
-| `password_cache` | `PasswordCache` | bool / DWORD | false — пароли и фразы-пароли не сохраняются нигде | предложено (F-03) |
-| `ssh.recording` | `SshRecording` | `required`/`forbidden`/`user` / REG_SZ | запись SSH-сеансов | предложено (F-03) |
-| `ssh.multi_exec` | `SshMultiExec` | bool / DWORD | false — мультивыполнение запрещено | предложено (F-03) |
+| `password_cache` | `PasswordCache` | bool / DWORD | false — пароли и фразы-пароли не сохраняются нигде | принято (№89) |
+| `ssh.recording` | `SshRecording` | `required`/`forbidden`/`user` / REG_SZ | запись SSH-сеансов | принято (№89) |
+| `ssh.multi_exec` | `SshMultiExec` | bool / DWORD | false — мультивыполнение запрещено | принято (№89) |
 
 Пример `policy.toml`:
 ```toml

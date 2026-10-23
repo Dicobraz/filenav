@@ -601,7 +601,7 @@ body{margin:0}
 <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; background: {{t.p}}; position: relative">
 <div style="height: 36px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid {{t.b}}; background: {{t.h}}">
 <span style="display: inline-flex; color: {{t.a}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 4.5L2 8l3.5 3.5 M10.5 4.5L14 8l-3.5 3.5 M9 3l-2 10" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></span>
-<span style="color: {{t.s}}">sftp://admin@srv1.corp.local/etc/nginx/sites-available</span>
+<span style="color: {{t.s}}" title="admin@srv1.corp.local">sftp://srv1/etc/nginx/sites-available</span>
 </div>
 <div style="flex: 1; min-height: 0; display: flex">
 <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; font-family: 'Cascadia Mono', Consolas, monospace; font-size: 13px">
@@ -2924,7 +2924,7 @@ if (sqScr.indexOf(screen) < 0) return off;
 const isP = screen === "sftppanel", isC = screen === "sftpcopy", isE = screen === "sftpedit", isL = screen === "sftplost", isS = screen === "sftpsync";
 const chipSt = "height: 20px; box-sizing: border-box; padding: 0 7px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid " + t.b + "; border-radius: 4px; background: " + t.h + "; color: " + t.t + "; font-size: 11.5px; white-space: nowrap";
 const colS = "width: 72px; flex: none; text-align: right; white-space: nowrap", colD = "width: 104px; flex: none; text-align: right; white-space: nowrap", colP = "width: 78px; flex: none; white-space: nowrap", colO = "width: 70px; flex: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis";
-const host = "sftp://admin@srv1.corp.local";
+const host = "sftp://srv1";
 // [имя, вид, размер, изменён, права, владелец]
 const APP = [["..","up","","","",""],[".well-known","d","","14.08.26 12:10","drwxr-xr-x","www-data"],["current","d","","22.10.26 18:40","lrwxrwxrwx","deploy"],["releases","d","","22.10.26 18:39","drwxr-xr-x","deploy"],["repo","d","","22.10.26 18:38","drwxr-xr-x","deploy"],["shared","d","","03.09.26 09:15","drwxr-x---","www-data"],["tmp","d","","23.10.26 09:02","drwxrwxr-x","www-data"],[".env","f","1,1 КБ","03.09.26 09:16","-rw-------","www-data"],["deploy.sh","x","2,4 КБ","11.10.26 16:30","-rwxr-xr-x","deploy"],["maintenance.html","f","3,8 КБ","14.08.26 12:12","-rw-r--r--","www-data"],["revisions.log","f","18,6 КБ","22.10.26 18:40","-rw-r--r--","deploy"],["robots.txt","f","68 Б","14.08.26 12:12","-rw-r--r--","www-data"],["VERSION","f","7 Б","22.10.26 18:40","-rw-r--r--","deploy"]];
 const RELS = [["..","up","","","",""],["39","d","","02.10.26 15:20","drwxr-xr-x","deploy"],["40","d","","09.10.26 17:05","drwxr-xr-x","deploy"],["41","d","","16.10.26 18:12","drwxr-xr-x","deploy"],["42","d","","22.10.26 18:39","drwxr-xr-x","deploy"],["43","d","","23.10.26 11:04","drwxr-xr-x","admin"]];
@@ -2949,8 +2949,8 @@ let panels = null;
 if (isP || isL) { panels = [full("C:\\Dev\\urfin\\target\\release", "8 объектов", REL, -1, false), sq("/var/www/app", isL ? "12 объектов · из кэша" : "12 объектов · 8 мс", APP, 2, true, { 2: LNK }, isL)]; Object.assign(v, tabsLR("release", "srv1: app")); }
 if (isC) { panels = [full("C:\\Dev\\app\\dist", "10 объектов", DIST, 8, true, {}, { 1: { m: true }, 6: { m: true }, 8: { m: true } }), sq("/var/www/app/releases", "5 объектов · 9 мс", RELS, -1, false)]; Object.assign(v, tabsLR("dist", "srv1: releases"));
 Object.assign(v, { showJobs: true, jobs: [
-["Копирование","media → srv1:/var/www/app/shared",42,"212 из 506 МБ · 9,8 МБ/с · ещё 30 с",t.s],
-["Копирование","db-1023.sql.gz → srv1:/var/backups",66,"докачка с 61 % · 7,9 МБ/с · ещё 58 с",t.s]
+["Копирование","media → sftp://srv1/var/www/app/shared",42,"212 из 506 МБ · 9,8 МБ/с · ещё 30 с",t.s],
+["Копирование","db-1023.sql.gz → sftp://srv1/var/backups",66,"докачка с 61 % · 7,9 МБ/с · ещё 58 с",t.s]
 ].map(([name, what, pct, info, ic]) => ({ name, what, info, act: "Пауза", infoColor: ic, bar: "height: 100%; width: " + pct + "%; background: " + t.a })) }); }
 if (isS) { panels = [full("C:\\Dev\\app\\dist", "10 объектов", DIST, 8, true, {}, { 5: { m: true, sy: "→" }, 6: { m: true, sy: "→" }, 8: { m: true, sy: "→" } }), sq("/var/www/app/current", "10 объектов · 8 мс", CUR, -1, false, { 5: { tag: "только здесь" }, 6: { tag: "только здесь" } })]; Object.assign(v, tabsLR("dist", "srv1: current"));
 const seg = (on) => "height: 26px; border: 0; background: " + (on ? t.c : t.p) + "; color: " + (on ? t.ct : t.t) + "; font: inherit; font-weight: " + (on ? 500 : 400) + "; min-width: 38px; padding: 0 10px; font-size: 14px";
@@ -3336,8 +3336,8 @@ sshmulti: ["Группа: 3 сеанса из 4","первая команда п
 sshrec: ["Запись: %USERPROFILE%\\Urfin\\recordings\\srv1-2026-10-23-1402.cast","1,2 МБ","asciicast v2"],
 sshrecview: ["admin@srv1 · 132×30","записано 23.10.26 14:02 · 12:47","1,2 МБ"],
 termhl: ["pwsh 7.5 · интеграция с оболочкой","Подсветка вывода: вкл.","Скроллбэк 1 204 строки"],
-sftppanel: ["current → releases/42","Выделено 0 из 12","srv1.corp.local · ssh-ed25519 · ключ из агента (Pageant)"],
-sftplost: ["current → releases/42","Выделено 0 из 12","srv1.corp.local · ssh-ed25519 · ключ из агента (Pageant)"],
+sftppanel: ["current → releases/42","Выделено 0 из 12","admin@srv1.corp.local · ssh-ed25519 · ключ из агента (Pageant)"],
+sftplost: ["current → releases/42","Выделено 0 из 12","admin@srv1.corp.local · ssh-ed25519 · ключ из агента (Pageant)"],
 sftpcopy: ["index.html · 2,1 КБ · 23.10.26 11:02","Выделено 3 из 10 · 14,2 МБ","C: 214 ГБ свободно"],
 sftpedit: ["Стр 23, Кол 30","40 строк","nginx · Пробелы: 4 · UTF-8 · LF · Вставка"],
 sftpsync: ["index.html · 2,1 КБ · 23.10.26 11:02","Сравнение: размер и дата · точность 1 с","C: 214 ГБ свободно"],
@@ -3428,11 +3428,11 @@ if (sec === "about") STATUS.settings = ["Windows 11 24H2 · x64","","Своя п
 if (sec === "ssh") STATUS.settings = ["%APPDATA%\\Urfin\\settings.toml","2 параметра заданы политикой","Применяется сразу"];
 if (sec === "conn") STATUS.settings = ["%APPDATA%\\Urfin\\connections.toml","8 профилей · 5 из ~/.ssh/config · 2 из PuTTY","Пароли в файл не пишутся"];
 const KEYS = {
-sshpair: [["Ctrl+O","Панели"],["Ctrl+Tab","Панель ↔ терминал"],["Ctrl+Shift+F","Поиск в выводе"],["Ctrl+Alt+H","Подсветка"],["Ctrl+Alt+R","Запись"]],
-sshmulti: [["Esc","Выйти из группы"],["Ctrl+Alt+G","Состав группы"],["Пробел","В группу / из группы"],["Ctrl+O","Панели"]],
-sshrec: [["Ctrl+O","Панели"],["Ctrl+Shift+F","Поиск в выводе"],["Ctrl+Break","Прервать"]],
+sshpair: [["Ctrl+O","Панели"],["Ctrl+Tab","Панель ↔ терминал"],["Ctrl+Shift+F","Поиск в выводе"],["Ctrl+Alt+H","Подсветка"],["Ctrl+Alt+R","Запись"],["Ctrl+Alt+G","Группа"]],
+sshmulti: [["Esc","Выйти из группы"],["Ctrl+Alt+G","Состав группы"],["Пробел","В группу / из группы"],["Ctrl+Alt+H","Подсветка"],["Ctrl+Alt+R","Запись"],["Ctrl+O","Панели"]],
+sshrec: [["Ctrl+O","Панели"],["Ctrl+Shift+F","Поиск в выводе"],["Ctrl+Alt+H","Подсветка"],["Ctrl+Alt+G","Группа"],["Ctrl+Break","Прервать"]],
 sshrecview: [["Пробел","Пуск / пауза"],["← →","−5 с / +5 с"],["1 2 4","Скорость"],["F7","Поиск"],["Alt+↓","История поиска"],["Shift+F7","Следующее"],["Esc","Закрыть"]],
-termhl: [["Ctrl+O","Панели"],["Ctrl+Shift+F","Поиск в выводе"],["Ctrl+Alt+H","Подсветка"],["Ctrl+Break","Прервать"]],
+termhl: [["Ctrl+O","Панели"],["Ctrl+Shift+F","Поиск в выводе"],["Ctrl+Alt+H","Подсветка"],["Ctrl+Alt+R","Запись"],["Ctrl+Break","Прервать"]],
 sftpcopy: [["Tab","Следующее поле"],["Alt+↓","История путей"]],
 sftpedit: [["F2","Сохранить"],["F7","Поиск"],["Ctrl+F7","Замена"],["Alt+F8","Строка"],["Esc","Закрыть"]],
 sftplost: [["Tab","Следующая кнопка"]],
