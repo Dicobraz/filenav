@@ -96,10 +96,6 @@ body{margin:0}
 <sc-if value="{{stHead}}" hint-placeholder-val="{{ false }}">
 <div style="{{stHeadBar}}">
 <button type="button" aria-haspopup="listbox" aria-label="Сеанс терминала: ssh srv1" style="{{stShellBtn}}">ssh srv1 <span style="color: {{t.s}}; font-size: 10px; font-weight: 400">▾</span></button>
-<sc-if value="{{stRec}}" hint-placeholder-val="{{ false }}">
-<span role="status" aria-label="Идёт запись сеанса, 4 мин 12 с" style="{{stRecPill}}"><span style="color: {{t.k}}; font-size: 10px">●</span><span style="color: {{t.k}}; font-weight: 700">REC</span><span>04:12</span></span>
-<span style="{{stRecPol}}"><svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"></rect><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.3"></path></svg>запись обязательна · политика · TOML</span>
-</sc-if>
 </div>
 </sc-if>
 <div style="flex: 1; min-height: 0; display: flex">
@@ -118,6 +114,13 @@ body{margin:0}
 <span style="display: inline-flex; color: {{t.rem}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8l6.5 12H1.5z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"></path><path d="M8 6.2v3.6" stroke="currentColor" stroke-width="1.4"></path><circle cx="8" cy="11.8" r="0.8" fill="currentColor"></circle></svg></span>
 <span>Ввод в 3 сеанса: <span style="font-weight: 600">srv1, srv2, srv3</span></span>
 <button type="button" style="margin-left: 8px; {{btn}}">Выйти из группы <span style="font-size: 11px; color: {{t.s}}">Esc</span></button>
+</div>
+</sc-if>
+<sc-if value="{{stRec}}" hint-placeholder-val="{{ false }}">
+<div role="status" aria-label="Идёт запись сеанса, 4 мин 12 с" style="{{stWarn}}">
+<span style="display: inline-flex; color: {{t.k}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.2"></circle><circle cx="8" cy="8" r="3.4" fill="currentColor"></circle></svg></span>
+<span>Идёт запись сеанса: <span style="font-weight: 600">04:12</span></span>
+<span style="margin-left: 8px; display: inline-flex; align-items: center; gap: 5px; color: {{t.s}}; font-size: 12px"><svg width="12" height="12" viewBox="0 0 16 16" aria-label="Задано политикой организации"><rect x="3" y="7" width="10" height="7.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"></rect><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.3"></path></svg>обязательна · политика · TOML — остановить нельзя</span>
 </div>
 </sc-if>
 <sc-if value="{{stPlay}}" hint-placeholder-val="{{ false }}">
@@ -2343,7 +2346,7 @@ stHeadBar: "height: 30px; flex: none; display: flex; align-items: center; gap: 1
 stShellBtn: "height: 22px; padding: 0 8px; display: flex; align-items: center; gap: 6px; border: 1px solid " + t.b + "; border-radius: 4px; background: " + t.p + "; color: " + t.t + "; font-family: " + mono + "; font-size: 12.5px; font-weight: 600",
 stRecPill: "height: 20px; box-sizing: border-box; padding: 0 8px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid " + t.k + "; border-radius: 4px; background: " + t.p + "; color: " + t.t + "; font-family: " + mono + "; font-size: 12px",
 stRecPol: "display: inline-flex; align-items: center; gap: 5px; color: " + t.s + "; font-size: 12px; white-space: nowrap",
-stWarn: "flex: none; display: flex; align-items: center; gap: 10px; padding: 7px 14px; background: " + t.wbg + "; border-top: 2px solid " + t.rem + "; font-size: 13px",
+stWarn: "flex: none; height: 46px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 0 14px; background: " + t.wbg + "; border-top: 2px solid " + t.rem + "; font-size: 13px",
 stSessList: "width: 200px; flex: none; display: flex; flex-direction: column; gap: 2px; padding: 8px 6px; box-sizing: border-box; border-right: 1px solid " + t.b + "; background: " + t.h + "; font-size: 13px",
 stOut: "flex: 1; min-width: 0; padding: 8px 12px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; font-family: " + mono + "; font-size: 13px; color: " + t.t,
 stBar: "height: 46px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-top: 1px solid " + t.b + "; background: " + t.h + "; font-size: 12.5px",
