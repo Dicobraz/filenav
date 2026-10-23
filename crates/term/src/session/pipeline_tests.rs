@@ -287,11 +287,41 @@ fn pokes_coalesce_to_frames() {
     assert!(pokes < writes / 4, "pokes {pokes} for {writes} writes");
 }
 
+/// Кадры UI, пока в сетке не появится `seen`: на каждое пробуждение — снапшот
+/// (сброс dirty), как в боевом UI, поэтому пробуждения не теряются при любой
+/// задержке потоков. Возвращает (кадров без `seen`, время от `t0` до кадра с ним).
+fn frames_until(
+    wake: &crossbeam_channel::Receiver<()>,
+    shared: &TermShared,
+    seen: &str,
+    t0: Instant,
+) -> (usize, Duration) {
+    let mut frames = 0;
+    loop {
+        assert!(
+            wake.recv_deadline(t0 + Duration::from_secs(10)).is_ok(),
+            "no frame with {seen:?} after {frames} frames: {:?}",
+            text(shared)
+        );
+        shared.take_dirty();
+        if text(shared).contains(seen) {
+            return (frames, t0.elapsed());
+        }
+        frames += 1;
+    }
+}
+
 /// DEC 2026: пока синхронизация открыта, UI не будят; по таймауту — показ.
+///
+/// Без фиксированных пауз: тест — это UI, который рисует кадр на каждое
+/// пробуждение. Под чужой нагрузкой reader разбирает вывод с опозданием, и
+/// снапшот «через 60 мс» ловил его на полпути.
 #[test]
 fn sync_update_times_out() {
     let (r, mut w) = io::pipe().unwrap();
     let sink = Arc::new(TestSink::default());
+    let (wake_tx, wake_rx) = crossbeam_channel::unbounded();
+    *sink.wake.lock().unwrap() = Some(wake_tx);
     let p = start_pipeline(
         &threads,
         "s",
@@ -304,34 +334,31 @@ fn sync_update_times_out() {
     p.shared.take_dirty();
     let sent = Instant::now();
     w.write_all(b"\x1b[?2026hHELLO").unwrap();
-    thread::sleep(Duration::from_millis(60));
-    // Кадр UI. Начало синхронизации могло разбудить один раз, вывод внутри — нет.
-    p.shared.take_dirty();
-    let p1 = sink.pokes.load(Ordering::SeqCst);
-    assert!(p1 <= 1, "pokes {p1}");
-    assert!(!text(&p.shared).contains("HELLO"));
-    while sink.pokes.load(Ordering::SeqCst) == p1 && sent.elapsed() < Duration::from_secs(5) {
-        thread::sleep(Duration::from_millis(5));
+    let (before, at) = frames_until(&wake_rx, &p.shared, "HELLO", sent);
+    // Начало синхронизации могло разбудить один раз, вывод внутри — нет.
+    assert!(before <= 1, "frames before HELLO: {before}");
+    // Показ — по таймауту (150 мс от разбора, разбор — после записи).
+    assert!(at >= Duration::from_millis(100), "{at:?}");
+    // Закрытая вовремя синхронизация показывается сразу. Таймаут не показал бы
+    // её раньше 150 мс от записи, так что один показ быстрее 100 мс это
+    // доказывает; под чужой нагрузкой reader просыпается позже — попыток 10.
+    let mut slow = Vec::new();
+    for d in b'0'..=b'9' {
+        // Сначала забрать пробуждения, потом dirty: иначе запоздалый poke
+        // таймаута оставит dirty поднятым, и показ цифры UI не разбудит.
+        while wake_rx.try_recv().is_ok() {}
+        p.shared.take_dirty();
+        let t0 = Instant::now();
+        w.write_all(&[&b"\x1b[?2026h"[..], &[d], b"\x1b[?2026l"].concat())
+            .unwrap();
+        let (_, at) = frames_until(&wake_rx, &p.shared, &char::from(d).to_string(), t0);
+        if at < Duration::from_millis(100) {
+            slow.clear();
+            break;
+        }
+        slow.push(at);
     }
-    assert!(
-        sent.elapsed() >= Duration::from_millis(100),
-        "{:?}",
-        sent.elapsed()
-    );
-    assert!(text(&p.shared).contains("HELLO"));
-    // Закрытая вовремя синхронизация показывается сразу.
-    p.shared.take_dirty();
-    let p2 = sink.pokes.load(Ordering::SeqCst);
-    let t0 = Instant::now();
-    w.write_all(b"\x1b[?2026hA\x1b[?2026l").unwrap();
-    while sink.pokes.load(Ordering::SeqCst) == p2 && t0.elapsed() < Duration::from_secs(5) {
-        thread::sleep(Duration::from_millis(2));
-    }
-    assert!(
-        t0.elapsed() < Duration::from_millis(100),
-        "{:?}",
-        t0.elapsed()
-    );
+    assert!(slow.is_empty(), "closed sync shown only after {slow:?}");
     drop(w);
 }
 
