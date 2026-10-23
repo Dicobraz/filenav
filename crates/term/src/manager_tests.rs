@@ -563,7 +563,12 @@ fn git_bash_integration() {
     h.run(Command::new("term.shell").arg("id", "gitbash"));
     h.until("bash prompt", prompt_ready);
     h.input("echo URFIN_ENV=$MSYSTEM\r");
-    h.until("login environment", |m| active_has(m, "URFIN_ENV=MINGW"));
+    // MSYSTEM задаёт /etc/profile: MINGW64 у установщика, UCRT64 у раннеров CI.
+    h.until("login environment", |m| {
+        ["MINGW", "UCRT", "CLANG", "MSYS"]
+            .iter()
+            .any(|v| active_has(m, &format!("URFIN_ENV={v}")))
+    });
     h.input("cd /c/Windows\r");
     h.until("cwd C:\\Windows", |m| is_dir(m, Path::new(r"C:\Windows")));
     h.input("(exit 4)\r");
