@@ -59,6 +59,10 @@ const STORM_FLUSHES: u8 = 3;
 const STORM_NAMES: usize = 32;
 /// В шторм — только `Rescan`, не чаще.
 const STORM_PERIOD: Duration = Duration::from_secs(1);
+/// Столько имён за `STORM_PERIOD` суммарно по flush'ам — шторм: пишущий медленный
+/// (~200 файлов/с на занятой машине) даёт мелкие порции, ни одна не «тяжёлая», а
+/// перечитывать по 3–4 раза в секунду всё равно незачем.
+const STORM_RATE: usize = 64;
 /// Тишина, после которой шторм кончается.
 const STORM_QUIET: Duration = Duration::from_secs(2);
 
@@ -84,6 +88,8 @@ struct WState {
     capped: u8,
     /// Время двух предыдущих тяжёлых flush'ей.
     heavy: [Option<Instant>; 2],
+    /// Окно темпа: начало и имён в нём ([`STORM_RATE`]).
+    rate: (Option<Instant>, usize),
     storm: bool,
     last_flush: Option<Instant>,
     /// Не сбрасывать (листинг ещё идёт).
@@ -222,6 +228,13 @@ impl Debouncer {
                 s.heavy = [s.heavy[1], Some(now)];
             }
             if s.capped >= STORM_FLUSHES {
+                s.storm = true;
+            }
+            if s.rate.0.is_none_or(|t| now >= t + STORM_PERIOD) {
+                s.rate = (Some(now), 0);
+            }
+            s.rate.1 += if s.rescan { STORM_NAMES } else { s.names.len() };
+            if s.rate.1 >= STORM_RATE {
                 s.storm = true;
             }
             let change = if s.gone {

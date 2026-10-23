@@ -85,6 +85,7 @@ ops-job-gone = The task has already finished
 ops-verify-mismatch = copy checksum does not match the source
 ops-verify-bad = Unknown copy check: { $what } (off, size, hash)
 ops-mr-regex-form = regex: “find/replace”, e.g. ^img_/photo_
+ops-mr-cycle-blocked = not renamed: the rename cycle stopped at “{ $name }”
 ops-job-multi-rename = Multi-rename
 ops-mr-nothing = Nothing to rename: names do not change
 ops-mr-skipped = Skipped with problems: { $n }

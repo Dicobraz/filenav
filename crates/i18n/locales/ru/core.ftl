@@ -88,6 +88,7 @@ ops-job-gone = Задача уже завершена
 ops-verify-mismatch = контрольная сумма копии не совпала с источником
 ops-verify-bad = Неизвестная проверка копии: { $what } (off, size, hash)
 ops-mr-regex-form = regex: «найти/заменить», например ^img_/photo_
+ops-mr-cycle-blocked = не переименован: цикл прерван на «{ $name }»
 ops-job-multi-rename = Групповое переименование
 ops-mr-nothing = Переименовывать нечего: имена не меняются
 ops-mr-skipped = Пропущено с проблемами: { $n }
