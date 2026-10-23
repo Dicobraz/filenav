@@ -1,6 +1,6 @@
 # Пакет F — дополнительные фичи (после M3)
 
-Берётся **после закрытия M3** (`docs/TASKS-M3.md`). Это дополнительные функции, не основной поток. Контракты — `docs/specs/S0-contracts-v6.md`. Дизайн — `docs/design/DESIGN.md` (снимки `screen-du*`, `-pkg*`, `-utilmenu`, `-settings-pkg`, `-settings-policies`, `-ssh*`, `-sftp*`, `-termhl`, `-settings-ssh`, `-settings-conn`). Ветки `f0N/NN-кратко`, PR на задачу, метка `win-manual` для GUI.
+Берётся **после закрытия M3** (`docs/TASKS-M3.md`). Это дополнительные функции, не основной поток. Контракты — `docs/archive/S0-contracts-v6.md`. Дизайн — `docs/design/DESIGN.md` (снимки `screen-du*`, `-pkg*`, `-utilmenu`, `-settings-pkg`, `-settings-policies`, `-ssh*`, `-sftp*`, `-termhl`, `-settings-ssh`, `-settings-conn`). Ветки `f0N/NN-кратко`, PR на задачу, метка `win-manual` для GUI.
 
 ## Порядок
 
