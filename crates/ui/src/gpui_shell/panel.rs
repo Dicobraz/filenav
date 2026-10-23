@@ -506,12 +506,18 @@ pub(super) fn head_h(theme: &Theme, mode: ViewMode, state: bool) -> f32 {
 /// Сегменты пути от корня: (подпись, путь до него включительно).
 fn crumbs(t: &Tab) -> Vec<(String, std::path::PathBuf)> {
     let mut acc = std::path::PathBuf::new();
-    let mut out = Vec::new();
+    let mut out: Vec<(String, std::path::PathBuf)> = Vec::new();
     for c in t.loc.path.components() {
         acc.push(c.as_os_str());
         let label = match c {
             std::path::Component::Prefix(p) => p.as_os_str().to_string_lossy().into_owned(),
-            std::path::Component::RootDir => continue,
+            // Сегмент диска ведёт в корень `C:\`, а не в `C:` (текущий каталог диска).
+            std::path::Component::RootDir => {
+                if let Some(last) = out.last_mut() {
+                    last.1.clone_from(&acc);
+                }
+                continue;
+            }
             other => other.as_os_str().to_string_lossy().into_owned(),
         };
         out.push((label, acc.clone()));

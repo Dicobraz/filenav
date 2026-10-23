@@ -575,6 +575,7 @@ impl Handler for CmdlineHandler {
         };
         // Каталог активной панели — для ленивой синхронизации cwd при submit.
         let want = manager::session_cwd(&cx.state.active_tab().loc);
+        let in_cmdline = cx.state.focus == urfin_core::Focus::Cmdline;
         let rt = cx.rt;
         let Some(st) = cx.state.ext.get_mut::<TermState>() else {
             return Err(not_yet(cmd));
@@ -628,6 +629,10 @@ impl Handler for CmdlineHandler {
                     return Err(not_yet(cmd));
                 }
                 if line.is_empty() {
+                    // За спрятанными панелями пустой Enter — новый промпт shell (Far).
+                    if in_cmdline {
+                        st.sessions.write(&st.config, rt, b"\r".to_vec(), false)?;
+                    }
                     return Ok(());
                 }
                 let TermState {

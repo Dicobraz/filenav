@@ -107,7 +107,7 @@
 | `prompt.reply` | `id:int`, `choice:str`, `input?:str`, `all?:bool` | Answer | Ответить | — | — |
 | `prompt.cancel` | `id:int` | Dismiss | Закрыть | — | — |
 
-## `ui` (41)
+## `ui` (42)
 
 | Команда | Аргументы | EN | RU | Клавиши (Far) | Меню F9 |
 |---|---|---|---|---|---|
@@ -142,6 +142,7 @@
 | `ui.columns` | `set:str` | Columns | Колонки | — | — |
 | `ui.panels.toggle_all` | `show?:bool` | Hide or show panels | Скрыть или показать панели | Ctrl+O | commands |
 | `ui.about` | — | About | О программе | — | options |
+| `ui.copy_names` | `full?:bool` | Copy names | Copy names | — | — |
 | `ui.tree.up` | — | Tree: up | Дерево: вверх | — | — |
 | `ui.tree.down` | — | Tree: down | Дерево: вниз | — | — |
 | `ui.tree.page_up` | — | Tree: page up | Дерево: страница вверх | — | — |

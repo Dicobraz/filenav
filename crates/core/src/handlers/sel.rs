@@ -210,8 +210,17 @@ fn select_moving(t: &mut Tab, a: &Args) -> Result<(), CmdError> {
         Some(Row::Entry { idx, .. }) => !t.selection.contains(idx),
         _ => true,
     };
+    // Как в Far: строка, куда встаёт курсор, не помечается (её пометит следующий
+    // шаг); у края списка шага дальше нет — край помечается тоже (Shift+End).
+    let edge = match m {
+        Motion::End | Motion::PageDown => target == last,
+        Motion::Home | Motion::PageUp => target == 0,
+        Motion::Up | Motion::Down => false,
+    };
     let span: Vec<u32> = match target.cmp(&cur) {
+        std::cmp::Ordering::Greater if edge => (cur..=target).collect(),
         std::cmp::Ordering::Greater => (cur..target).collect(),
+        std::cmp::Ordering::Less if edge => (target..=cur).collect(),
         std::cmp::Ordering::Less => (target + 1..=cur).collect(),
         std::cmp::Ordering::Equal => vec![cur],
     };

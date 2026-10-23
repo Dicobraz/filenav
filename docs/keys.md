@@ -294,6 +294,18 @@ URFIN_UPDATE_DOCS=1 cargo nextest run -p urfin-keymap keys_doc -->
 | `Cmd+C` | `cmdline.copy` | M |
 | `Alt+Backspace` | `cmdline.del.word_left` | M |
 
+### `cmdline`
+
+| Сочетание | Команда | ОС |
+|---|---|---|
+| `Left` | `cmdline.cursor.left` | W M L |
+| `Right` | `cmdline.cursor.right` | W M L |
+| `Home` | `cmdline.home` | W M L |
+| `End` | `cmdline.end` | W M L |
+| `Backspace` | `cmdline.backspace` | W M L |
+| `Delete` | `cmdline.delete` | W M L |
+| `Enter` | `cmdline.exec` | W M L |
+
 ### `terminal`
 
 | Сочетание | Команда | ОС |
@@ -641,6 +653,18 @@ URFIN_UPDATE_DOCS=1 cargo nextest run -p urfin-keymap keys_doc -->
 | `Alt+Right` | `cmdline.word.right` | M |
 | `Cmd+V` | `cmdline.paste` | M |
 | `Cmd+C` | `cmdline.copy` | M |
+
+### `cmdline`
+
+| Сочетание | Команда | ОС |
+|---|---|---|
+| `Left` | `cmdline.cursor.left` | W M L |
+| `Right` | `cmdline.cursor.right` | W M L |
+| `Home` | `cmdline.home` | W M L |
+| `End` | `cmdline.end` | W M L |
+| `Backspace` | `cmdline.backspace` | W M L |
+| `Delete` | `cmdline.delete` | W M L |
+| `Enter` | `cmdline.exec` | W M L |
 
 ### `terminal`
 

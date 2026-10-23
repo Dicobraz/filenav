@@ -277,9 +277,9 @@ fn cmdline_keeps_text() {
     let mut ki = input();
     let st = state(Focus::Cmdline);
     let evs = vec![press(Key::B, Modifiers::NONE), Event::Text("b".into())];
-    let f = run(&mut ki, &st, evs.clone());
-    assert_eq!(f.cmds, Vec::<String>::new());
-    assert_eq!(f.events, evs);
+    let f = run(&mut ki, &st, evs);
+    // Строку ввода правит Core (S6-15): печать — `cmdline.insert`, как из панели.
+    assert_eq!(f.cmds, ["cmdline.insert text=b"]);
 }
 
 /// Терминал (ADR-0015): привязок `panel` и `global` нет — непечатные клавиши и
