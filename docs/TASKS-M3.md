@@ -2,7 +2,7 @@
 
 Текст задач — `specs/S6.md` §10, здесь не дублируется. «Дельты» — правки из S0-contracts-v2…v5, S0-decisions и ADR; они главнее текста задачи (CLAUDE.md «Где правда»). «Следствие» — вывод сборщика пакета; расходится с ADR — прав ADR, вопрос владельцу.
 
-Ветки `s6/NN-кратко`, заголовок PR — Conventional Commits. Видимое в окне — с меткой `win-manual` и разделом в `docs/MANUAL-TESTS.md`.
+Ветки `s6/NN-кратко`, заголовок PR — Conventional Commits. Видимое в окне — с меткой `win-manual` и файлом `docs/manual-tests/<ID>.md`.
 
 **Платформа:** только Windows (S0-decisions №57). S6-03 (unix PTY) не делаем; в S6-13 — только WSL и Git Bash (bash внутри Windows), без macOS/Linux-хостов, zsh и fish — только как shell внутри WSL, если найдены. Интеграционные тесты — на windows-latest и стенде.
 

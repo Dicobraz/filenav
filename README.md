@@ -29,7 +29,7 @@ Rust, UI на GPUI (gpui-kit, [ADR-0018](docs/adr/0018-ui-gpui.md)). Тольк�
 | M6 | Выпуск: perf, установка (winget, Scoop, MSIX) (S9) | — |
 | F-01…F-03 | Анализ места, менеджеры пакетов, SSH | после M3, [docs/01-ROADMAP.md](docs/01-ROADMAP.md) |
 
-Задачи по вехам — `docs/TASKS-M*.md`, ручные проверки и их итоги — [docs/MANUAL-TESTS.md](docs/MANUAL-TESTS.md).
+Задачи по вехам — `docs/TASKS-M*.md`, ручные проверки и их итоги — [docs/manual-tests/](docs/manual-tests/) (файл на задачу; до 2026-10-24 — ARCHIVE.md).
 
 ## Сборка и запуск
 
