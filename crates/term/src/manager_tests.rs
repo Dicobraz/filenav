@@ -460,7 +460,9 @@ fn powershell_integration() {
     assert!(prompt.starts_with(r"PS C:\Windows>"), "{prompt:?}");
     assert!(st.prompt_row().is_some());
 
-    // Панель — в своём каталоге: submit сначала тихо переходит туда.
+    // Панель пошла за shell (S6-14); вернуть её — submit сначала тихо переходит туда.
+    h.panel_at(Path::new(r"C:\Windows"));
+    h.go(&home);
     h.submit("Write-Output \"URFIN_Q=$PWD\"");
     let want = format!("URFIN_Q={}", home.display());
     h.until("quiet cd before command", |m| active_has(m, &want));
@@ -526,6 +528,8 @@ fn cmd_integration_and_silent_fallback() {
     });
     h.input("cd /d C:\\Windows\r");
     h.until("cwd C:\\Windows", |m| is_dir(m, Path::new(r"C:\Windows")));
+    h.panel_at(Path::new(r"C:\Windows"));
+    h.go(&home);
     h.submit("echo URFIN_C=%CD%");
     let want = format!("URFIN_C={}", home.display());
     h.until("visible cd before command", |m| active_has(m, &want));
@@ -574,7 +578,62 @@ fn git_bash_integration() {
     h.input("(exit 4)\r");
     h.until("exit code 4", |m| exit_is(m, Some(4)));
     let home = h.dir();
+    h.panel_at(Path::new(r"C:\Windows"));
+    h.go(&home);
     h.submit("echo URFIN_B=done");
     h.until("command after quiet cd", |m| active_has(m, "URFIN_B=done"));
     h.until("cwd back to the panel", |m| is_dir(m, &home));
+}
+
+impl H {
+    fn go(&mut self, p: &Path) {
+        self.run(Command::new("panel.go").arg("path", Location::local(p)));
+    }
+
+    fn panel_at(&mut self, p: &Path) {
+        let t0 = Instant::now();
+        while !same_path(&self.core.state().active_tab().loc.path, p) {
+            assert!(
+                t0.elapsed() < Duration::from_secs(30),
+                "panel at {:?}, want {}",
+                self.core.state().active_tab().loc.path,
+                p.display()
+            );
+            self.core.pump(Duration::from_millis(1));
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+}
+
+/// Приёмка S6-14 на настоящем Windows PowerShell: 50 быстрых навигаций панели — 0
+/// записей в PTY, затем submit — ровно один тихий cd; `cd ..` в shell сдвигает
+/// панель, обратного cd нет.
+#[test]
+fn cwd_sync_both_ways() {
+    let mut h = H::new();
+    h.until("warm-up session", running);
+    h.run(Command::new("term.shell").arg("id", "powershell"));
+    h.until("powershell prompt", prompt_ready);
+    let home = h.dir();
+    h.until("start cwd", |m| is_dir(m, &home));
+    let win = PathBuf::from(r"C:\Windows");
+    let before = h.mgr().syncs;
+    for i in 0..50 {
+        h.go(if i % 2 == 0 { &home } else { &win });
+    }
+    h.panel_at(&win);
+    assert_eq!(h.mgr().syncs, before, "no PTY writes while the panel moves");
+    assert!(is_dir(h.mgr(), &home));
+
+    h.submit("Write-Output URFIN_S1");
+    h.until("command ran", |m| active_has(m, "URFIN_S1"));
+    h.until("shell followed the panel", |m| is_dir(m, &win));
+    assert_eq!(h.mgr().syncs, before + 1, "exactly one quiet cd");
+
+    h.input("cd ..\r");
+    h.until("shell went up", |m| is_dir(m, Path::new(r"C:\")));
+    h.panel_at(Path::new(r"C:\"));
+    h.submit("Write-Output URFIN_S2");
+    h.until("second command", |m| active_has(m, "URFIN_S2"));
+    assert_eq!(h.mgr().syncs, before + 1, "no reverse cd");
 }

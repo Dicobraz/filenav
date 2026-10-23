@@ -219,6 +219,7 @@ ui-panel-count = { $count } { $count ->
 ui-status-selected = Selected { $count } of { $total }
 ui-status-selected-bytes = Selected { $count } of { $total } · { $bytes }
 ui-status-free = { $root } { $bytes } free
+ui-status-shell-cwd = shell: { $dir }
 ui-status-dir = { $name } · { $count } { $count ->
     [one] item
    *[other] items

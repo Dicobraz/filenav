@@ -154,5 +154,34 @@ pub fn zones(s: &urfin_core::AppState, fmt: &FmtCfg) -> [String; 3] {
             i18n.fmt("ui-status-free", &a)
         })
         .unwrap_or_default();
+    // Таб на архиве или sftp: shell — в ближайшем локальном каталоге, а не «внутри»
+    // (S6 §5.1) — показать, где он.
+    let free = match shell_elsewhere(s) {
+        Some(dir) => {
+            let mut a = FluentArgs::new();
+            a.set("dir", dir);
+            let mark = i18n.fmt("ui-status-shell-cwd", &a);
+            if free.is_empty() {
+                mark
+            } else {
+                format!("{mark} · {free}")
+            }
+        }
+        None => free,
+    };
     [file, sel, free]
+}
+
+/// Каталог shell, если таб нелокальный (архив, sftp) и shell с интеграцией.
+fn shell_elsewhere(s: &urfin_core::AppState) -> Option<String> {
+    if s.active_tab().loc.is_local() {
+        return None;
+    }
+    let slot = s
+        .ext
+        .get::<urfin_term::TermState>()?
+        .sessions
+        .active()
+        .filter(|a| a.integrated)?;
+    Some(slot.cwd.as_ref()?.display().to_string())
 }
