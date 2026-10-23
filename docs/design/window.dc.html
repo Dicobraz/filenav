@@ -99,9 +99,8 @@ body{margin:0}
 <div style="height: 36px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid {{t.b}}; background: {{t.h}}">
 <span style="display: inline-flex; color: {{t.a}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.1"></rect><path d="M6.5 6v4.5l3.8-2.25z" fill="currentColor"></path></svg></span>
 <span style="color: {{t.s}}">%USERPROFILE%\Urfin\recordings</span>
-<span style="{{tagStyle}}">asciicast v2</span>
 <span style="{{tagStyle}}">только чтение</span>
-<span role="status" style="{{stChipN}}"><span style="display: inline-flex; color: {{t.a}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 13.5h12" stroke="currentColor" stroke-width="1.4"></path><path d="M4.5 11l5.8-7.6 2 1.6-5.8 7.6H4.5z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"></path></svg></span><span>Подсветка вывода</span><span style="color: {{t.s}}; font-size: 11.5px">Ctrl+Alt+H</span></span>
+<button type="button" aria-pressed="true" title="Подсветка вывода (Ctrl+Alt+H)" style="margin-left: auto; height: 28px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid {{t.a}}; border-radius: 5px; background: {{t.c}}; color: {{t.ct}}; font: inherit"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 13.5h12" stroke="currentColor" stroke-width="1.4"></path><path d="M4.5 11l5.8-7.6 2 1.6-5.8 7.6H4.5z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"></path></svg>Подсветка</button>
 <div style="margin-left: 8px; display: flex; border: 1px solid {{t.b}}; border-radius: 5px; overflow: hidden">
 <sc-for list="{{stViewSeg}}" as="vs" hint-placeholder-count="3"><button type="button" style="{{vs.style}}">{{vs.label}}</button></sc-for>
 </div>
@@ -3342,7 +3341,7 @@ const STATUS = {
 sshpair: ["ssh.exe · ключ ed25519 из агента","папка: /var/www/app ↔ панель","UTF-8 · 79×18"],
 sshmulti: ["Группа: 3 сеанса из 4","первая команда подтверждена в 14:05","UTF-8 · 136×31"],
 sshrec: ["Запись: %USERPROFILE%\\Urfin\\recordings\\srv1-2026-10-23-1402.cast","1,2 МБ","asciicast v2"],
-sshrecview: ["admin@srv1 · 132×30","записано 23.10.26 14:02 · 12:47","1,2 МБ"],
+sshrecview: ["admin@srv1 · 132×30","записано 23.10.26 14:02 · 12:47","asciicast v2 · 1,2 МБ"],
 termhl: ["pwsh 7.5 · интеграция с оболочкой","","Скроллбэк 1 204 строки"],
 sftppanel: ["current → releases/42","Выделено 0 из 12","admin@srv1.corp.local · ssh-ed25519 · ключ из агента (Pageant)"],
 sftplost: ["current → releases/42","Выделено 0 из 12","admin@srv1.corp.local · ssh-ed25519 · ключ из агента (Pageant)"],
