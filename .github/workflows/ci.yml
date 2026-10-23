@@ -6,6 +6,8 @@ on:
   pull_request:
     # edited — чтобы правка заголовка PR перезапускала его проверку.
     types: [opened, synchronize, reopened, edited]
+  # Очередь мержа (merge queue): GitHub сам ставит PR поверх main и гоняет CI.
+  merge_group:
 
 # Новый прогон отменяет старый для той же ветки. Правка заголовка (edited) идёт
 # в отдельной группе и не отменяет сборку.
