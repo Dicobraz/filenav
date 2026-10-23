@@ -8,7 +8,7 @@ edition = "2024"
 rust-version = "1.95"
 license = "MIT OR Apache-2.0"
 authors = ["Anton Antropov"]
-repository = "https://github.com/Dicobraz/filenav"
+repository = "https://github.com/Dicobraz421/Urfin"
 
 [workspace.dependencies]
 # Крейты workspace. Рёбра между ними заводит задача, которая начинает их использовать.
@@ -247,4 +247,4 @@ strip = false
 # ресайз (новая область до кадра — фоном окна, не чёрной), шейдеры в exe байткодом
 # (компиляция при сборке), принудительный WARP (`GPUI_FORCE_WARP=1`), поток vsync будится
 # с новым окном, ленивые текстуры путей. Обновлять вместе с gpui-kit.
-gpui-pre-windows = { git = "https://github.com/Dicobraz/pets", rev = "a280d8587d91c2b90a06499b29247f4d300dd740" }
+gpui-pre-windows = { git = "https://github.com/Dicobraz421/pets", rev = "a280d8587d91c2b90a06499b29247f4d300dd740" }
