@@ -40,3 +40,15 @@
 | # | Изменение | Откуда |
 |---|---|---|
 | 19 | Спаны tracing (v5 №10): `du.scan`, `du.first_rows`, `du.cache_load`, `du.layout`; `pkg.detect`, `pkg.list`, `pkg.search`, `pkg.action` | F01 №10, F02 |
+
+## F-03 SSH
+| # | Изменение | Откуда |
+|---|---|---|
+| 20 | Схема **`sftp`**: `Location { backend: "sftp", authority: "<профиль>", path }`, URI `sftp://<профиль>/путь` (№87); `sftp://user@host:port/путь` — только ввод (ищет профиль или создаёт разовый). Уточняет S8 запрос №6. Таб сохраняется в сессии без подключения | F03 №1 |
+| 21 | Колонки схемы (№1) — и для не-виртуальных схем: `sftp` объявляет «Права», «Владелец», данные — `Entry.ext`; публичный `Entry` не меняется | F03 №2 |
+| 22 | **`urfin-term` — публичные безопасные API**: `SessionKind::External { argv, env, title }` (без интеграции, `NoIntegration`, OSC 7 доверен); `TermApi::broadcast(ids, bytes)`; `TermApi::tap(id) -> TapRx` (сырой вывод для записи); флаг «цвет по умолчанию» у ячейки снапшота | F03 №3 |
+| 23 | Крейт **`urfin-net` (фаза 3)**, без `unsafe`. Зависимости: `russh`, `russh-sftp` (Apache-2.0), `tokio` (MIT; rt, net, io-util, time, sync, named pipes), `keyring` (MIT OR Apache-2.0, только Credential Manager), `shell-words` (MIT/Apache-2.0); версии пинятся в F03-01 по cargo-deny, рост exe — строкой в PR (№80) | F03 №4 |
+| 24 | Флаг app **`--askpass`** — ранний выход из `boot.rs` до GPUI, без окна, IPC единственного экземпляра не действует (как №17) | F03 №5 |
+| 25 | Namespace **`ssh`** (`ssh.new`, `ssh.edit`, `ssh.disconnect`, `ssh.reconnect`, `ssh.terminal`, `ssh.pair_focus` — Ctrl+Tab, `ssh.cd_here`, `ssh.group.edit` — Ctrl+Alt+G, `ssh.group.toggle`, `ssh.group.leave`), **`sftp`** (`sftp.open`, `sftp.refresh`); в `term`: `term.highlight.toggle` — Ctrl+Alt+H, `term.record.toggle` — Ctrl+Alt+R; во `viewer`: режим `Cast`, `viewer.cast.play`, `viewer.cast.seek`, `viewer.cast.speed`. Контексты keymap: `in_sftp`, `in_sshpair`, `ssh_term`, `ssh_group`, `cast_view`; Ctrl+Tab в `in_sshpair` и `in_du` не конфликтуют (проверка `commands_doc`) | F03 №6 |
+| 26 | Файлы на диске (формат фиксирован): `%APPDATA%\Urfin\connections.toml` v1, `state/ssh/history.toml`, `state/ssh/run/<nonce>/`, `%LOCALAPPDATA%\Urfin\recordings\*.cast` (asciicast v2), `%LOCALAPPDATA%\Urfin\temp\sftp\`; `~/.ssh/known_hosts` — только дописывание, замена строки — по явному действию | F03 №7 |
+| 27 | Спаны tracing: `net.connect`, `net.auth`, `net.hostkey`, `net.sftp.list`, `net.sftp.transfer`, `ssh.term.spawn`, `term.record`, `term.highlight`, `viewer.cast.seek`; секреты в полях спанов запрещены (тест) | F03 №8 |
