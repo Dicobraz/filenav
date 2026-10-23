@@ -19,6 +19,9 @@ body{margin:0}
 </sc-if>
 <div style="height: 40px; display: flex; align-items: flex-end; gap: 2px; padding-left: 12px">
 <sc-if value="{{oneSet}}" hint-placeholder-val="{{ true }}">
+<sc-for list="{{sqTabs}}" as="tb" hint-placeholder-count="0">
+<button type="button" aria-label="{{tb.aria}}" title="{{tb.aria}}" style="{{tb.style}}; {{nwTabBtn}}"><sc-if value="{{tb.icon}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.1"></rect><path d="M8 2.5v11 M1.5 5.5h13" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></sc-if><span style="{{nwTabLbl}}">{{tb.label}}</span><sc-if value="{{tb.host}}" hint-placeholder-val="{{ false }}"><span title="Удалённый файл: {{tb.host}}" style="{{tb.hostStyle}}">{{tb.host}}</span></sc-if><sc-if value="{{tb.close}}" hint-placeholder-val="{{ false }}"><span style="color: {{t.s}}; font-size: 11px" aria-hidden="true">×</span></sc-if></button>
+</sc-for>
 <sc-for list="{{tabs}}" as="tb" hint-placeholder-count="3">
 <button type="button" aria-label="{{tb.aria}}" title="{{tb.aria}}" style="{{tb.style}}; {{nwTabBtn}}"><sc-if value="{{tb.icon}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.1"></rect><path d="M8 2.5v11 M1.5 5.5h13" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></sc-if><span style="{{nwTabLbl}}">{{tb.label}}</span><sc-if value="{{tb.close}}" hint-placeholder-val="{{ false }}"><span style="color: {{t.s}}; font-size: 11px" aria-hidden="true">×</span></sc-if></button>
 </sc-for>
@@ -67,6 +70,19 @@ body{margin:0}
 <button type="button" aria-label="Новая вкладка" style="flex: none; height: 32px; padding: 0 12px; border: 0; background: transparent; color: {{t.s}}; font: inherit">+</button>
 </div>
 </sc-if>
+<sc-if value="{{stTitleOn}}" hint-placeholder-val="{{ false }}">
+<div role="group" aria-label="Состояние сеанса" style="align-self: flex-start; height: 32px; display: flex; align-items: center; gap: 8px; padding-left: 12px">
+<sc-if value="{{stMulti}}" hint-placeholder-val="{{ false }}">
+<span role="alert" style="{{stChip}}"><span style="display: inline-flex; color: {{t.rem}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8l6.5 12H1.5z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"></path><path d="M8 6.2v3.6" stroke="currentColor" stroke-width="1.4"></path><circle cx="8" cy="11.8" r="0.8" fill="currentColor"></circle></svg></span><span>Ввод в 3 сеанса: <span style="font-weight: 600">srv1, srv2, srv3</span></span><button type="button" style="{{stChipBtn}}">Выйти <span style="color: {{t.s}}; font-size: 11px">Esc</span></button></span>
+</sc-if>
+<sc-if value="{{stRec}}" hint-placeholder-val="{{ false }}">
+<span role="status" aria-label="Идёт запись сеанса, 4 мин 12 с" style="{{stChip}}"><span style="display: inline-flex; color: {{t.k}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.2"></circle><circle cx="8" cy="8" r="3.4" fill="currentColor"></circle></svg></span><span>Запись <span style="font-weight: 600">04:12</span></span><span style="display: inline-flex; align-items: center; gap: 4px; color: {{t.s}}; font-size: 11.5px"><svg width="11" height="11" viewBox="0 0 16 16" aria-label="Задано политикой организации"><rect x="3" y="7" width="10" height="7.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"></rect><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.3"></path></svg>обязательна · политика · TOML</span></span>
+</sc-if>
+<sc-if value="{{stHlChip}}" hint-placeholder-val="{{ false }}">
+<span role="status" style="{{stChipN}}"><span style="display: inline-flex; color: {{t.a}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 13.5h12" stroke="currentColor" stroke-width="1.4"></path><path d="M4.5 11l5.8-7.6 2 1.6-5.8 7.6H4.5z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"></path></svg></span><span>Подсветка вывода</span><span style="color: {{t.s}}; font-size: 11.5px">Ctrl+Alt+H</span></span>
+</sc-if>
+</div>
+</sc-if>
 <div style="margin-left: auto; flex: none; align-self: flex-start; display: flex; align-items: center">
 <sc-if value="{{ctx.on}}" hint-placeholder-val="{{ false }}">
 <span style="margin-right: 12px; padding: 2px 8px; border: 1px solid {{ctx.color}}; border-radius: 4px; color: {{ctx.color}}; font-size: 12px">{{ctx.label}}</span>
@@ -77,6 +93,58 @@ body{margin:0}
 </div>
 </div>
 <div style="flex: 1; min-height: 0; display: flex; gap: 1px; background: {{t.b}}; position: relative{{zmGap}}">
+<sc-if value="{{stOn}}" hint-placeholder-val="{{ false }}">
+<div style="{{stBox}}">
+<sc-if value="{{stView}}" hint-placeholder-val="{{ false }}">
+<div style="height: 36px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid {{t.b}}; background: {{t.h}}">
+<span style="display: inline-flex; color: {{t.a}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.1"></rect><path d="M6.5 6v4.5l3.8-2.25z" fill="currentColor"></path></svg></span>
+<span style="color: {{t.s}}">%USERPROFILE%\Urfin\recordings</span>
+<span style="{{tagStyle}}">только чтение</span>
+<button type="button" aria-pressed="true" title="Подсветка вывода (Ctrl+Alt+H)" style="margin-left: auto; height: 28px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid {{t.a}}; border-radius: 5px; background: {{t.c}}; color: {{t.ct}}; font: inherit"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 13.5h12" stroke="currentColor" stroke-width="1.4"></path><path d="M4.5 11l5.8-7.6 2 1.6-5.8 7.6H4.5z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"></path></svg>Подсветка</button>
+<div style="margin-left: 8px; display: flex; border: 1px solid {{t.b}}; border-radius: 5px; overflow: hidden">
+<sc-for list="{{stViewSeg}}" as="vs" hint-placeholder-count="3"><button type="button" style="{{vs.style}}">{{vs.label}}</button></sc-for>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{stHead}}" hint-placeholder-val="{{ false }}">
+<div style="{{stHeadBar}}">
+<button type="button" aria-haspopup="listbox" aria-label="Сеанс терминала: ssh srv1" style="{{stShellBtn}}">ssh srv1 <span style="color: {{t.s}}; font-size: 10px; font-weight: 400">▾</span></button>
+</div>
+</sc-if>
+<div style="flex: 1; min-height: 0; display: flex">
+<sc-if value="{{stMulti}}" hint-placeholder-val="{{ false }}">
+<div role="group" aria-label="Сеансы SSH" style="{{stSessList}}">
+<div style="padding: 2px 8px 6px; color: {{t.s}}; font-size: 11.5px">Сеансы · группа ввода</div>
+<sc-for list="{{stSess}}" as="ss" hint-placeholder-count="4"><label style="{{ss.row}}"><input type="checkbox" readOnly="{{ true }}" checked="{{ss.on}}" style="margin: 0"><span style="min-width: 0; display: flex; flex-direction: column; gap: 1px"><span style="font-weight: 500">{{ss.name}}</span><span style="{{ss.subSt}}">{{ss.sub}}</span></span></label></sc-for>
+</div>
+</sc-if>
+<div style="{{stOut}}">
+<sc-for list="{{stLines}}" as="ln" hint-placeholder-count="20"><div style="{{ln.st}}"><sc-for list="{{ln.g}}" as="sg" hint-placeholder-count="3"><span style="{{sg.s}}">{{sg.x}}</span></sc-for></div></sc-for>
+</div>
+</div>
+<sc-if value="{{stPlay}}" hint-placeholder-val="{{ false }}">
+<div role="toolbar" aria-label="Проигрывание записи" style="{{stBar}}">
+<button type="button" aria-label="Воспроизвести (Пробел)" style="{{stIconBtn}}"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 1.2v9.6L10.5 6z" fill="currentColor"></path></svg></button>
+<span style="font-family: 'Cascadia Mono', Consolas, monospace; font-size: 12.5px">04:12</span>
+<div role="slider" aria-label="Позиция" aria-valuetext="04:12 из 12:47" style="flex: 1; min-width: 120px; height: 30px; position: relative">
+<div style="position: absolute; left: 0; right: 0; top: 13px; height: 4px; border-radius: 2px; background: {{t.b}}"></div>
+<div style="position: absolute; left: 0; width: 32.9%; top: 13px; height: 4px; border-radius: 2px; background: {{t.a}}"></div>
+<sc-for list="{{stTicks}}" as="tk" hint-placeholder-count="4"><div style="{{tk}}"></div></sc-for>
+<div style="position: absolute; left: calc(32.9% - 7px); top: 8px; width: 14px; height: 14px; box-sizing: border-box; border-radius: 7px; background: {{t.a}}; border: 2px solid {{t.p}}; box-shadow: 0 0 0 1px {{t.a}}"></div>
+</div>
+<span style="font-family: 'Cascadia Mono', Consolas, monospace; font-size: 12.5px; color: {{t.s}}">12:47</span>
+<div role="group" aria-label="Скорость" style="margin-left: 8px; display: flex; border: 1px solid {{t.b}}; border-radius: 5px; overflow: hidden">
+<sc-for list="{{stSpeed}}" as="sp" hint-placeholder-count="3"><button type="button" style="{{sp.style}}">{{sp.label}}</button></sc-for>
+</div>
+<span style="margin-left: 8px; display: inline-flex; color: {{t.s}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.1"></circle><path d="M10.5 10.5l3.5 3.5" stroke="currentColor" stroke-width="1.1"></path></svg></span>
+<div aria-label="Поиск в записи" style="width: 170px; display: flex; align-items: center; {{inputStyle}}">failed</div>
+<span style="color: {{t.s}}; font-size: 12px; white-space: nowrap">2 из 6</span>
+<button type="button" aria-label="Предыдущее" style="{{stIconBtn}}"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M1.5 6.5L5 3l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.3"></path></svg></button>
+<button type="button" aria-label="Следующее" style="{{stIconBtn}}"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M1.5 3.5L5 7l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.3"></path></svg></button>
+</div>
+</sc-if>
+</div>
+</sc-if>
 <sc-if value="{{showTerm}}" hint-placeholder-val="{{ false }}">
 <div style="position: absolute; left: 0; right: 0; top: 0; bottom: 0; padding: 8px 12px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: flex-end; background: {{t.p}}; font-family: 'Cascadia Mono', Consolas, monospace; font-size: 13px; overflow: hidden">
 <sc-for list="{{termLines}}" as="ln" hint-placeholder-count="20"><div style="height: 19px; flex: none; display: flex; white-space: pre"><sc-for list="{{ln}}" as="sg" hint-placeholder-count="2"><span style="{{sg.s}}">{{sg.x}}</span></sc-for></div></sc-for>
@@ -105,6 +173,37 @@ body{margin:0}
 <sc-if value="{{pn.ddFrame}}" hint-placeholder-val="{{ false }}"><div style="position: absolute; left: 0; top: 0; right: 0; bottom: 0; border: 2px solid {{t.a}}; pointer-events: none; z-index: 5"></div></sc-if>
 <div style="height: 30px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid {{t.b}}; font-size: 12.5px; flex: none">
 <span style="display: flex; align-items: flex-end; align-self: stretch; gap: 8px">
+<sc-if value="{{pn.scBag}}" hint-placeholder-val="{{ false }}">
+<span style="position: relative; display: flex; {{popShadow}}">
+<button type="button" style="position: relative; z-index: 2; height: 25px; margin-bottom: -1px; padding: 0 10px 1px; display: flex; align-items: center; gap: 6px; border: 1px solid {{t.b}}; border-bottom: 0; border-radius: 8px 8px 0 0; background: {{t.p}}; color: {{t.t}}; font: inherit; font-weight: 500">C: <span style="color: {{t.s}}; font-size: 10px">▾</span></button>
+<svg width="9" height="9" viewBox="0 0 9 9" aria-hidden="true" style="position: absolute; right: -8px; top: calc(100% - 8px); z-index: 3; transform: scaleX(-1)"><path d="M0 9V8.5A8.5 8.5 0 0 0 8.5 0H9V9Z" fill="{{t.p}}"></path><path d="M0 8.5A8.5 8.5 0 0 0 8.5 0" fill="none" stroke="{{t.b}}"></path></svg>
+<div role="listbox" aria-label="Диски и подключения" style="position: absolute; left: 0; top: 100%; width: 420px; padding: 6px 4px 4px; box-sizing: border-box; background: {{t.p}}; border: 1px solid {{t.b}}; border-radius: 0 8px 8px 8px; display: flex; flex-direction: column; z-index: 1; font-weight: 400">
+<sc-for list="{{scDrv}}" as="dv" hint-placeholder-count="14">
+<sc-if value="{{dv.head}}" hint-placeholder-val="{{ false }}"><div style="{{scHeadSt}}">{{dv.label}}</div></sc-if>
+<sc-if value="{{dv.item}}" hint-placeholder-val="{{ true }}">
+<button type="button" style="{{dv.style}}">
+<span style="display: inline-flex; color: {{dv.iconColor}}"><sc-if value="{{dv.isDrive}}" hint-placeholder-val="{{ true }}"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="4.5" width="13" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.1"></rect><path d="M4 8h3" stroke="currentColor" stroke-width="1.1"></path><circle cx="11.5" cy="8" r="0.9" fill="currentColor"></circle></svg></sc-if><sc-if value="{{dv.isNet}}" hint-placeholder-val="{{ false }}"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.1"></rect><path d="M8 8.5v3 M3 13.5h10 M8 11.5v2" stroke="currentColor" stroke-width="1.1"></path></svg></sc-if><sc-if value="{{dv.isPlace}}" hint-placeholder-val="{{ false }}"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14s4.5-4 4.5-7.5a4.5 4.5 0 0 0-9 0C3.5 10 8 14 8 14z" fill="none" stroke="currentColor" stroke-width="1.1"></path><circle cx="8" cy="6.5" r="1.5" fill="none" stroke="currentColor" stroke-width="1.1"></circle></svg></sc-if></span>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; text-align: left">
+<span style="display: flex; gap: 8px; align-items: baseline"><span style="font-weight: 500">{{dv.name}}</span><span style="color: {{dv.subColor}}; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{dv.sub}}</span></span>
+<sc-if value="{{dv.hasBar}}" hint-placeholder-val="{{ false }}"><span style="height: 4px; border-radius: 2px; background: {{dv.track}}; overflow: hidden; display: block"><span style="{{dv.bar}}"></span></span></sc-if>
+</span>
+<span style="color: {{dv.subColor}}; font-size: 12px; white-space: nowrap">{{dv.free}}</span>
+</button>
+</sc-if>
+<sc-if value="{{dv.ssh}}" hint-placeholder-val="{{ false }}">
+<button type="button" style="{{dv.style}}">
+<span style="position: relative; display: inline-flex; color: {{dv.iconColor}}"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2.5" width="12" height="4.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.1"></rect><rect x="2" y="9" width="12" height="4.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.1"></rect><path d="M4.5 4.75h1.5 M4.5 11.25h1.5" stroke="currentColor" stroke-width="1.1"></path></svg><sc-if value="{{dv.live}}" hint-placeholder-val="{{ false }}"><span role="img" aria-label="подключено" style="{{dv.dot}}"></span></sc-if></span>
+<span style="flex: 1; min-width: 0; display: flex; gap: 8px; align-items: baseline; text-align: left"><span style="font-weight: 500">{{dv.name}}</span><span style="color: {{dv.subColor}}; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{dv.sub}}</span><sc-if value="{{dv.cfg}}" hint-placeholder-val="{{ false }}"><span style="{{dv.tagSt}}">config</span></sc-if></span>
+<span style="color: {{dv.subColor}}; font-size: 12px; white-space: nowrap">{{dv.when}}</span>
+</button>
+</sc-if>
+<sc-if value="{{dv.add}}" hint-placeholder-val="{{ false }}">
+<button type="button" style="{{dv.style}}"><span style="width: 18px; display: inline-flex; justify-content: center; color: {{t.a}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v11 M2.5 8h11" stroke="currentColor" stroke-width="1.3"></path></svg></span><span style="flex: 1; text-align: left">Новое подключение…</span><span style="color: {{t.s}}; font-size: 11px">Ins</span></button>
+</sc-if>
+</sc-for>
+</div>
+</span>
+</sc-if>
 <sc-if value="{{pn.drives}}" hint-placeholder-val="{{ false }}">
 <span style="position: relative; display: flex; {{popShadow}}">
 <button type="button" style="position: relative; z-index: 2; height: 25px; margin-bottom: -1px; padding: 0 10px 1px; display: flex; align-items: center; gap: 6px; border: 1px solid {{t.b}}; border-bottom: 0; border-radius: 8px 8px 0 0; background: {{t.p}}; color: {{t.t}}; font: inherit; font-weight: 500">C: <span style="color: {{t.s}}; font-size: 10px">▾</span></button>
@@ -163,7 +262,7 @@ body{margin:0}
 </span>
 </sc-if>
 <sc-if value="{{pn.pkChip}}" hint-placeholder-val="{{ false }}"><span style="align-self: center; {{pn.pkChipStyle}}"><svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5l6 3v7l-6 3-6-3v-7z M2 4.5l6 3 6-3 M8 7.5v7" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg>{{pn.pkChip}}</span></sc-if><sc-if value="{{pn.psHead}}" hint-placeholder-val="{{ false }}"><span style="align-self: center; {{psHeadChip}}"><svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5l6 3v7l-6 3-6-3v-7z M2 4.5l6 3 6-3 M8 7.5v7" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg>Пакеты</span></sc-if>
-<sc-if value="{{pn.duChip}}" hint-placeholder-val="{{ false }}"><span style="align-self: center; {{pn.duChipStyle}}"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M1 9V5h2v4z M4 9V1.5h2V9z M7 9V3.5h2V9z" fill="currentColor"></path></svg>Анализ</span></sc-if><sc-if value="{{pn.dmChip}}" hint-placeholder-val="{{ false }}"><span style="align-self: center; {{pn.dmChipStyle}}"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M1.5 9V6 M5 9V1.5 M8.5 9V4" fill="none" stroke="currentColor" stroke-width="1.6"></path></svg>{{pn.dmChip}}</span></sc-if><sc-if value="{{pn.srChip}}" hint-placeholder-val="{{ false }}"><span style="align-self: center; {{pn.srChipStyle}}"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="4.2" cy="4.2" r="3" fill="none" stroke="currentColor" stroke-width="1.1"></circle><path d="M6.4 6.4L9 9" stroke="currentColor" stroke-width="1.1"></path></svg>{{pn.srChip}}</span></sc-if><span style="align-self: center; {{pn.pathStyle}}">{{pn.path}}</span>
+<sc-if value="{{pn.duChip}}" hint-placeholder-val="{{ false }}"><span style="align-self: center; {{pn.duChipStyle}}"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M1 9V5h2v4z M4 9V1.5h2V9z M7 9V3.5h2V9z" fill="currentColor"></path></svg>Анализ</span></sc-if><sc-if value="{{pn.dmChip}}" hint-placeholder-val="{{ false }}"><span style="align-self: center; {{pn.dmChipStyle}}"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M1.5 9V6 M5 9V1.5 M8.5 9V4" fill="none" stroke="currentColor" stroke-width="1.6"></path></svg>{{pn.dmChip}}</span></sc-if><sc-if value="{{pn.srChip}}" hint-placeholder-val="{{ false }}"><span style="align-self: center; {{pn.srChipStyle}}"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="4.2" cy="4.2" r="3" fill="none" stroke="currentColor" stroke-width="1.1"></circle><path d="M6.4 6.4L9 9" stroke="currentColor" stroke-width="1.1"></path></svg>{{pn.srChip}}</span></sc-if><sc-if value="{{pn.sqChip}}" hint-placeholder-val="{{ false }}"><span title="SFTP через SSH" style="align-self: center; {{pn.sqChipStyle}}"><svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"></rect><path d="M4.5 6.2l2.2 1.8-2.2 1.8 M8.5 10.5h3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>{{pn.sqChip}}</span></sc-if><sc-if value="{{pn.stChip}}" hint-placeholder-val="{{ false }}"><span style="align-self: center; {{pn.stChipStyle}}"><svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"></rect><path d="M4.5 6.2l2.2 1.8-2.2 1.8 M8.5 10.5h3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>{{pn.stChip}}</span></sc-if><span style="align-self: center; {{pn.pathStyle}}">{{pn.path}}</span>
 <sc-if value="{{pn.tag}}" hint-placeholder-val="{{ false }}"><span style="align-self: center; {{tagStyle}}">{{pn.tag}}</span></sc-if>
 <sc-if value="{{pn.sfChip}}" hint-placeholder-val="{{ false }}"><span style="align-self: center; {{sfChipStyle}}"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M1 1.5h8L6 5v3.5L4 7.5V5z" fill="none" stroke="currentColor" stroke-width="1"></path></svg>{{pn.sfChip}}<sc-if value="{{pn.sfMask}}" hint-placeholder-val="{{ false }}"><span style="font-family: 'Cascadia Mono', Consolas, monospace; font-size: 11px">{{pn.sfMask}}</span></sc-if><sc-if value="{{pn.sfX}}" hint-placeholder-val="{{ false }}"><span aria-label="Сбросить фильтр" style="margin-left: 2px; opacity: 0.7">×</span></sc-if></span></sc-if>
 </span>
@@ -254,6 +353,20 @@ body{margin:0}
 <span style="{{coCell.at}}">{{r.coAt}}</span>
 </div>
 </sc-for>
+</sc-if>
+<sc-if value="{{pn.sqList}}" hint-placeholder-val="{{ false }}">
+<div style="{{pn.sqBody}}">
+<div style="{{sqHead}}"><span style="flex: 1; min-width: 0">Имя</span><span style="{{sqColS}}">Размер</span><span style="{{sqColD}}">Изменён</span><span style="{{sqColP}}">Права</span><span style="{{sqColO}}">Владелец</span></div>
+<sc-for list="{{pn.rows}}" as="r" hint-placeholder-count="12">
+<div style="{{r.rowStyle}}; gap: 12px">
+<span style="flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; overflow: hidden; white-space: nowrap; font-weight: {{r.weight}}"><sc-if value="{{icons}}" hint-placeholder-val="{{ true }}"><span style="display: inline-flex; width: 14px; flex: none; color: {{r.iconColor}}"><sc-if value="{{r.isUp}}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3M4 7l4-4 4 4" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></sc-if><sc-if value="{{r.isDir}}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 3.5h4.5l1.5 1.5h7v8h-13z" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></sc-if><sc-if value="{{r.isFile}}" hint-placeholder-val="{{ true }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z M9.5 1.5v3h3" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></sc-if><sc-if value="{{r.lnLink}}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-label="ссылка" style="margin-left: -14px; overflow: visible; color: {{r.lnCol}}"><rect x="-0.5" y="7" width="9" height="9" rx="2" fill="currentColor" stroke="{{t.p}}" stroke-width="1"></rect><path d="M2 13.5l4-4 M3 9.5h3v3" fill="none" stroke="{{t.p}}" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path></svg></sc-if></span></sc-if><span style="overflow: hidden; text-overflow: ellipsis">{{r.name}}</span><sc-if value="{{r.tag}}" hint-placeholder-val="{{ false }}"><span style="{{r.tagStyle}}">{{r.tag}}</span></sc-if><sc-if value="{{r.syAct}}" hint-placeholder-val="{{ false }}"><span style="{{r.syStyle}}">{{r.syAct}}</span></sc-if></span>
+<span style="{{sqColS}}">{{r.size}}</span>
+<span style="{{sqColD}}; color: {{r.dateColor}}">{{r.date}}</span>
+<span style="{{r.sqPermSt}}">{{r.sqPerm}}</span>
+<span style="{{r.sqOwnSt}}">{{r.sqOwn}}</span>
+</div>
+</sc-for>
+</div>
 </sc-if>
 <sc-if value="{{pn.pkTable}}" hint-placeholder-val="{{ false }}">
 <div role="tablist" aria-label="Пакеты" style="height: 38px; flex: none; box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 0 12px; border-bottom: 1px solid {{t.b}}">
@@ -486,6 +599,36 @@ body{margin:0}
 </div>
 </div>
 </sc-if>
+<sc-if value="{{sqEdOn}}" hint-placeholder-val="{{ false }}">
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; background: {{t.p}}; position: relative">
+<div style="height: 36px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid {{t.b}}; background: {{t.h}}">
+<span style="display: inline-flex; color: {{t.a}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 4.5L2 8l3.5 3.5 M10.5 4.5L14 8l-3.5 3.5 M9 3l-2 10" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></span>
+<span style="color: {{t.s}}" title="admin@srv1.corp.local">sftp://srv1/etc/nginx/sites-available</span>
+</div>
+<div style="flex: 1; min-height: 0; display: flex">
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; font-family: 'Cascadia Mono', Consolas, monospace; font-size: 13px">
+<sc-for list="{{sqEdLines}}" as="ln" hint-placeholder-count="27">
+<div style="{{ln.style}}"><span style="{{ln.barStyle}}"></span><span style="{{ln.numStyle}}">{{ln.n}}</span><span style="{{sqEdFold}}">{{ln.fold}}</span><span style="padding-left: 12px"><sc-for list="{{ln.segs}}" as="s" hint-placeholder-count="3"><span style="{{s.style}}">{{s.x}}</span></sc-for></span></div>
+</sc-for>
+<div style="flex: 1; display: flex"><span style="width: 3px; flex: none; background: {{t.h}}"></span><span style="width: 40px; flex: none; background: {{t.h}}"></span><span style="{{sqEdFold}}"></span></div>
+</div>
+<div style="width: 88px; flex: none; position: relative; padding: 6px 8px; box-sizing: border-box; border-left: 1px solid {{t.b}}; background: {{t.p}}; overflow: hidden">
+<div style="{{sqEdView}}"></div>
+<sc-for list="{{sqEdMini}}" as="m" hint-placeholder-count="40"><div style="position: relative; height: 3px; margin-bottom: 1px; display: flex; gap: 2px; overflow: hidden"><sc-for list="{{m}}" as="b" hint-placeholder-count="3"><div style="{{b}}"></div></sc-for></div></sc-for>
+</div>
+</div>
+<div role="note" style="{{sqEdNote}}"><span style="display: inline-flex; color: {{t.a}}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 12.5H4a3 3 0 0 1-.4-6A4.5 4.5 0 0 1 12.3 5.6 3.5 3.5 0 0 1 12 12.5h-.5" fill="none" stroke="currentColor" stroke-width="1.1"></path><path d="M8 14V8 M5.8 10.2L8 8l2.2 2.2" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></span><span>Файл с srv1<span style="color: {{t.s}}"> · сохранение закачает его обратно</span></span></div>
+<div style="flex: none; display: flex; flex-direction: column; padding: 2px 0; background: {{t.h}}; border-top: 1px solid {{t.b}}">
+<div style="height: 30px; display: flex; align-items: center; gap: 12px; padding: 0 12px; font-size: 12.5px">
+<span style="width: 110px; flex: none; font-weight: 500">Закачка</span>
+<span style="width: 260px; flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: {{t.s}}">app.conf → srv1</span>
+<div role="progressbar" aria-label="Закачка app.conf 100 %" style="flex: 1; height: 4px; border-radius: 2px; background: {{t.b}}; overflow: hidden"><div style="height: 100%; width: 100%; background: {{t.ex}}"></div></div>
+<span style="width: 250px; flex: none; display: flex; justify-content: flex-end; align-items: center; gap: 6px; color: {{t.ex}}"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8.5l3.5 3.5 7.5-8" fill="none" stroke="currentColor" stroke-width="1.6"></path></svg>готово · 2,3 КБ · 0,2 с</span>
+<button type="button" aria-label="Убрать из списка" style="{{chipOff}}">✕</button>
+</div>
+</div>
+</div>
+</sc-if>
 <sc-if value="{{isEditor}}" hint-placeholder-val="{{ false }}">
 <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; background: {{t.p}}; position: relative">
 <div style="height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid {{t.b}}; background: {{t.h}}">
@@ -695,6 +838,64 @@ body{margin:0}
 </sc-for>
 </div>
 </sc-if>
+<sc-if value="{{ssOn}}" hint-placeholder-val="{{ false }}">
+<div style="flex: 1; min-width: 0; padding: 20px 32px; display: flex; flex-direction: column; gap: 16px; overflow: hidden">
+<sc-for list="{{ssForm}}" as="g" hint-placeholder-count="4">
+<div style="display: flex; flex-direction: column">
+<span style="font-size: 15px; font-weight: 500; margin-bottom: 4px">{{g.title}}</span>
+<sc-for list="{{g.rows}}" as="r" hint-placeholder-count="3">
+<div style="min-height: 36px; display: flex; align-items: center; gap: 24px; border-bottom: 1px solid {{t.b}}">
+<span style="width: 240px; flex: none; display: flex; align-items: center; gap: 6px">{{r.label}}<sc-if value="{{r.lock}}" hint-placeholder-val="{{ false }}"><span style="display: inline-flex; color: {{t.s}}"><svg width="12" height="12" viewBox="0 0 16 16" aria-label="Задано политикой организации" style="flex: none"><rect x="3.5" y="7.5" width="9" height="6.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"></rect><path d="M5.5 7.5V5.5a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.2"></path></svg></span></sc-if></span>
+<sc-if value="{{r.seg}}" hint-placeholder-val="{{ false }}"><div style="display: flex; gap: 4px"><sc-for list="{{r.opts}}" as="o" hint-placeholder-count="3"><button type="button" disabled="{{r.lock}}" style="{{o.style}}">{{o.label}}</button></sc-for></div></sc-if>
+<sc-if value="{{r.checks}}" hint-placeholder-val="{{ false }}"><div style="display: flex; align-items: center; gap: 20px"><sc-for list="{{r.items}}" as="c" hint-placeholder-count="2"><label style="{{c.style}}"><input type="checkbox" checked="{{c.on}}" disabled="{{c.dis}}" readOnly="{{ true }}" style="margin: 0">{{c.text}}</label></sc-for></div></sc-if>
+<sc-if value="{{r.select}}" hint-placeholder-val="{{ false }}"><select aria-label="{{r.label}}" style="min-width: 220px; {{inputStyle}}"><option>{{r.value}}</option></select></sc-if>
+<sc-if value="{{r.cmd}}" hint-placeholder-val="{{ false }}"><span style="display: flex; align-items: center; gap: 6px"><input value="{{r.value}}" aria-label="{{r.label}}" style="width: 300px; {{inputStyle}}; font-family: 'Cascadia Mono', Consolas, monospace; font-size: 12px"><span style="margin-left: 8px; color: {{t.s}}; font-size: 12px">подстановки</span><sc-for list="{{r.toks}}" as="k" hint-placeholder-count="3"><span style="{{ssTok}}">{{k}}</span></sc-for></span></sc-if>
+<sc-if value="{{r.nums}}" hint-placeholder-val="{{ false }}"><div style="display: flex; align-items: center; gap: 16px"><sc-for list="{{r.items}}" as="n" hint-placeholder-count="2"><label style="display: flex; align-items: center; gap: 6px"><sc-if value="{{n.pre}}" hint-placeholder-val="{{ false }}"><span style="color: {{t.s}}">{{n.pre}}</span></sc-if><input value="{{n.v}}" aria-label="{{r.label}} {{n.pre}}" style="width: 44px; text-align: center; {{inputStyle}}"><span style="color: {{t.s}}">{{n.post}}</span></label></sc-for></div></sc-if>
+<sc-if value="{{r.path}}" hint-placeholder-val="{{ false }}"><span style="display: flex; align-items: center"><span style="{{ssMono}}">{{r.value}}</span><button type="button" style="margin-left: 8px; {{ssBtnS}}">{{r.btnLabel}}</button></span></sc-if>
+<sc-if value="{{r.chips}}" hint-placeholder-val="{{ false }}"><div role="list" aria-label="Правила подсветки" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 4px 0"><sc-for list="{{r.items}}" as="c" hint-placeholder-count="7"><span role="listitem" style="{{c.style}}"><span style="{{c.sw}}"></span>{{c.label}}</span></sc-for></div></sc-if>
+<span style="margin-left: auto; color: {{t.s}}; font-size: 12px; text-align: right">{{r.note}}</span>
+</div>
+</sc-for>
+</div>
+</sc-for>
+</div>
+</sc-if>
+<sc-if value="{{ssConnOn}}" hint-placeholder-val="{{ false }}">
+<div style="flex: 1; min-width: 0; padding: 20px 32px; display: flex; flex-direction: column; gap: 14px; overflow: hidden">
+<div style="display: flex; align-items: center; gap: 8px">
+<input aria-label="Найти подключение" placeholder="Имя, хост или пользователь" style="width: 260px; {{inputStyle}}">
+<button type="button" style="margin-left: 8px; {{btn}}">Добавить <span style="color: {{t.s}}; font-size: 11px">Ins</span></button>
+<button type="button" style="{{btn}}">Изменить <span style="color: {{t.s}}; font-size: 11px">F4</span></button>
+<button type="button" style="{{btn}}">Удалить <span style="color: {{t.s}}; font-size: 11px">Del</span></button>
+<button type="button" style="{{btn}}">Импорт…</button>
+</div>
+<div role="table" aria-label="Профили подключений" style="display: flex; flex-direction: column; border: 1px solid {{t.b}}; border-radius: 6px; overflow: hidden">
+<div role="row" style="height: 28px; display: flex; align-items: center; gap: 12px; padding: 0 12px; background: {{t.h}}; border-bottom: 1px solid {{t.b}}; color: {{t.s}}; font-size: 11.5px"><span style="width: 64px; flex: none">Источник</span><span style="flex: 1">Имя</span><span style="width: 170px; flex: none">Хост</span><span style="width: 100px; flex: none">Пользователь</span><span style="width: 130px; flex: none">Вход</span><span style="width: 110px; flex: none">Через</span><span style="width: 112px; flex: none">Последнее</span></div>
+<sc-for list="{{ssConn}}" as="c" hint-placeholder-count="8">
+<div role="row" style="{{c.style}}">
+<span style="width: 64px; flex: none; display: flex"><sc-if value="{{c.src}}" hint-placeholder-val="{{ false }}"><span style="{{ssSrc}}; width: 56px; box-sizing: border-box; text-align: center">{{c.src}}</span></sc-if></span>
+<span style="flex: 1; min-width: 0; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{c.name}}</span>
+<span style="width: 170px; flex: none; {{ssMono}}">{{c.host}}</span>
+<span style="width: 100px; flex: none">{{c.user}}</span>
+<span style="width: 130px; flex: none">{{c.auth}}</span>
+<span style="{{c.viaStyle}}">{{c.via}}</span>
+<span style="{{c.lastStyle}}">{{c.last}}</span>
+</div>
+</sc-for>
+</div>
+<div style="display: flex; flex-direction: column">
+<span style="font-size: 15px; font-weight: 500; margin-bottom: 4px">Свойства</span>
+<sc-for list="{{ssProps}}" as="r" hint-placeholder-count="4">
+<div style="min-height: 36px; display: flex; align-items: center; gap: 24px; border-bottom: 1px solid {{t.b}}">
+<span style="width: 240px; flex: none">{{r.label}}</span>
+<sc-if value="{{r.mono}}" hint-placeholder-val="{{ false }}"><span style="{{ssMono}}">{{r.value}}</span></sc-if>
+<sc-if value="{{r.plain}}" hint-placeholder-val="{{ false }}"><span>{{r.value}}</span></sc-if>
+<span style="margin-left: auto; color: {{t.s}}; font-size: 12px; text-align: right">{{r.note}}</span>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-if>
 <sc-if value="{{soOps}}" hint-placeholder-val="{{ false }}">
 <div style="flex: 1; min-width: 0; padding: 24px 32px; display: flex; flex-direction: column; gap: 20px; overflow: hidden">
 <sc-for list="{{soOpsForm}}" as="g" hint-placeholder-count="3">
@@ -721,13 +922,13 @@ body{margin:0}
 <div style="flex: 1; min-width: 0; padding: 24px 32px; display: flex; flex-direction: column; gap: 20px">
 <div style="display: flex; flex-direction: column; gap: 10px">
 <span style="font-size: 15px; font-weight: 500">Политики организации</span>
-<div style="{{soNote}}"><span style="display: inline-flex; margin-top: 2px; color: {{t.s}}"><svg width="12" height="12" viewBox="0 0 16 16" aria-label="Задано политикой организации" style="flex: none"><rect x="3.5" y="7.5" width="9" height="6.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"></rect><path d="M5.5 7.5V5.5a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.2"></path></svg></span><span>Эти параметры задаёт организация через групповую политику. В Урфине их изменить нельзя — только администратор компьютера. Заданные параметры в других разделах отмечены замком.</span></div>
+<div style="{{soNote}}"><span style="display: inline-flex; margin-top: 2px; color: {{t.s}}"><svg width="12" height="12" viewBox="0 0 16 16" aria-label="Задано политикой организации" style="flex: none"><rect x="3.5" y="7.5" width="9" height="6.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"></rect><path d="M5.5 7.5V5.5a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.2"></path></svg></span><span>Эти параметры задаёт организация: файл %ProgramData%\Urfin\policy.toml (TOML) или групповая политика (GPO). Если параметр задан в обоих, действует GPO. В Урфине их изменить нельзя — только администратор компьютера. Заданные параметры в других разделах отмечены замком.</span></div>
 </div>
 <div style="display: flex; flex-direction: column">
 <div style="height: 30px; display: flex; align-items: center; gap: 24px; border-bottom: 1px solid {{t.b}}; color: {{t.s}}; font-size: 12px">
 <span style="width: 240px; flex: none">Параметр</span><span style="width: 200px; flex: none">Значение</span><span>Источник</span>
 </div>
-<sc-for list="{{soPolRows}}" as="r" hint-placeholder-count="5">
+<sc-for list="{{soPolRows}}" as="r" hint-placeholder-count="10">
 <div style="min-height: 36px; display: flex; align-items: center; gap: 24px; border-bottom: 1px solid {{t.b}}">
 <span style="width: 240px; flex: none; display: flex; align-items: center; gap: 6px">{{r.label}}<sc-if value="{{r.set}}" hint-placeholder-val="{{ false }}"><span style="display: inline-flex; color: {{t.s}}"><svg width="12" height="12" viewBox="0 0 16 16" aria-label="Задано политикой организации" style="flex: none"><rect x="3.5" y="7.5" width="9" height="6.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"></rect><path d="M5.5 7.5V5.5a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.2"></path></svg></span></sc-if></span>
 <span style="{{r.vs}}">{{r.value}}</span>
@@ -1116,6 +1317,115 @@ body{margin:0}
 <div style="margin-left: 8px; display: flex; gap: 8px">
 <button type="button" style="{{btnDanger}}">Удалить в Корзину <span style="opacity: 0.8; font-size: 11px">F8</span></button>
 <button type="button" style="{{btn}}">Снять отметку</button>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{scNew}}" hint-placeholder-val="{{ false }}">
+<div role="group" aria-label="Новое подключение" style="{{scRowN}}">
+<div style="{{scLine}}"><span style="display: inline-flex; color: {{t.a}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2.5" width="12" height="4.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.1"></rect><rect x="2" y="9" width="12" height="4.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.1"></rect><path d="M4.5 4.75h1.5 M4.5 11.25h1.5" stroke="currentColor" stroke-width="1.1"></path></svg></span><span style="font-weight: 500; white-space: nowrap">Новое подключение</span>
+<label style="margin-left: 8px; {{scNoWrap}}">Хост</label>
+<span style="{{scHostWrap}}">
+<span role="combobox" aria-expanded="true" aria-label="Хост" style="{{scHostField}}">srv1<span style="{{scCaret}}"></span><svg width="9" height="9" viewBox="0 0 9 9" aria-hidden="true" style="position: absolute; right: -8px; top: 0; z-index: 3; transform: scale(-1, -1)"><path d="M0 9V8.5A8.5 8.5 0 0 0 8.5 0H9V9Z" fill="{{t.p}}"></path><path d="M0 8.5A8.5 8.5 0 0 0 8.5 0" fill="none" stroke="{{t.b}}"></path></svg></span>
+<div role="listbox" aria-label="Хосты" style="{{scHostList}}">
+<sc-for list="{{scHosts}}" as="hv" hint-placeholder-count="3"><button type="button" role="option" style="{{hv.style}}"><span style="{{hv.nameSt}}"><span style="{{hv.hlSt}}">{{hv.h}}</span>{{hv.rest}}</span><span style="{{hv.noteSt}}">{{hv.note}}</span></button></sc-for>
+</div>
+</span>
+</div>
+<div style="{{scLine}}">
+<label style="{{scNoWrap}}">Пользователь</label><span role="textbox" style="{{scInUser}}">admin</span>
+<label style="{{scNoWrap}}">Порт</label><span role="textbox" style="{{scInPort}}">22</span>
+<label title="Промежуточный сервер (ProxyJump), необязательно" style="{{scNoWrap}}">Через</label><span role="textbox" style="{{scInJump}}">bastion</span>
+</div>
+<div style="{{scLine}}">
+<span style="{{scNoWrap}}">Вход</span>
+<div role="radiogroup" aria-label="Способ входа" style="{{scSegBox}}"><sc-for list="{{scSegs}}" as="sg" hint-placeholder-count="4"><button type="button" style="{{sg.style}}">{{sg.label}}</button></sc-for></div>
+<span style="{{scSmall}}">Pageant: 2 ключа</span>
+</div>
+<div style="{{scLine}}">
+<label style="{{scChk0}}"><input type="checkbox" checked="{{ true }}" readOnly="{{ true }}" style="margin: 0">Сохранить профиль</label>
+<div style="margin-left: 8px; {{scBtnRow}}">
+<button type="button" style="{{btnPrimary}}">Подключить <span style="opacity: 0.8; font-size: 11px">Enter</span></button>
+<button type="button" style="{{btn}}">Отмена <span style="color: {{t.s}}; font-size: 11px">Esc</span></button>
+</div>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{scKey}}" hint-placeholder-val="{{ false }}">
+<div role="alert" style="{{scRowW}}">
+<div style="{{scLine}}"><span style="display: inline-flex; color: {{t.rem}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2l6.5 11.5h-13z M8 6.5v3.5 M8 11.5v.5" fill="none" stroke="currentColor" stroke-width="1.2"></path></svg></span><span style="white-space: nowrap"><span style="font-weight: 500">Ключ сервера srv1.corp.local ещё не известен</span><span style="color: {{t.s}}"> — сверьте отпечаток с администратором</span></span></div>
+<div style="{{scLine}}"><span style="{{scSmall}}">ssh-ed25519</span><span style="{{scFpNew}}">SHA256:Xq3bN0V8qkM2f6wJ1pZr9tYcHq4uLs7eDgA5oKiW0xE</span></div>
+<div style="{{scBtnRow}}">
+<button type="button" style="{{btnPrimary}}">Доверять и подключить <span style="opacity: 0.8; font-size: 11px">Enter</span></button>
+<button type="button" style="{{btn}}">Только в этот раз</button>
+<button type="button" style="{{btn}}">Отмена <span style="color: {{t.s}}; font-size: 11px">Esc</span></button>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{scChg}}" hint-placeholder-val="{{ false }}">
+<div role="alert" style="{{scRowD}}">
+<div style="{{scLine}}"><span style="display: inline-flex; color: {{t.k}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5l5.5 2v4c0 3.4-2.3 5.9-5.5 7-3.2-1.1-5.5-3.6-5.5-7v-4z" fill="none" stroke="currentColor" stroke-width="1.1"></path><path d="M8 5v3.5 M8 10.2v.6" stroke="currentColor" stroke-width="1.3"></path></svg></span><span style="font-weight: 500; white-space: nowrap">Ключ сервера srv1.corp.local изменился — возможна подмена</span></div>
+<div style="{{scFpGrid}}">
+<span style="color: {{t.s}}">Был</span><span style="{{scSmall}}">ssh-ed25519</span><span style="{{scFpOld}}">SHA256:Xq3bN0V8qkM2f6wJ1pZr9tYcHq4uLs7eDgA5oKiW0xE</span><span style="{{scSmall}}">known_hosts:14</span>
+<span style="color: {{t.s}}">Сейчас</span><span style="{{scSmall}}">ssh-ed25519</span><span style="{{scFpBad}}">SHA256:9fLw2RkT0cYv8NqZ3hA6mUe1xPdG5sJ7bKoHi4WtV2c</span><span></span>
+</div>
+<div style="{{scBtnRow}}">
+<button type="button" style="{{btnPrimary}}">Отмена <span style="opacity: 0.8; font-size: 11px">Esc</span></button>
+<button type="button" style="{{btn}}">Заменить ключ и подключить…</button>
+<span style="{{scSmall}}">потребует ввести имя хоста</span>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{scPass}}" hint-placeholder-val="{{ false }}">
+<div role="group" aria-label="Пароль" style="{{scRowP}}">
+<div style="{{scLine}}">
+<span style="display: inline-flex; color: {{t.a}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="5.5" cy="10.5" r="3" fill="none" stroke="currentColor" stroke-width="1.1"></circle><path d="M7.6 8.4L13.5 2.5 M11 5l1.8 1.8 M12.5 3.5l1.5 1.5" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg></span>
+<label style="font-weight: 500; white-space: nowrap">Пароль для admin@srv1.corp.local</label>
+<span role="textbox" aria-label="Пароль" style="{{scPwField}}">•••••••••<span style="{{scCaret}}"></span></span>
+<span style="{{scPmWrap}}">
+<button type="button" aria-haspopup="listbox" aria-expanded="true" style="{{scPmBtn}}">Из менеджера паролей <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.2"></path></svg><svg width="9" height="9" viewBox="0 0 9 9" aria-hidden="true" style="position: absolute; left: -8px; top: 0; z-index: 3; transform: scaleY(-1)"><path d="M0 9V8.5A8.5 8.5 0 0 0 8.5 0H9V9Z" fill="{{t.p}}"></path><path d="M0 8.5A8.5 8.5 0 0 0 8.5 0" fill="none" stroke="{{t.b}}"></path></svg></button>
+<div role="listbox" aria-label="Менеджер паролей" style="{{scPmList}}">
+<sc-for list="{{scPms}}" as="pm" hint-placeholder-count="5"><button type="button" role="option" style="{{pm.style}}"><span style="{{pm.nameSt}}">{{pm.name}}</span><span style="{{pm.cmdSt}}">{{pm.cmd}}</span></button></sc-for>
+<div style="height: 1px; margin: 4px 6px; background: {{t.b}}"></div>
+<div style="{{scPmFoot}}">{host} и {user} — из подключения; команда сохранится в профиле</div>
+</div>
+</span>
+</div>
+<div style="{{scLine}}">
+<label style="{{scPwDis}}"><input type="checkbox" disabled="{{ true }}" readOnly="{{ true }}" style="margin: 0">Запомнить</label>
+<span style="display: inline-flex; align-items: center; gap: 5px; margin-left: -2px; {{scSmall}}"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="7" width="9" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.2"></rect><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.2"></path></svg>Задано политикой организации · GPO</span>
+<div style="margin-left: 8px; {{scBtnRow}}">
+<button type="button" style="{{btnPrimary}}">Подключить <span style="opacity: 0.8; font-size: 11px">Enter</span></button>
+<button type="button" style="{{btn}}">Отмена <span style="color: {{t.s}}; font-size: 11px">Esc</span></button>
+</div>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{sqCopy}}" hint-placeholder-val="{{ false }}">
+<div role="group" aria-label="Копирование" style="position: absolute; left: 0; right: 0; bottom: 0; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; background: {{t.h}}; border-top: 2px solid {{t.a}}">
+<div style="display: flex; align-items: center; gap: 12px">
+<span style="font-weight: 500; white-space: nowrap">Копировать 3 объекта · 14,2 МБ в</span>
+<input aria-label="Куда" value="sftp://srv1/var/www/app/releases/43/" style="flex: 1; min-width: 0; {{inputStyle}}">
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px 20px">
+<label style="display: flex; gap: 8px; align-items: center; font-size: 12.5px; white-space: nowrap">Если файл есть
+<select style="{{inputStyle}}"><option>Спросить</option><option>Заменить</option><option>Пропустить</option><option>Заменить, если новее</option></select>
+</label>
+<label style="display: flex; gap: 6px; align-items: center; font-size: 12.5px; white-space: nowrap"><input type="checkbox" checked="{{ true }}" readOnly="{{ true }}" style="margin: 0">Сохранять права и даты</label>
+<div style="{{nwCpBtns}}">
+<button type="button" style="{{btnPrimary}}">Копировать <span style="opacity: 0.8; font-size: 11px">Enter</span></button>
+<button type="button" style="{{btn}}">В фоне <span style="color: {{t.s}}; font-size: 11px">Shift+Enter</span></button>
+<button type="button" style="{{btn}}">Отмена <span style="color: {{t.s}}; font-size: 11px">Esc</span></button>
+</div>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{sqLost}}" hint-placeholder-val="{{ false }}">
+<div role="alert" style="{{sqLostRow}}">
+<span style="display: inline-flex; color: {{t.rem}}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 6.2a9.5 9.5 0 0 1 3.6-2.4 M8 3.5a9.5 9.5 0 0 1 6.5 2.7 M4 8.8a5.6 5.6 0 0 1 2-1.3 M10 7.6a5.6 5.6 0 0 1 2 1.2 M6.6 11.3a2.1 2.1 0 0 1 2.8 0" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path><path d="M2.5 2l11 12" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></path></svg></span>
+<span style="white-space: nowrap"><span style="font-weight: 500">Связь с srv1 потеряна</span><span style="color: {{t.s}}"> · переподключение через 3 с (попытка 2 из 5)</span></span>
+<div style="flex-basis: 100%; display: flex; gap: 8px">
+<button type="button" style="{{btn}}">Переподключить сейчас <span style="color: {{t.s}}; font-size: 11px">Enter</span></button>
+<button type="button" style="{{btn}}">Отключиться</button>
 </div>
 </div>
 </sc-if>
@@ -1848,7 +2158,7 @@ body{margin:0}
 </sc-if>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark","blue","turquoise","grass","sepia","hcblack","hcdesert"],"default":"light"},"screen":{"editor":"enum","options":["panels","dumap","dutypes","dudups","dutemp","utilmenu","duscan","dulist","ducached","dunoaccess","pkgsearch","pkgmgrpick","pkginstall","pkginstalled","pkgupdates","pkgbanner","settings-pkg","settings-a11y","a11yfocus","a11ysheet","motion","zoomind","link","touch","linkview","syncplan","syncmirror","syncrun","clipcut","clippaste","extract","extractpw","tabsmany","tabsdrag","kit","operror","opbusy","toasterror","settings-ops","settings-policies","settings-viewer","settings-terminal","termsearch","termshell","searchpanel","searchgrep","cmdcomplete","cmdhistory","firstrun","whatsnew","viewerhex","viewerenc","editreplace","editgoto","columns","columnswide","usermenu","usermenuedit","jobslist","dragpanel","dragfolder","pack","pack-pw","help","about","bookmarks","history","sort","filter","filtered","attrs","mkdir","mkdirtree","move","rename","journal","multirename","compare","settings-panels","settings-keys","settings-editor","terminal","termhalf","menu","context","select","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress","search","viewer","editor","settings"],"default":"panels"},"density":{"editor":"enum","options":["20","24","28"],"default":"24"},"icons":{"editor":"enum","options":["none","mono","color"],"default":"mono"},"context":{"editor":"enum","options":["none","admin","remote"],"default":"none"},"width":{"editor":"enum","options":["1280","1024","800"],"default":"1280"},"lang":{"editor":"enum","options":["ru","en"],"default":"ru"},"zoom":{"editor":"enum","options":["100","125","150"],"default":"100"},"$preview":{"width":1280,"height":760}}'>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark","blue","turquoise","grass","sepia","hcblack","hcdesert"],"default":"light"},"screen":{"editor":"enum","options":["panels","settings-ssh","settings-conn","sshpair","sshmulti","sshrec","sshrecview","termhl","sftppanel","sftpcopy","sftpedit","sftplost","sftpsync","sshdrives","sshnew","sshhostkey","sshhostchanged","sshpass","dumap","dutypes","dudups","dutemp","utilmenu","duscan","dulist","ducached","dunoaccess","pkgsearch","pkgmgrpick","pkginstall","pkginstalled","pkgupdates","pkgbanner","settings-pkg","settings-a11y","a11yfocus","a11ysheet","motion","zoomind","link","touch","linkview","syncplan","syncmirror","syncrun","clipcut","clippaste","extract","extractpw","tabsmany","tabsdrag","kit","operror","opbusy","toasterror","settings-ops","settings-policies","settings-viewer","settings-terminal","termsearch","termshell","searchpanel","searchgrep","cmdcomplete","cmdhistory","firstrun","whatsnew","viewerhex","viewerenc","editreplace","editgoto","columns","columnswide","usermenu","usermenuedit","jobslist","dragpanel","dragfolder","pack","pack-pw","help","about","bookmarks","history","sort","filter","filtered","attrs","mkdir","mkdirtree","move","rename","journal","multirename","compare","settings-panels","settings-keys","settings-editor","terminal","termhalf","menu","context","select","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress","search","viewer","editor","settings"],"default":"panels"},"density":{"editor":"enum","options":["20","24","28"],"default":"24"},"icons":{"editor":"enum","options":["none","mono","color"],"default":"mono"},"context":{"editor":"enum","options":["none","admin","remote"],"default":"none"},"width":{"editor":"enum","options":["1280","1024","800"],"default":"1280"},"lang":{"editor":"enum","options":["ru","en"],"default":"ru"},"zoom":{"editor":"enum","options":["100","125","150"],"default":"100"},"$preview":{"width":1280,"height":760}}'>
 class Component extends DCLogic {
 renderVals() {
 const TH = {
@@ -1885,6 +2195,7 @@ const btn = "height: 30px; padding: 0 14px; border: 1px solid " + t.b + "; borde
 const btnPrimary = "height: 30px; padding: 0 14px; border: 1px solid " + t.a + "; border-radius: 4px; background: " + t.a + "; color: " + t.p + "; font: inherit; display: flex; gap: 8px; align-items: center";
 const tabStyle = (on) => on ? "flex-shrink: 0; height: 32px; padding: 0 14px; display: flex; align-items: center; gap: 10px; border: 0; border-radius: 7px 7px 0 0; background: " + t.p + "; color: " + t.t + "; font: inherit" + (hcOn ? "; box-shadow: inset 1px 1px 0 " + t.b + ", inset -1px 0 0 " + t.b : "") : "height: 32px; padding: 0 14px; display: flex; align-items: center; border: 0; background: transparent; color: " + t.s + "; font: inherit";
 const TABS = {
+sshrecview: [["",0,"Панели — C:\\Dev\\urfin"],["srv1-2026-10-23-1402.cast",1]],
 help: [["",0,"Панели — C:\\Dev\\urfin"],["Справка",1]],
 panels: [["urfin",1],["share",0],["logs",0]],
 copy: [["urfin",1],["share",0],["logs",0]],
@@ -1991,7 +2302,7 @@ rowStyle: "height: " + rowH + "px; flex: none; display: flex; align-items: cente
 briefStyle: "height: " + rowH + "px; display: flex; align-items: center; gap: 8px; padding: 0 10px; overflow: hidden; white-space: nowrap; font-weight: " + ((kind === "d" || kind === "up") ? 500 : 400) + "; background: " + (isM ? selBg : "transparent") + (isC ? curRing : "") + "; color: " + col
 };
 });
-const actPath = "color: " + t.t + "; border-bottom: 2px solid " + t.a + "; padding-bottom: 3px", pasPath = "color: " + t.s;
+const actPath = "color: " + t.t + "; text-decoration: underline 2px " + t.a + "; text-underline-offset: 6px; text-decoration-skip-ink: none", pasPath = "color: " + t.s;
 const SRC = ["..","app.rs","breadcrumb.rs","cache.rs","cmdline.rs","columns.rs","commands.rs","conflict.rs","drives.rs","editor.rs","file_list.rs","fonts.rs","icons.rs","info.rs","job_bar.rs","keybar.rs","layout.rs","lib.rs","menu.rs","panel.rs","prompt_bar.rs","quick_search.rs","quick_view.rs","settings.rs","status.rs","tabs.rs","theme.rs","toast.rs","tree.rs","viewer.rs","widgets.rs","window.rs","sys"].map((n) => n === ".." ? ["..","up","",""] : (n === "sys" ? ["sys","d","",""] : [n,"f","",""]));
 const DES = [["..","up","",""],["screens","d","","20.10.26 20:31"],["DESIGN.md","f","9,8 КБ","20.10.26 20:35"],["window.dc.html","f","48,1 КБ","20.10.26 20:31"]];
 const P = (o) => Object.assign({ vis: "", isFull: false, isBrief: false, isTree: false, isInfo: false, isQv: false, isState: false, bhBag: false, drives: false, tag: "", packedCol: false }, o);
@@ -2003,6 +2314,224 @@ const CMPR = [["..","up","",""],["design","d","","14.10.26 09:00"],["specs","d",
 const JB = [["..","up","",""],["big.bin","f","3,1 ГБ","21.10.26 11:58"],["big2.bin","f","3,1 ГБ","21.10.26 11:40"]];
 const B = (label, key, primary) => ({ label, key, style: primary ? btnPrimary : btn, keyStyle: "font-size: 11px; " + (primary ? "opacity: 0.8" : "color: " + t.s) });
 const ARC = [["..","up","","",""],["crates","d","","19.10.26 22:41",""],["docs","d","","20.10.26 11:02",""],["Cargo.lock","f","58,3 КБ","20.10.26 13:50","12,1 КБ"],["Cargo.toml","f","1,2 КБ","19.10.26 22:40","0,5 КБ"],["LICENSE-APACHE","f","11,1 КБ","01.09.26 12:00","3,9 КБ"],["LICENSE-MIT","f","1,0 КБ","01.09.26 12:00","0,6 КБ"],["README.md","f","4,8 КБ","17.10.26 21:33","2,0 КБ"],["urfin.exe","x","11,7 МБ","20.10.26 13:55","8,2 МБ"]];
+const stVals = (() => {
+const scr = screen, on = ["sshpair","sshmulti","sshrec","sshrecview","termhl"].indexOf(scr) >= 0;
+const out = { stOn: false, stView: false, stHead: false, stRec: false, stMulti: false, stPlay: false, stLines: [], stSess: [], stTicks: [], stSpeed: [], stViewSeg: [] };
+if (!on) return out;
+const sansF = "'Segoe UI Variable', 'Segoe UI', Inter, system-ui, sans-serif";
+const c = { t: t.t, s: t.s, a: t.a, ex: t.ex, w: t.rem, kw: t.kw, k: t.k };
+// program colours (ANSI from the remote/local program itself)
+const S = (x, k, b) => ({ x, s: "color: " + c[k] + (b ? "; font-weight: 600" : "") });
+// output highlighting (Urfin rules, only on uncoloured text)
+const HU = (x) => ({ x, s: "color: " + t.a + "; text-decoration: underline; text-underline-offset: 2px" });
+const HE = (x) => ({ x, s: "color: " + t.k });
+const HW = (x) => ({ x, s: "color: " + t.rem });
+const HO = (x) => ({ x, s: "color: " + t.ex });
+const HD = (x) => ({ x, s: "color: " + t.s });
+// search
+const SH = (x) => ({ x, s: "background: " + t.hl + "; color: " + (hcOn ? t.ct : t.t) + "; border-radius: 2px" });
+const SC = (x) => ({ x, s: "background: " + t.a + "; color: " + t.p + "; border-radius: 2px" });
+const CUR = { x: "", s: "display: inline-block; width: 8px; height: 16px; margin-top: 1px; background: " + t.a };
+const lineSt = "height: 19px; flex: none; display: flex; white-space: pre";
+const Ln = (g) => ({ st: lineSt, g });
+const T = (x) => S(x, "t");
+const P = (host, cmd) => [S("admin@" + host, "ex", 1), T(":"), S("/var/www/app", "kw", 1), T("$ ")].concat(cmd === null ? [CUR] : [T(cmd)]);
+const PS = (cmd) => [S("PS ", "s"), S("C:\\Dev\\urfin", "a"), S("> ", "s"), T(cmd)];
+const full0 = "position: absolute; left: 0; right: 0; top: 0; bottom: 0; z-index: 4; display: flex; flex-direction: column; background: " + t.p;
+Object.assign(out, {
+stOn: scr !== "termhl",
+stBox: scr === "sshpair" ? "position: absolute; left: calc(50% + 0.5px); right: 0; top: " + (54 + rowH * 9) + "px; bottom: 0; z-index: 4; display: flex; flex-direction: column; background: " + t.p + "; border-top: 1px solid " + t.b : full0,
+stHead: scr === "sshpair" || scr === "sshrec", stRec: scr === "sshrec", stMulti: scr === "sshmulti", stPlay: scr === "sshrecview", stView: scr === "sshrecview",
+stHeadBar: "height: 30px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 12px 0 8px; border-bottom: 1px solid " + t.b + "; background: " + t.h + "; font-size: 12.5px",
+stShellBtn: "height: 22px; padding: 0 8px; display: flex; align-items: center; gap: 6px; border: 1px solid " + t.b + "; border-radius: 4px; background: " + t.p + "; color: " + t.t + "; font-family: " + mono + "; font-size: 12.5px; font-weight: 600",
+stRecPill: "height: 20px; box-sizing: border-box; padding: 0 8px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid " + t.k + "; border-radius: 4px; background: " + t.p + "; color: " + t.t + "; font-family: " + mono + "; font-size: 12px",
+stRecPol: "display: inline-flex; align-items: center; gap: 5px; color: " + t.s + "; font-size: 12px; white-space: nowrap",
+stChip: "height: 26px; box-sizing: border-box; display: inline-flex; align-items: center; gap: 8px; padding: 0 0 0 8px; border: 1px solid " + t.rem + "; border-radius: 4px; background: " + t.wbg + "; color: " + t.t + "; font-size: 12.5px; white-space: nowrap",
+stChipBtn: "height: 24px; margin-left: 2px; padding: 0 8px; border: 0; border-left: 1px solid " + t.rem + "; background: transparent; color: " + t.t + "; font: inherit; font-size: 12px",
+stTitleOn: screen === "sshmulti" || screen === "sshrec" || screen === "termhl", stHlChip: true,
+stChipN: "height: 26px; box-sizing: border-box; display: inline-flex; align-items: center; gap: 8px; padding: 0 8px; border: 1px solid " + t.b + "; border-radius: 4px; background: " + t.h + "; color: " + t.t + "; font-size: 12.5px; white-space: nowrap",
+stWarn: "flex: none; height: 46px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 0 14px; background: " + t.wbg + "; border-top: 2px solid " + t.rem + "; font-size: 13px",
+stSessList: "width: 200px; flex: none; display: flex; flex-direction: column; gap: 2px; padding: 8px 6px; box-sizing: border-box; border-right: 1px solid " + t.b + "; background: " + t.h + "; font-size: 13px",
+stOut: "flex: 1; min-width: 0; padding: 8px 12px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; font-family: " + mono + "; font-size: 13px; color: " + t.t,
+stBar: "height: 46px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-top: 1px solid " + t.b + "; background: " + t.h + "; font-size: 12.5px",
+stIconBtn: "width: 30px; height: 30px; flex: none; padding: 0; border: 1px solid " + t.b + "; border-radius: 4px; background: " + t.p + "; color: " + (t.bt || t.t) + "; display: flex; align-items: center; justify-content: center",
+showCli: scr === "termhl", cliCmd: "", isPanels: scr === "sshpair", showTerm: scr === "termhl",
+twoSets: scr === "sshpair", oneSet: scr === "sshrecview", leftSet: true
+});
+if (scr === "sshpair") {
+const RM = [["..","up","",""],["bin","d","","23.10.26 14:02"],["config","d","","23.10.26 14:01"],["deploy","d","","02.10.26 11:20"],["src","d","","23.10.26 14:01"],["static","d","","18.10.26 16:45"],[".env.example","f","0,4 КБ","02.10.26 11:20"],["app.service","f","0,6 КБ","02.10.26 11:20"],["go.mod","f","1,1 КБ","02.10.26 11:20"],["go.sum","f","14,8 КБ","02.10.26 11:20"],["Makefile","f","2,3 КБ","18.10.26 16:45"],["README.md","f","4,0 КБ","18.10.26 16:45"]];
+out.stPanels = [full("C:\\Dev\\urfin", "16 объектов", L, -1, false), full("sftp://srv1/var/www/app", "11 объектов", RM, -1, true, { stChip: "SSH", stChipStyle: "height: 20px; box-sizing: border-box; padding: 0 7px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid " + t.b + "; border-radius: 4px; background: " + t.h + "; color: " + t.t + "; font-size: 11.5px; white-space: nowrap" })];
+out.tabsL = [["urfin", 1], ["logs", 0]].map(([label, on]) => ({ label, close: false, style: on ? tabStyle(true) + "; color: " + t.s : tabStyle(false) }));
+out.tabsR = [["app", 1], ["backup", 0]].map(([label, on]) => ({ label, close: !!on, style: tabStyle(!!on) }));
+out.stLines = [
+P("srv1", "git pull"),
+[T("remote: Enumerating objects: 9, done.")],
+[T("From "), HU("ssh://git.corp.local/web/app")],
+[T("   "), HD("3f9c2e1..a71d04b"), T("  main       -> origin/main")],
+[T("Updating "), HD("3f9c2e1..a71d04b")],
+[T("Fast-forward")],
+[T(" "), HU("src/http/server.go"), T(" | 18 "), S("+++++++++++", "ex"), S("-------", "k")],
+[T(" 1 file changed, 11 insertions(+), 7 deletions(-)")],
+P("srv1", "sudo systemctl restart app && systemctl status app"),
+[S("●", "ex"), T(" app.service - Web app")],
+[T("     Loaded: loaded ("), HU("/etc/systemd/system/app.service"), T("; enabled)")],
+[T("     Active: "), HO("active (running)"), T(" since "), HD("Fri 2026-10-23 14:02:11 MSK"), T("; 3s ago")],
+[T("   Main PID: 48211 (app)")],
+[T("     CGroup: "), HU("/system.slice/app.service")],
+[T("             └─48211 "), HU("/var/www/app/bin/app"), T(" --config "), HU("/etc/app/app.yaml")],
+[T("")],
+[HD("Oct 23 14:02:11"), T(" srv1 app[48211]: INFO listening on "), HU("10.20.4.11:8080")],
+[HD("Oct 23 14:02:12"), T(" srv1 app[48211]: "), HW("WARN"), T(" cache.ttl not set, using 60s")],
+[HD("Oct 23 14:02:12"), T(" srv1 app[48211]: "), HE("error"), T(": db "), HU("10.20.4.30:5432"), T(" refused")],
+[HD("Oct 23 14:02:13"), T(" srv1 app[48211]: INFO db: connected, retry 1")],
+P("srv1", null)
+].slice(-Math.floor((668 - 54 - rowH * 9 - 1 - 31 - 16) / 19)).map(Ln);
+}
+if (scr === "sshmulti") {
+out.stSess = [["srv1","10.20.4.11",1],["srv2","10.20.4.12",1],["srv3","10.20.4.13",1],["srv4","10.20.4.14",0]].map(([name, sub, on]) => ({ name, sub, on: !!on,
+row: "display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 4px; color: " + t.t,
+subSt: "font-family: " + mono + "; font-size: 11.5px; color: " + t.s }));
+const HDR = (host, ip, code) => ({ st: "height: 24px; flex: none; margin: 10px 0 4px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-radius: 4px; background: " + t.h + "; font-family: " + sansF + "; font-size: 12px; white-space: nowrap",
+g: [{ x: host, s: "font-weight: 600; color: " + t.t }, { x: ip, s: "font-family: " + mono + "; font-size: 11.5px; color: " + t.s }, { x: "", s: "flex: 1" }, { x: code ? "код " + code : "код 0", s: "color: " + (code ? t.k : t.s) }] });
+const CMD = "git pull --ff-only && sudo systemctl restart app; systemctl status app | grep Active";
+out.stLines = [
+HDR("srv1", "10.20.4.11", 0),
+Ln(P("srv1", "uptime")),
+Ln([T(" 14:05:12 up 41 days,  3:12,  2 users,  load average: 0.08, 0.11, 0.09")]),
+Ln(P("srv1", CMD)),
+Ln([T("Updating "), HD("3f9c2e1..a71d04b")]),
+Ln([T("Fast-forward")]),
+Ln([T(" "), HU("src/http/server.go"), T(" | 18 "), S("+++++++++++", "ex"), S("-------", "k")]),
+Ln([T(" 1 file changed, 11 insertions(+), 7 deletions(-)")]),
+Ln([T("     Active: "), HO("active (running)"), T(" since "), HD("Fri 2026-10-23 14:05:31 MSK"), T("; 2s ago")]),
+Ln(P("srv1", null)),
+HDR("srv2", "10.20.4.12", 0),
+Ln(P("srv2", "uptime")),
+Ln([T(" 14:05:12 up 41 days,  3:10,  1 user,  load average: 0.21, 0.17, 0.12")]),
+Ln(P("srv2", CMD)),
+Ln([T("Already up to date.")]),
+Ln([T("     Active: "), HO("active (running)"), T(" since "), HD("Fri 2026-10-23 14:05:32 MSK"), T("; 1s ago")]),
+Ln(P("srv2", null)),
+HDR("srv3", "10.20.4.13", 1),
+Ln(P("srv3", "uptime")),
+Ln([T(" 14:05:12 up 2 days, 19:44,  1 user,  load average: 1.94, 1.62, 1.40")]),
+Ln(P("srv3", CMD)),
+Ln([HE("error"), T(": cannot open "), HU(".git/FETCH_HEAD"), T(": Permission denied")]),
+Ln([T("     Active: "), HE("failed"), T(" (Result: exit-code) since "), HD("Thu 2026-10-22 23:40:02 MSK"), T("; 14h ago")]),
+Ln(P("srv3", null))
+];
+}
+if (scr === "sshrec") {
+const J = (tm, src, rest) => [HD("Oct 23 " + tm), T(" srv1 " + src + ": ")].concat(rest);
+out.stLines = [
+P("srv1", "uptime"),
+[T(" 13:58:02 up 41 days,  3:05,  2 users,  load average: 0.12, 0.09, 0.08")],
+P("srv1", "df -h /var /srv"),
+[T("Filesystem                 Size  Used Avail Use% Mounted on")],
+[HU("/dev/mapper/vg0-var"), T("         40G   31G  7.1G  82% "), HU("/var")],
+[HU("/dev/mapper/vg0-srv"), T("        200G   64G  127G  34% "), HU("/srv")],
+P("srv1", "free -h"),
+[T("               total        used        free      shared  buff/cache   available")],
+[T("Mem:           7.7Gi       2.9Gi       1.1Gi       112Mi       3.9Gi       4.6Gi")],
+[T("Swap:          2.0Gi        64Mi       1.9Gi")],
+P("srv1", "sudo journalctl -u app --since \"2026-10-23 13:55\" --no-pager"),
+[T("[sudo] password for admin:")],
+J("13:58:40", "systemd[1]", [T("Stopping app.service - Web app...")]),
+J("13:58:41", "app[47002]", [T("INFO shutdown: drained 14 connections")]),
+J("13:58:41", "systemd[1]", [T("app.service: Deactivated successfully.")]),
+J("13:58:41", "systemd[1]", [T("Started app.service - Web app.")]),
+J("13:58:42", "app[48103]", [T("INFO build "), HD("a71d04b"), T(", config "), HU("/etc/app/app.yaml")]),
+J("13:58:42", "app[48103]", [T("INFO listening on "), HU("10.20.4.11:8080")]),
+J("13:59:07", "app[48103]", [HW("WARN"), T(" slow query 1.8s: SELECT * FROM sessions WHERE user_id = $1")]),
+J("14:00:15", "app[48103]", [HW("WARN"), T(" upstream "), HU("http://10.20.4.21:9000/health"), T(" answered 503")]),
+J("14:01:02", "app[48103]", [HE("ERROR"), T(" db: dial tcp "), HU("10.20.4.30:5432"), T(": connect: connection refused")]),
+J("14:01:02", "app[48103]", [T("INFO db: retry in 5s (attempt 1 of 10)")]),
+J("14:01:07", "app[48103]", [T("INFO db: connected to "), HU("10.20.4.30:5432")]),
+J("14:01:44", "app[48103]", [T("INFO upload saved to "), HU("/var/www/app/static/uploads/2026/10/report_q3.pdf")]),
+J("14:02:10", "app[48103]", [HE("ERROR"), T(" mail: smtp "), HU("10.20.4.40:25"), T(": 451 temporary local problem")]),
+J("14:02:10", "app[48103]", [T("INFO mail: queued for retry, id "), HD("5e8a40c7")]),
+P("srv1", "sudo tail -n 3 /var/log/nginx/error.log"),
+[HD("2026/10/23 14:02:31"), T(" ["), HE("error"), T("] 1123#1123: *88 upstream timed out, client: "), HU("10.20.1.57"), T(", server: app.corp.local")],
+[HD("2026/10/23 14:02:44"), T(" [warn] 1123#1123: *91 an upstream response is buffered to a temporary file "), HU("/var/cache/nginx/proxy_temp/4/02/0000000024")],
+[HD("2026/10/23 14:03:02"), T(" ["), HE("error"), T("] 1123#1123: *95 connect() "), HE("failed"), T(" (111: Connection refused) while connecting to upstream")],
+P("srv1", null)
+].map(Ln);
+}
+if (scr === "sshrecview") {
+out.stViewSeg = [["Запись",1],["Текст",0],["Hex",0]].map(([label, on]) => ({ label, style: "height: 28px; padding: 0 12px; border: 0; background: " + (on ? t.c : t.p) + "; color: " + (on ? t.ct : t.t) + "; font: inherit; font-size: 12.5px" + (on ? "; font-weight: 600" : "") }));
+out.stSpeed = [["1×",0],["2×",1],["4×",0]].map(([label, on]) => ({ label, style: "height: 28px; padding: 0 10px; border: 0; background: " + (on ? t.c : t.p) + "; color: " + (on ? t.ct : t.t) + "; font: inherit; font-size: 12.5px" + (on ? "; font-weight: 600" : "") }));
+out.stTicks = [[31.8, 0], [32.9, 1], [76.5, 0], [86.3, 0]].map(([x, cur]) => "position: absolute; left: calc(" + x + "% - 1.5px); top: 7px; width: 3px; height: 16px; border-radius: 1px; background: " + (cur ? t.a : t.hl) + "; box-shadow: inset 0 0 0 1px " + (cur ? t.a : t.rem));
+const J = (tm, src, rest) => [HD("Oct 23 " + tm), T(" srv1 " + src + ": ")].concat(rest);
+out.stLines = [
+P("srv1", "git pull --ff-only"),
+[T("Updating "), HD("9b04e7d..a71d04b")],
+[T("Fast-forward")],
+[T(" "), HU("db/migrations/0007_sessions.sql"), T(" | 21 "), S("+++++++++++++++++++++", "ex")],
+[T(" "), HU("db/migrations/0008_tokens.sql"), T("   | 12 "), S("++++++++++++", "ex")],
+[T(" 2 files changed, 33 insertions(+)")],
+P("srv1", "git log --oneline -3"),
+[S("a71d04b", "w"), T(" (HEAD -> main, origin/main) http: graceful shutdown")],
+[S("3f9c2e1", "w"), T(" config: cache.ttl")],
+[S("9b04e7d", "w"), T(" db: sessions table")],
+P("srv1", "sudo -u app /var/www/app/bin/app migrate --dry-run"),
+[HD("2026-10-23T14:05:51Z"), T(" INFO migrate: 2 pending: 0007_sessions, 0008_tokens")],
+[HD("2026-10-23T14:05:51Z"), T(" "), HW("WARN"), T(" migrate: 0007_sessions touches existing table \"sessions\"")],
+P("srv1", "sudo systemctl restart app"),
+[T("Job for app.service "), SH("failed"), T(" because the control process exited with error code.")],
+[T("See \"systemctl status app.service\" and \"journalctl -xeu app.service\" for details.")],
+P("srv1", "systemctl status app --no-pager"),
+[S("×", "k"), T(" app.service - Web app")],
+[T("     Loaded: loaded ("), HU("/etc/systemd/system/app.service"), T("; enabled; preset: enabled)")],
+[T("     Active: "), SC("failed"), T(" (Result: exit-code) since "), HD("Fri 2026-10-23 14:05:58 MSK"), T("; 4s ago")],
+[T("    Process: 48377 ExecStartPre="), HU("/var/www/app/bin/app"), T(" migrate (code=exited, status=1/FAILURE)")],
+[T("   Main PID: 48211 (code=exited, status=0/SUCCESS)")],
+[T("        CPU: 412ms")],
+[T("")],
+J("14:05:58", "app[48377]", [HE("ERROR"), T(" migrate: relation \"sessions\" already exists")]),
+J("14:05:58", "systemd[1]", [T("app.service: Control process exited, code=exited, status=1/FAILURE")]),
+J("14:05:58", "systemd[1]", [T("app.service: "), SH("Failed"), T(" with result 'exit-code'.")]),
+J("14:05:58", "systemd[1]", [SH("Failed"), T(" to start app.service - Web app.")]),
+P("srv1", null)
+].map(Ln);
+}
+if (scr === "termhl") {
+out.termLines = [
+PS("cargo test -p urfin-ops"),
+[S("   Compiling", "ex", 1), T(" urfin-ops v0.4.2 ("), HU("C:\\Dev\\urfin\\crates\\ops"), T(")")],
+[S("    Finished", "ex", 1), T(" `test` profile [unoptimized + debuginfo] target(s) in 4.12s")],
+[S("     Running", "ex", 1), T(" unittests src\\lib.rs ("), HU("target\\debug\\deps\\urfin_ops-3f2a9c1d7b5e8a40.exe"), T(")")],
+[T("")],
+[T("running 4 tests")],
+[T("test copy::tests::cancel_before_start ... "), S("ok", "ex")],
+[T("test copy::tests::cancel_mid_file_removes_partial ... "), S("FAILED", "k")],
+[T("test job::tests::cancel_token_shared ... "), S("ok", "ex")],
+[T("test delete::tests::cancel_keeps_rest ... "), S("ok", "ex")],
+[T("")],
+[T("---- copy::tests::cancel_mid_file_removes_partial stdout ----")],
+[HD("2026-10-23T11:02:12.418Z"), T(" "), HW("WARN"), T(" urfin_ops::copy: partial left: "), HU("C:\\Users\\a.antropov\\AppData\\Local\\Temp\\.urfin-part-7f3a")],
+[T("thread 'copy::tests::cancel_mid_file_removes_partial' panicked at "), HU("crates\\ops\\src\\copy.rs:212:9"), T(":")],
+[T("assertion "), HE("failed"), T(": !partial.exists()")],
+[T("")],
+[T("test result: "), S("FAILED", "k"), T(". 3 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s")],
+[T("")],
+[S("error", "k", 1), T(": test failed, to rerun pass `-p urfin-ops --lib`")],
+PS("ping -n 4 10.20.4.30"),
+[T("")],
+[T("Обмен пакетами с "), HU("10.20.4.30"), T(" по с 32 байтами данных:")],
+[T("Ответ от "), HU("10.20.4.30"), T(": число байт=32 время=2мс TTL=63")],
+[T("Ответ от "), HU("10.20.4.30"), T(": число байт=32 время=3мс TTL=63")],
+[T("Превышен интервал ожидания для запроса.")],
+[T("Ответ от "), HU("10.20.4.30"), T(": число байт=32 время=2мс TTL=63")],
+[T("")],
+[T("Статистика Ping для "), HU("10.20.4.30"), T(":")],
+[T("    Пакетов: отправлено = 4, получено = 3, потеряно = 1")],
+[T("    (25% потерь)")],
+[T("Приблизительное время приема-передачи в мс:")],
+[T("    Минимальное = 2мсек, Максимальное = 3 мсек, Среднее = 2 мсек")]
+];
+}
+return out;
+})();
 const tsVals = (() => {
 const on = screen === "termsearch" || screen === "termshell";
 const sans = "'Segoe UI Variable', 'Segoe UI', Inter, system-ui, sans-serif";
@@ -2337,13 +2866,148 @@ duWarnRow: "position: absolute; left: 0; right: calc(50% + 0.5px); bottom: 0; pa
 });
 return out;
 })();
+const scOn = ["sshdrives","sshnew","sshhostkey","sshhostchanged","sshpass"].indexOf(screen) >= 0;
+const scMono = "'Cascadia Mono', Consolas, monospace";
+const scPanels = () => [full(screen === "sshdrives" ? "\\Dev\\urfin" : "C:\\Dev\\urfin", "16 объектов", L, 6, true, screen === "sshdrives" ? { scBag: true } : {}), full("\\\\fs01\\share\\presale", "12 объектов", R, -1, false)];
+const scVals = () => {
+const row = (bg, line, flash) => "position: absolute; left: 0; right: calc(50% + 0.5px); bottom: 0; z-index: 3; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; background: " + bg + "; border-top: 2px solid " + line + (flash ? "; --bg: " + bg + "; --fl: color-mix(in srgb, " + line + " 22%, " + bg + "); animation: urfinFlash 1.4s ease-in-out 0.3s 1" : "");
+const itemSt = (on) => "min-height: 40px; display: flex; align-items: center; gap: 12px; padding: 4px 10px; border: 0; border-radius: 4px; font: inherit; background: " + (on ? t.c : "transparent") + "; color: " + (on ? t.ct : t.t);
+const optSt = (on) => "height: 28px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 8px; border: 0; border-radius: 4px; font: inherit; text-align: left; background: " + (on ? t.c : "transparent") + "; color: " + (on ? t.ct : t.t);
+const field = (w) => inputStyle + "; width: " + w + "px; flex: none; display: inline-flex; align-items: center";
+const SSH = [["prod-web", "admin@web01.corp.local", false, true, "12 мин назад"], ["bastion", "a.antropov@bastion.corp.local", false, false, "вчера, 18:40"], ["srv1", "admin@srv1.corp.local", true, false, "не подключались"]];
+const scDrv = [];
+DRV.forEach((d) => {
+if (d[0] === "h" && d[1] === "Места") {
+scDrv.push({ head: true, label: "SSH" });
+SSH.forEach(([name, sub, cfg, live, when], i) => { const on = i === 0; scDrv.push({ ssh: true, name, sub, cfg, live, when, style: itemSt(on), iconColor: on ? t.ct : t.a, subColor: on ? t.ct : t.s,
+tagSt: "padding: 0 6px; border-radius: 4px; border: 1px solid " + (on ? t.a : t.b) + "; color: " + (on ? t.ct : t.s) + "; font-size: 11px; line-height: 16px; white-space: nowrap",
+dot: "position: absolute; right: -3px; bottom: -1px; width: 7px; height: 7px; border-radius: 50%; background: " + t.ex + "; border: 2px solid " + (on ? t.c : t.p) }); });
+scDrv.push({ add: true, style: itemSt(false).replace("min-height: 40px", "min-height: 36px") });
+}
+if (d[0] === "h") { scDrv.push({ head: true, label: d[1] }); return; }
+const off = d[2] === "нет связи";
+scDrv.push({ item: true, isDrive: d[0] === "d", isNet: d[0] === "n", isPlace: d[0] === "p", name: d[1], sub: d[2], free: d[3], hasBar: d[0] === "d",
+bar: "display: block; height: 100%; width: " + d[4] + "%; background: " + (d[4] > 75 ? t.k : t.a), track: t.b,
+iconColor: off ? t.s : t.a, subColor: off ? t.k : t.s, style: itemSt(false) });
+});
+const fp = (x) => "font-family: " + scMono + "; font-size: 12px; white-space: nowrap; color: " + x;
+return {
+scBagOn: screen === "sshdrives", scNew: screen === "sshnew", scKey: screen === "sshhostkey", scChg: screen === "sshhostchanged", scPass: screen === "sshpass",
+scDrv, scHeadSt: "padding: 8px 10px 4px; color: " + t.s + "; font-size: 11.5px",
+scRowN: row(t.h, t.a, false), scRowW: row(t.wbg, t.rem, true), scRowD: row(t.dbg, t.k, true), scRowP: row(t.h, t.a, false),
+scLine: "display: flex; align-items: center; gap: 10px; min-width: 0",
+scNoWrap: "white-space: nowrap",
+scInUser: field(96), scInPort: field(52), scInJump: field(130),
+scHostWrap: "position: relative; display: flex; flex: none; " + popShadow,
+scHostField: "position: relative; z-index: 2; width: 170px; height: 29px; margin-top: -1px; box-sizing: border-box; padding: 0 8px; display: flex; align-items: center; border: 1px solid " + t.b + "; border-top: 0; border-radius: 0 0 4px 4px; background: " + t.p + "; color: " + t.t + "; font-size: 12.5px",
+scCaret: "display: inline-block; width: 1px; height: 15px; margin-left: 1px; background: " + t.t,
+scHostList: "position: absolute; left: 0; bottom: 100%; width: 340px; padding: 4px; box-sizing: border-box; background: " + t.p + "; border: 1px solid " + t.b + "; border-radius: 8px 8px 8px 0; display: flex; flex-direction: column; z-index: 1; color: " + t.t,
+scHosts: [["srv1", ".corp.local", "config · Host srv1"], ["srv1", "-stage.corp.local", "история · вчера"], ["srv1", "-db.corp.local", "known_hosts"], ["srv1", "0.corp.local", "known_hosts"]].map(([h, rest, note], i) => ({ h, rest, note, style: optSt(i === 0),
+nameSt: "font-family: " + scMono + "; font-size: 12.5px; white-space: nowrap", hlSt: "background: " + t.hl + "; color: " + t.t + "; border-radius: 2px",
+noteSt: "margin-left: auto; padding-left: 16px; font-size: 12px; white-space: nowrap; color: " + (i === 0 ? t.ct : t.s) + (i === 0 ? "; opacity: 0.8" : "") })),
+scSegBox: "display: flex; flex: none; border: 1px solid " + t.b + "; border-radius: 5px; overflow: hidden",
+scSegs: ["Агент", "Ключ", "Пароль", "Команда"].map((label, i) => ({ label, style: "height: 26px; padding: 0 12px; border: 0; " + (i ? "border-left: 1px solid " + t.b + "; " : "") + "background: " + (i === 0 ? t.c : t.p) + "; color: " + (i === 0 ? t.ct : t.t) + "; font: inherit; font-size: 12px; font-weight: " + (i === 0 ? 500 : 400) })),
+scSmall: "color: " + t.s + "; font-size: 12px; white-space: nowrap",
+scChk0: "display: flex; gap: 6px; align-items: center; white-space: nowrap",
+scChk: "margin-left: 8px; display: flex; gap: 6px; align-items: center; white-space: nowrap",
+scBtnRow: "display: flex; align-items: center; gap: 8px",
+scFpGrid: "display: grid; grid-template-columns: auto auto auto 1fr; align-items: baseline; gap: 4px 12px; font-size: 12.5px",
+scFpNew: fp(t.t), scFpOld: fp(t.s), scFpBad: fp(t.k) + "; font-weight: 600",
+scPwField: inputStyle + "; width: 150px; flex: none; display: inline-flex; align-items: center; border-bottom: 2px solid " + t.a + "; font-family: " + scMono + "; letter-spacing: 1px",
+scPwDis: "display: flex; gap: 6px; align-items: center; white-space: nowrap; color: " + t.s,
+scPmWrap: "position: relative; display: flex; flex: none; " + popShadow,
+scPmBtn: "position: relative; z-index: 2; height: 31px; margin-top: -1px; box-sizing: border-box; padding: 0 12px; display: flex; align-items: center; gap: 8px; border: 1px solid " + t.b + "; border-top: 0; border-radius: 0 0 4px 4px; background: " + t.p + "; color: " + (t.bt || t.t) + "; font: inherit; white-space: nowrap",
+scPmList: "position: absolute; right: 0; bottom: 100%; width: 470px; padding: 4px; box-sizing: border-box; background: " + t.p + "; border: 1px solid " + t.b + "; border-radius: 8px 8px 0 8px; display: flex; flex-direction: column; z-index: 1; color: " + t.t,
+scPms: [["BearPass", "bearpass get {id} --field=password"], ["Пассворк", "passwork-cli get --password-id {id}"], ["1Password", "op read \"op://Servers/{host}/password\""], ["Bitwarden", "bw get password \"{host}\""], ["KeePassXC", "keepassxc-cli show -s -a Password db.kdbx {host}"]].map(([name, cmd], i) => ({ name, cmd, style: optSt(i === 0),
+nameSt: "width: 84px; flex: none; font-weight: " + (i === 0 ? 500 : 400), cmdSt: "font-family: " + scMono + "; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: " + (i === 0 ? t.ct : t.s) + (i === 0 ? "; opacity: 0.8" : "") })),
+scPmFoot: "padding: 2px 10px 4px; color: " + t.s + "; font-size: 12px"
+};
+};
+// F-03 SSH: SFTP в панели (sf2)
+const sqScr = ["sftppanel","sftpcopy","sftpedit","sftplost","sftpsync"];
+const sqV = (() => {
+const off = { panels: null, vals: { sqTabs: [], sqEdOn: false, sqCopy: false, sqLost: false } };
+if (sqScr.indexOf(screen) < 0) return off;
+const isP = screen === "sftppanel", isC = screen === "sftpcopy", isE = screen === "sftpedit", isL = screen === "sftplost", isS = screen === "sftpsync";
+const chipSt = "height: 20px; box-sizing: border-box; padding: 0 7px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid " + t.b + "; border-radius: 4px; background: " + t.h + "; color: " + t.t + "; font-size: 11.5px; white-space: nowrap";
+const colS = "width: 72px; flex: none; text-align: right; white-space: nowrap", colD = "width: 104px; flex: none; text-align: right; white-space: nowrap", colP = "width: 78px; flex: none; white-space: nowrap", colO = "width: 70px; flex: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis";
+const host = "sftp://srv1";
+// [имя, вид, размер, изменён, права, владелец]
+const APP = [["..","up","","","",""],[".well-known","d","","14.08.26 12:10","drwxr-xr-x","www-data"],["current","d","","22.10.26 18:40","lrwxrwxrwx","deploy"],["releases","d","","22.10.26 18:39","drwxr-xr-x","deploy"],["repo","d","","22.10.26 18:38","drwxr-xr-x","deploy"],["shared","d","","03.09.26 09:15","drwxr-x---","www-data"],["tmp","d","","23.10.26 09:02","drwxrwxr-x","www-data"],[".env","f","1,1 КБ","03.09.26 09:16","-rw-------","www-data"],["deploy.sh","x","2,4 КБ","11.10.26 16:30","-rwxr-xr-x","deploy"],["maintenance.html","f","3,8 КБ","14.08.26 12:12","-rw-r--r--","www-data"],["revisions.log","f","18,6 КБ","22.10.26 18:40","-rw-r--r--","deploy"],["robots.txt","f","68 Б","14.08.26 12:12","-rw-r--r--","www-data"],["VERSION","f","7 Б","22.10.26 18:40","-rw-r--r--","deploy"]];
+const RELS = [["..","up","","","",""],["39","d","","02.10.26 15:20","drwxr-xr-x","deploy"],["40","d","","09.10.26 17:05","drwxr-xr-x","deploy"],["41","d","","16.10.26 18:12","drwxr-xr-x","deploy"],["42","d","","22.10.26 18:39","drwxr-xr-x","deploy"],["43","d","","23.10.26 11:04","drwxr-xr-x","admin"]];
+const CUR = [["..","up","","","",""],["assets","d","","22.10.26 18:39","drwxr-xr-x","deploy"],["fonts","d","","02.09.26 14:20","drwxr-xr-x","deploy"],["img","d","","14.10.26 10:05","drwxr-xr-x","deploy"],["404.html","f","1,6 КБ","02.09.26 14:20","-rw-r--r--","deploy"],["app.9b1e07d.css","f","84 КБ","22.10.26 18:39","-rw-r--r--","deploy"],["app.9b1e07d.js","f","1,2 МБ","22.10.26 18:39","-rw-r--r--","deploy"],["favicon.ico","f","15 КБ","02.09.26 14:20","-rw-r--r--","deploy"],["index.html","f","2,0 КБ","22.10.26 18:39","-rw-r--r--","deploy"],["manifest.webmanifest","f","0,6 КБ","02.09.26 14:20","-rw-r--r--","deploy"],["robots.txt","f","68 Б","02.09.26 14:20","-rw-r--r--","deploy"]];
+const REL = [["..","up","",""],[".fingerprint","d","","23.10.26 10:41"],["build","d","","23.10.26 10:41"],["deps","d","","23.10.26 10:42"],["examples","d","","20.10.26 13:50"],["incremental","d","","20.10.26 13:50"],["urfin.d","f","1,4 КБ","23.10.26 10:42"],["urfin.exe","x","11,7 МБ","23.10.26 10:42"],["urfin.pdb","f","24,1 МБ","23.10.26 10:42"]];
+const DIST = [["..","up","",""],["assets","d","","23.10.26 11:02"],["fonts","d","","02.09.26 14:20"],["img","d","","14.10.26 10:05"],["404.html","f","1,6 КБ","02.09.26 14:20"],["app.4f2a91c.css","f","86 КБ","23.10.26 11:02"],["app.4f2a91c.js","f","1,2 МБ","23.10.26 11:02"],["favicon.ico","f","15 КБ","02.09.26 14:20"],["index.html","f","2,1 КБ","23.10.26 11:02"],["manifest.webmanifest","f","0,6 КБ","02.09.26 14:20"],["robots.txt","f","68 Б","02.09.26 14:20"]];
+const LNK = { lnk: true, dir: true, lsz: "<SYMLINK>" };
+const sq = (path, info, list, c, act, ex, dim) => {
+const pn = P({ sqList: true, path: host + path, info, pathStyle: act ? actPath : pasPath, sqChip: "SSH", sqChipStyle: chipSt + (dim ? "; color: " + t.s : ""),
+sqBody: "flex: 1; min-height: 0; display: flex; flex-direction: column" + (dim ? "; opacity: 0.5" : ""), rows: rows(list.map((q) => q.slice(0, 4)), c, ex) });
+pn.rows.forEach((r, i) => { const q = list[i], m = !!(ex && ex[i] && ex[i].m), sec = hcOn && m ? t.ct : t.s;
+Object.assign(r, { sqPerm: q[4], sqOwn: q[5], sqPermSt: colP + "; font-family: " + mono + "; font-size: 12px; color: " + sec, sqOwnSt: colO + "; font-size: 12.5px; color: " + sec }); });
+return pn; };
+const rightAct = isP || isL;
+const tabsLR = (lLabel, rLabel) => ({
+tabsL: [[lLabel, 1], ["logs", 0]].map(([label, on]) => ({ label, close: !!on && !rightAct, style: on ? tabStyle(true) + (rightAct ? "; color: " + t.s : "") : tabStyle(false) })),
+tabsR: [[rLabel, 1], ["presale", 0], ["clients", 0]].map(([label, on]) => ({ label, close: !!on && rightAct, style: on ? tabStyle(true) + (rightAct ? "" : "; color: " + t.s) : tabStyle(false) })) });
+const v = { sqTabs: [], sqEdOn: false, sqCopy: isC, sqLost: isL,
+sqHead: "height: 24px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 12px; border-bottom: 1px solid " + t.b + "; color: " + t.s + "; font-size: 11.5px",
+sqColS: colS, sqColD: colD, sqColP: colP, sqColO: colO };
+let panels = null;
+if (isP || isL) { panels = [full("C:\\Dev\\urfin\\target\\release", "8 объектов", REL, -1, false), sq("/var/www/app", isL ? "12 объектов · из кэша" : "12 объектов · 8 мс", APP, 2, true, { 2: LNK }, isL)]; Object.assign(v, tabsLR("release", "srv1: app")); }
+if (isC) { panels = [full("C:\\Dev\\app\\dist", "10 объектов", DIST, 8, true, {}, { 1: { m: true }, 6: { m: true }, 8: { m: true } }), sq("/var/www/app/releases", "5 объектов · 9 мс", RELS, -1, false)]; Object.assign(v, tabsLR("dist", "srv1: releases"));
+Object.assign(v, { showJobs: true, jobs: [
+["Копирование","media → sftp://srv1/var/www/app/shared",42,"212 из 506 МБ · 9,8 МБ/с · ещё 30 с",t.s],
+["Копирование","db-1023.sql.gz → sftp://srv1/var/backups",66,"докачка с 61 % · 7,9 МБ/с · ещё 58 с",t.s]
+].map(([name, what, pct, info, ic]) => ({ name, what, info, act: "Пауза", infoColor: ic, bar: "height: 100%; width: " + pct + "%; background: " + t.a })) }); }
+if (isS) { panels = [full("C:\\Dev\\app\\dist", "10 объектов", DIST, 8, true, {}, { 5: { m: true, sy: "→" }, 6: { m: true, sy: "→" }, 8: { m: true, sy: "→" } }), sq("/var/www/app/current", "10 объектов · 8 мс", CUR, -1, false, { 5: { tag: "только здесь" }, 6: { tag: "только здесь" } })]; Object.assign(v, tabsLR("dist", "srv1: current"));
+const seg = (on) => "height: 26px; border: 0; background: " + (on ? t.c : t.p) + "; color: " + (on ? t.ct : t.t) + "; font: inherit; font-weight: " + (on ? 500 : 400) + "; min-width: 38px; padding: 0 10px; font-size: 14px";
+Object.assign(v, { syPlan: true, syMirror: false, syIco: t.a,
+syRow: "position: absolute; left: 0; right: 0; bottom: 0; padding: 10px 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; row-gap: 8px; background: " + t.h + "; border-top: 2px solid " + t.a,
+syParts: [["→ 3 файла · 1,3 МБ", ""], [" · на сервере лишних: 2", t.s]].map(([x, c]) => ({ x, st: c ? "color: " + c : "" })),
+syDirs: [["→","Слева направо"],["←","Справа налево"],["⇄","В обе стороны: новее побеждает"]].map(([l, hint], i) => ({ l, hint, on: i === 0, st: seg(i === 0) + (i ? "; border-left: 1px solid " + t.b : "") })),
+syDelDis: false, syDelLbl: "Удалять лишнее на сервере", syDelHint: "Зеркало: удалит на сервере то, чего нет слева",
+syDelLab: "display: flex; gap: 6px; align-items: center; font-size: 12.5px; white-space: nowrap; color: " + t.t, syGo: btnPrimary }); }
+if (isL) v.sqLostRow = "position: absolute; left: calc(50% + 0.5px); right: 0; bottom: 0; z-index: 4; padding: 10px 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; row-gap: 8px; background: " + t.wbg + "; border-top: 2px solid " + t.rem + "; --bg: " + t.wbg + "; --fl: color-mix(in srgb, " + t.rem + " 22%, " + t.wbg + "); animation: urfinFlash 1.4s ease-in-out 0.3s 1";
+if (isE) {
+const NG = ["# app.corp.local — фронтенд и API","upstream app_backend {","    server 127.0.0.1:8080 max_fails=3 fail_timeout=10s;","    keepalive 32;","}","","server {","    listen 80;","    server_name app.corp.local;","    return 301 https://$host$request_uri;","}","","server {","    listen 443 ssl http2;","    server_name app.corp.local;","","    ssl_certificate     /etc/ssl/corp/app.crt;","    ssl_certificate_key /etc/ssl/corp/app.key;","    ssl_protocols       TLSv1.2 TLSv1.3;","","    root /var/www/app/current;","    index index.html;","    client_max_body_size 25m;","","    location / {","        try_files $uri $uri/ /index.html;","    }","","    location /api/ {","        proxy_pass http://app_backend;","        proxy_set_header Host $host;","        proxy_set_header X-Real-IP $remote_addr;","        proxy_read_timeout 60s;","    }","","    location ~* \\.(js|css|woff2)$ {","        expires 30d;","        access_log off;","    }","}"];
+// роли tree-sitter-nginx: директива — kw, число/размер/время — num, путь/URL/переменная — str, комментарий — com
+const ngSegs = (line) => {
+if (/^\s*#/.test(line)) return [{ x: line, c: t.com }];
+const out = [], m = line.match(/^(\s*)(\S*)(.*)$/);
+if (m[1]) out.push({ x: m[1], c: t.t });
+if (m[2]) out.push({ x: m[2], c: /^[{}]$/.test(m[2]) ? t.s : t.kw });
+const re = /(\s+)|([{};])|(\S+?)(?=[;{}\s]|$)/g; let r;
+while ((r = re.exec(m[3]))) { const x = r[0];
+out.push({ x, c: r[1] ? t.t : r[2] ? t.s : /^\d+[smhdk]?$/.test(x) ? t.num : /[\/$]|:\d/.test(x) ? t.str : t.t }); }
+return out; };
+const curI = 22, vis = 27, mini = [];
+const lines = NG.map((line, i) => { const raw = ngSegs(line), cur = i === curI;
+mini.push(raw.filter((s) => s.x.trim()).map((s) => "flex: none; height: 3px; border-radius: 1px; width: " + Math.min(60, Math.max(2, Math.round(s.x.trim().length * 1.1))) + "px; background: " + s.c + "; opacity: 0.55"));
+const segs = raw.map((s) => ({ x: s.x, style: "color: " + s.c }));
+if (cur) segs.push({ x: "", style: "border-left: 2px solid " + t.a + "; margin-left: 1px" });
+return { n: i + 1, segs, fold: /\{\s*$/.test(line) ? "▾" : "",
+barStyle: "width: 3px; flex: none; align-self: stretch; background: " + (cur ? t.a : t.h),
+numStyle: "width: 40px; flex: none; align-self: stretch; display: flex; align-items: center; justify-content: flex-end; padding-right: 6px; box-sizing: border-box; background: " + t.h + "; color: " + (cur ? t.t : t.s) + "; font-weight: " + (cur ? 500 : 400),
+style: "height: 20px; flex: none; display: flex; align-items: center; white-space: pre; background: " + (cur ? t.cl : "transparent") }; });
+Object.assign(v, { sqEdOn: true, oneSet: true, twoSets: false, tabs: [],
+sqTabs: [{ label: "", icon: true, aria: "Панели — sftp://srv1/etc/nginx/sites-available", close: false, host: "", style: tabStyle(false) + "; padding: 0 12px" },
+{ label: "app.conf", icon: false, close: true, host: "srv1", hostStyle: "flex: none; height: 18px; box-sizing: border-box; padding: 0 6px; display: inline-flex; align-items: center; border: 1px solid " + t.b + "; border-radius: 4px; background: " + t.h + "; color: " + t.s + "; font-size: 11px", style: tabStyle(true) }],
+sqEdLines: lines.slice(0, vis), sqEdMini: mini,
+sqEdFold: "width: 14px; flex: none; align-self: stretch; display: flex; align-items: center; justify-content: center; color: " + t.s + "; background: " + t.h + "; border-right: 1px solid " + t.b + "; font-size: 10px",
+sqEdView: "position: absolute; left: 4px; right: 4px; top: 4px; height: " + (vis * 4 + 4) + "px; border-radius: 3px; background: " + t.cl + "; border: 1px solid " + t.b + "; box-sizing: border-box",
+sqEdNote: "height: 28px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-top: 1px solid " + t.b + "; background: " + t.p + "; font-size: 12.5px" });
+}
+return { panels, vals: v };
+})();
 const panels = ddOn ? [full("C:\\Dev\\urfin", "16 объектов", L, 11, true, {}, { 5: { m: true }, 7: { m: true }, 11: { m: true } }), full("\\\\fs01\\share\\presale", "12 объектов", R, ddFolder ? 3 : -1, false, { ddFrame: !ddFolder }, ddFolder ? { 3: { m: true } } : {})] : screen === "archive" ? [P({ isFull: true, path: "C:\\Dev\\urfin\\urfin-0.4.2.zip\\urfin-0.4.2", tag: "zip", info: "8 объектов", pathStyle: actPath, rows: rows(ARC, 4), packedCol: true }), P({ isState: true, path: "\\\\fs01\\share\\presale\\new", info: "", pathStyle: pasPath, st: ST.empty })]
+: sqV.panels ? sqV.panels
 : pkList ? [pkPanel(), full("\\\\fs01\\share\\presale", "12 объектов", R, -1, false)]
 : psOn ? [psPanel(), full("\\\\fs01\\share\\presale", "12 объектов", R, -1, false)]
 : duOn ? duPanels()
 : dmOn ? dmVals.dmPanels
 : srPanel ? [srHitsPanel(), full("\\\\fs01\\share\\presale", "12 объектов", R, -1, false)]
 : srGrep ? [srGrepPanel(), full("\\\\fs01\\share\\presale", "12 объектов", R, -1, false)]
+: stVals.stPanels ? stVals.stPanels
 : screen === "termsearch" || screen === "termshell" ? [P({ vis: "visibility: hidden", path: "", rows: [] }), P({ vis: "visibility: hidden", path: "", rows: [] })]
 : screen === "terminal" ? [P({ vis: "visibility: hidden", path: "", rows: [] }), P({ vis: "visibility: hidden", path: "", rows: [] })]
 : screen === "termhalf" ? [P({ vis: "visibility: hidden", path: "C:\\Dev\\urfin", rows: [] }), full("\\\\fs01\\share\\presale", "12 объектов", R, 4, true)]
@@ -2362,6 +3026,7 @@ const panels = ddOn ? [full("C:\\Dev\\urfin", "16 объектов", L, 11, true
 : screen === "tree" ? [P({ isTree: true, path: "C:\\Dev\\urfin", info: "дерево", pathStyle: actPath }), full("C:\\Dev\\urfin\\docs\\design", "3 объекта", DES, -1, false)]
 : screen === "info" ? [full("C:\\Dev\\urfin", "16 объектов", L, 6, true), P({ isInfo: true, path: "Сведения", info: "", pathStyle: pasPath })]
 : screen === "quickview" ? [full("C:\\Dev\\urfin", "16 объектов", L, 6, true), P({ isQv: true, path: "Быстрый просмотр", info: "TOML", pathStyle: pasPath })]
+: scOn ? scPanels()
 : screen === "drives" ? [full("\\Dev\\urfin", "16 объектов", L, 6, true, { drives: true }), full("\\\\fs01\\share\\presale", "12 объектов", R, -1, false)]
 : screen === "link" ? [full("C:\\Dev\\urfin", "16 объектов", L, 3, true), full("D:\\Work", "10 объектов", lnW, -1, false, {}, lnWX)]
 : screen === "a11yfocus" ? [full("C:\\Dev\\urfin", "16 объектов", L, 11, true, {}, { 5: { m: true }, 7: { m: true }, 11: { m: true } }), full("\\\\fs01\\share\\presale", "12 объектов", R, -1, false)]
@@ -2505,24 +3170,31 @@ R("Потоков всего", { num: true, value: "64", note: "на все за
 SEG("Запись файлов", ["Быстро","Надёжно"], 0, "надёжно — сброс каждого файла на диск, переживает отключение питания"),
 R("Журналы задач", { path: "%LOCALAPPDATA%\\Urfin\\state\\jobs", note: "после сбоя Урфин предложит продолжить или очистить" })] }
 ];
-const P = (label, src, set, value) => ({ label, src: set ? src + " = " + set : src, set: !!set, value: set ? value : "не задано",
+const P = (label, src, set, value, from) => ({ label, src: set ? from + " · " + src + " = " + set : src, set: !!set, value: set ? value : "не задано",
 vs: "width: 200px; flex: none; color: " + (set ? t.t : t.s) + (set ? "; font-weight: 500" : ""), srcColor: set ? t.t : t.s });
 const soPolRows = [
-P("Тема", "Theme", "", ""),
-P("Запретить смену темы", "ThemeLocked", "", ""),
-P("Удалять в корзину", "DeleteToTrash", "1", "Да"),
-P("Быстрая корзина", "ExperimentalFastTrash", "", ""),
-P("Проверка после записи", "Verify", "", "")
+P("Тема", "theme", "", ""),
+P("Запретить смену темы", "theme_locked", "", ""),
+P("Удалять в корзину", "DeleteToTrash", "1", "Да", "GPO"),
+P("Быстрая корзина", "experimental_fast_trash", "", ""),
+P("Проверка после записи", "verify", "", ""),
+P("Кэш паролей SSH", "PasswordCache", "0", "Запрещён", "GPO"),
+P("Запись сеансов SSH", "ssh.recording", "\"required\"", "Обязательна", "TOML"),
+P("Мультивыполнение SSH", "ssh.multi_exec", "", ""),
+P("Помощник анализа места", "du_elevated_helper", "", ""),
+P("Чтение MFT", "du_elevated_mft", "", "")
 ];
 return { soOps: sec === "ops", soPol: sec === "policies", soOpsForm, soPolRows,
 soNote: "display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid " + t.b + "; border-radius: 4px; background: " + t.h + "; color: " + t.t + "; font-size: 12.5px; line-height: 1.45" };
 })();
 const NAV = ["Вид","Панели","Клавиатура","Редактор","Просмотр","Терминал","Операции","Политики"];
 NAV.push("Пакеты"); NAV.push("Доступность"); NAV.push("О программе");
+NAV.splice(NAV.indexOf("Терминал") + 1, 0, "SSH", "Подключения");
 const navSel = sec === "a11y" ? NAV.indexOf("Доступность") : sec === "about" ? NAV.indexOf("О программе") : sec === "viewer" ? NAV.indexOf("Просмотр") : sec === "terminal" ? NAV.indexOf("Терминал") : { view: 0, panels: 1, keys: 2, editor: 3 }[sec] || 0;
 const nav = NAV.map((label, j) => ({ label, i: j === navSel ? 0 : 1 })).map(({ label, i }) => ({ label, style: "height: 32px; padding: 0 12px; text-align: left; border: 0; border-radius: 4px; background: " + (i === 0 ? t.c : "transparent") + "; color: " + (i === 0 ? t.ct : t.t) + "; font: inherit; font-weight: " + (i === 0 ? 500 : 400) }));
 if (sec === "ops" || sec === "policies") { const soJ = NAV.indexOf(sec === "ops" ? "Операции" : "Политики"), soOn = nav[0].style, soOff = nav[1].style; nav.forEach((n, k) => { n.style = k === soJ ? soOn : soOff; }); }
 if (sec === "pkg") { const pkJ = NAV.indexOf("Пакеты"), pkOnS = nav[0].style, pkOffS = nav[1].style; nav.forEach((n, k) => { n.style = k === pkJ ? pkOnS : pkOffS; }); }
+{ const ssOn = "height: 32px; padding: 0 12px; text-align: left; border: 0; border-radius: 4px; background: " + t.c + "; color: " + t.ct + "; font: inherit; font-weight: 500", ssOff = "height: 32px; padding: 0 12px; text-align: left; border: 0; border-radius: 4px; background: transparent; color: " + t.t + "; font: inherit; font-weight: 400"; if (sec === "ssh" || sec === "conn") { const ssJ = NAV.indexOf(sec === "ssh" ? "SSH" : "Подключения"); nav.forEach((n, k) => { n.style = k === ssJ ? ssOn : ssOff; }); } const ssSub = nav[NAV.indexOf("Подключения")]; if (ssSub) ssSub.style += "; padding-left: 28px; font-size: 13px"; }
 const followOs = st.followOs !== undefined ? st.followOs : false;
 const cards = NAMES.map(([id, name]) => {
 const x = hcOn ? t : TH[id], on = id === (hcOn ? "light" : themeId);
@@ -2666,6 +3338,21 @@ syGo: syMirror ? "height: 30px; padding: 0 14px; border: 1px solid " + t.k + "; 
 };
 })();
 const STATUS = {
+sshpair: ["ssh.exe · ключ ed25519 из агента","папка: /var/www/app ↔ панель","UTF-8 · 79×18"],
+sshmulti: ["Группа: 3 сеанса из 4","первая команда подтверждена в 14:05","UTF-8 · 136×31"],
+sshrec: ["Запись: %USERPROFILE%\\Urfin\\recordings\\srv1-2026-10-23-1402.cast","1,2 МБ","asciicast v2"],
+sshrecview: ["Сеанс admin@srv1 · терминал 132×30 · начало 23.10.26 14:02 UTC+3 · длительность 12:47 · asciicast v2, 1,2 МБ","",""],
+termhl: ["pwsh 7.5 · интеграция с оболочкой","","Скроллбэк 1 204 строки"],
+sftppanel: ["current → releases/42","Выделено 0 из 12","admin@srv1.corp.local · ssh-ed25519 · ключ из агента (Pageant)"],
+sftplost: ["current → releases/42","Выделено 0 из 12","admin@srv1.corp.local · ssh-ed25519 · ключ из агента (Pageant)"],
+sftpcopy: ["index.html · 2,1 КБ · 23.10.26 11:02","Выделено 3 из 10 · 14,2 МБ","C: 214 ГБ свободно"],
+sftpedit: ["Стр 23, Кол 30","40 строк","nginx · Пробелы: 4 · UTF-8 · LF · Вставка"],
+sftpsync: ["index.html · 2,1 КБ · 23.10.26 11:02","Сравнение: размер и дата · точность 1 с","C: 214 ГБ свободно"],
+sshdrives: ["Профиль prod-web · вход через агент","","SSH: 1 подключение"],
+sshnew: ["Источники: ~\\.ssh\\config · история · known_hosts · профили","1 из 4",""],
+sshhostkey: ["Cargo.toml · 1,2 КБ · 19.10.26 22:40","Выделено 0 из 16","Подключение: ключ сервера · 2 из 3"],
+sshhostchanged: ["Cargo.toml · 1,2 КБ · 19.10.26 22:40","Выделено 0 из 16","Подключение остановлено"],
+sshpass: ["Cargo.toml · 1,2 КБ · 19.10.26 22:40","Выделено 0 из 16","Подключение: вход · 3 из 3"],
 dumap: ["target · папка · 20.10.26 13:55","Отмечено 2 из 12 · освободится 5,8 ГБ","C: 214 ГБ свободно"],
 dutypes: ["Архивы: .zip .7z .rar .tar .gz .cab","7 групп · 486 530 файлов","C: 214 ГБ свободно"],
 dudups: ["LLVM-19.1.7-win64.exe · 362 МБ · 14.01.25 11:05","9 групп · 19 файлов","C: 214 ГБ свободно"],
@@ -2743,9 +3430,25 @@ editor: ["Стр 6, Кол 18","41 строка","TOML · Пробелы: 4 · U
 settings: [sec === "keys" ? "%APPDATA%\\Urfin\\keymap.toml" : "%APPDATA%\\Urfin\\settings.toml", sec === "keys" ? "1 конфликт" : "", "Применяется сразу"],
 delete: ["CHANGELOG.md · 9,4 КБ · 18.10.26 17:05","Выделено 2 из 16 · 67,7 КБ","C: 214 ГБ свободно"]
 };
-if (sec === "policies") STATUS.settings = ["HKLM\\Software\\Policies\\Aahz\\Urfin","задано 1 из 5","Только чтение"];
+if (sec === "policies") STATUS.settings = ["policy.toml + HKLM\\Software\\Policies\\Aahz\\Urfin","задано 3 из 10","Только чтение"];
 if (sec === "about") STATUS.settings = ["Windows 11 24H2 · x64","","Своя память 31 МБ"];
+if (sec === "ssh") STATUS.settings = ["%APPDATA%\\Urfin\\settings.toml","2 параметра заданы политикой","Применяется сразу"];
+if (sec === "conn") STATUS.settings = ["%APPDATA%\\Urfin\\connections.toml","8 профилей · 5 из ~/.ssh/config · 2 из PuTTY","Пароли в файл не пишутся"];
 const KEYS = {
+sshpair: [["Ctrl+O","Панели"],["Ctrl+Tab","Панель ↔ терминал"],["Ctrl+Shift+F","Поиск в выводе"],["Ctrl+Alt+H","Подсветка"],["Ctrl+Alt+R","Запись"],["Ctrl+Alt+G","Группа"]],
+sshmulti: [["Esc","Выйти из группы"],["Ctrl+Alt+G","Состав группы"],["Пробел","В группу / из группы"],["Ctrl+Alt+H","Подсветка"],["Ctrl+Alt+R","Запись"],["Ctrl+O","Панели"]],
+sshrec: [["Ctrl+O","Панели"],["Ctrl+Shift+F","Поиск в выводе"],["Ctrl+Alt+H","Подсветка"],["Ctrl+Alt+G","Группа"],["Ctrl+Break","Прервать"]],
+sshrecview: [["Пробел","Пуск / пауза"],["← →","−5 с / +5 с"],["1 2 4","Скорость"],["F7","Поиск"],["Alt+↓","История поиска"],["Shift+F7","Следующее"],["Esc","Закрыть"]],
+termhl: [["Ctrl+O","Панели"],["Ctrl+Shift+F","Поиск в выводе"],["Ctrl+Alt+H","Подсветка"],["Ctrl+Alt+R","Запись"],["Ctrl+Break","Прервать"]],
+sftpcopy: [["Tab","Следующее поле"],["Alt+↓","История путей"]],
+sftpedit: [["F2","Сохранить"],["F7","Поиск"],["Ctrl+F7","Замена"],["Alt+F8","Строка"],["Esc","Закрыть"]],
+sftplost: [["Tab","Следующая кнопка"]],
+sftpsync: [["Tab","Следующая кнопка"],["Ins","Исключить из плана"]],
+sshdrives: [["Enter","Подключить"],["Ins","Новое подключение"],["F4","Изменить профиль"],["Del","Отключить"],["Esc","Закрыть"]],
+sshnew: [["↑ ↓","Вариант"],["Alt+↓","История хостов"],["Tab","Следующее поле"],["← →","Способ входа"]],
+sshhostkey: [["Tab","Следующая кнопка"],["Ctrl+C","Копировать отпечаток"]],
+sshhostchanged: [["Tab","Следующая кнопка"],["Ctrl+C","Копировать отпечаток"]],
+sshpass: [["↑ ↓","Выбор"],["Enter","Подставить команду"],["Esc","Закрыть список"]],
 dumap: [["Enter","Внутрь"],["Ctrl+R","Обновить"],["Ctrl+1…6","Фильтр"],["Ctrl+Tab","К карте"]],
 dutypes: [["Enter","Раскрыть группу"],["Ctrl+PgUp","К папке файла"],["Ctrl+R","Обновить"]],
 dudups: [["Ctrl+H","Проверить хэшем"],["Ctrl+PgUp","К папке файла"],["Shift+Space","Отметить группу"]],
@@ -2819,6 +3522,7 @@ editgoto: [["F7","Поиск"],["Ctrl+F7","Замена"]],
 editor: [["F2","Сохранить"],["F7","Поиск"],["Ctrl+F7","Замена"],["Alt+F8","Строка"],["Esc","Закрыть"]],
 settings: [["Tab","Раздел"],["Ctrl+F","Найти настройку"],["Esc","Закрыть"]]
 };
+if (sec === "conn") KEYS.settings = [["Enter","Подключиться"],["Shift+Enter","Терминал"],["Ins","Добавить"],["F4","Изменить"],["Del","Удалить"],["Esc","Закрыть"]];
 const atBox = (st, dis) => "width: 14px; height: 14px; flex: none; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 3px; border: 1px solid " + (dis ? t.b : (st ? t.a : t.s)) + "; background: " + (st && !dis ? t.a : t.p) + "; color: " + t.p;
 const atFlag = (label, st, dis, hint) => ({ label, on: st === 1, mix: st === 2, hint: hint || "", box: atBox(st, dis), lab: "display: flex; gap: 6px; align-items: center; font-size: 12.5px; white-space: nowrap; color: " + (dis ? t.s : t.t) });
 const atFlags = [atFlag("Только чтение", 2, false, "у части объектов — не менять"), atFlag("Скрытый", 0), atFlag("Системный", 0), atFlag("Архивный", 1)];
@@ -3066,6 +3770,58 @@ kitFragRow: "height: 24px; display: flex; align-items: center; gap: 8px; padding
 kitRoles: kRoles.map(([name, k]) => ({ name, key: "t." + k, v: t[k], val: kFmt(t[k]), sw: "width: 22px; height: 22px; flex: none; box-sizing: border-box; border-radius: 4px; border: 1px solid " + t.b + "; background: " + t[k] }))
 };
 })();
+const ssVals = (() => {
+const ssMono = "font-family: 'Cascadia Mono', Consolas, monospace; font-size: 12.5px";
+const ssSeg = (on, lock) => "height: 28px; padding: 0 12px; border: 1px solid " + (on && !lock ? t.a : t.b) + "; border-radius: 4px; background: " + (on ? t.c : t.p) + "; color: " + (on ? t.ct : (lock ? t.s : t.t)) + "; font: inherit; white-space: nowrap";
+const R = (label, o) => Object.assign({ label, lock: false, note: "", seg: false, checks: false, select: false, cmd: false, nums: false, path: false, chips: false, keys: false }, o);
+const SEG = (label, opts, on, o) => R(label, Object.assign({ seg: true, opts: opts.map((x, i) => ({ label: x, style: ssSeg(i === on, o && o.lock) })) }, o || {}));
+const CH = (text, on, dis) => ({ text, on, dis: !!dis, style: "display: flex; gap: 8px; align-items: center; white-space: nowrap; color: " + (dis ? t.s : t.t) });
+const N = (pre, v, post) => ({ pre, v, post });
+const C = (label, col, on) => ({ label, style: "height: 26px; box-sizing: border-box; padding: 0 10px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid " + (on ? t.a : t.b) + "; border-radius: 4px; background: " + (on ? t.c : "transparent") + "; color: " + (on ? t.ct : t.s) + "; font-size: 12px; white-space: nowrap",
+sw: "width: 8px; height: 8px; flex: none; border-radius: 2px; background: " + col + (on ? "" : "; opacity: 0.45") });
+const ssForm = [
+{ title: "Вход", rows: [
+SEG("Агент", ["Авто","OpenSSH","Pageant"], 0, { note: "найден OpenSSH · KeePassXC, 1Password, Bitwarden — через агент" }),
+R("Ключи по умолчанию", { path: true, value: "~/.ssh/id_ed25519", btnLabel: "Добавить", note: "Ed25519, ECDSA, RSA" }),
+R("Импорт профилей", { checks: true, items: [CH("~/.ssh/config", true), CH("Сеансы PuTTY", true)], note: "только чтение · файлы не меняются" })] },
+{ title: "Пароли", rows: [
+R("Сохранять пароли", { lock: true, checks: true, items: [CH("И фразы-пароли ключей — в Диспетчере учётных данных", false, true)], note: "Задано политикой организации · GPO" }),
+R("Менеджер паролей", { select: true, value: "BearPass", note: "ключ из записи — только в память" }),
+R("Команда получения пароля", { cmd: true, value: "bearpass get {id} --field=password", toks: ["{host}","{user}","{id}"], note: "в профиле — своя" })] },
+{ title: "Сеансы", rows: [
+R("Переподключение", { nums: true, items: [N("попыток", "5", ""), N("интервал", "3", "с")], note: "панель и терминал — вместе" }),
+R("Keep-alive", { nums: true, items: [N("", "30", "с")], note: "0 — выключен" }),
+SEG("Запись сеансов", ["Выкл","По команде","Всегда"], 2, { lock: true, note: "Задано политикой организации · TOML" }),
+R("Папка записей", { path: true, value: "%LOCALAPPDATA%\\Urfin\\recordings", btnLabel: "Открыть", note: "asciicast v2 · просмотр по F3" }),
+R("Мультивыполнение", { checks: true, items: [CH("Подтверждать перед первой командой", true)], note: "группа видна меткой на вкладках" })] },
+{ title: "Подсветка вывода", rows: [
+R("Подсветка", { checks: true, items: [CH("Включена", true)], note: "только неокрашенный текст · и уровни в логах F3" }),
+R("Правила", { chips: true, items: [C("Ошибки", t.k, true), C("Предупреждения", t.rem, true), C("Пути", t.kw, true), C("URL", t.a, true), C("IP", t.num, true), C("Даты", t.str, true), C("Хэши", t.com, false)] })] }
+];
+const P = (name, src, host, user, auth, via, last, cur) => ({ name, src, host, user, auth, via, last,
+style: "height: 28px; display: flex; align-items: center; gap: 12px; padding: 0 12px; box-sizing: border-box; border-bottom: 1px solid " + t.b + (cur ? "; box-shadow: inset 0 0 0 1px " + t.a : ""),
+viaStyle: "width: 110px; flex: none; color: " + (via === "—" ? t.s : t.t), lastStyle: "width: 112px; flex: none; color: " + t.s });
+const ssConn = [
+P("bastion", "config", "bastion.corp.local", "anton", "Агент", "—", "сегодня 09:12"),
+P("web-prod-01", "config", "10.20.1.11", "deploy", "Ключ", "bastion", "сегодня 09:14", true),
+P("web-prod-02", "config", "10.20.1.12", "deploy", "Ключ", "bastion", "вчера 18:40"),
+P("db-prod", "config", "10.20.2.5", "anton", "Ключ + 2FA", "bastion", "21.10.26"),
+P("siem-collector", "config", "siem01.corp.local", "svc-siem", "Пароль · BearPass", "bastion", "18.10.26"),
+P("build-runner", "", "192.168.50.20", "ci", "Агент", "—", "—"),
+P("nas", "PuTTY", "nas.home.arpa:2222", "admin", "Пароль", "—", "02.10.26"),
+P("router", "PuTTY", "192.168.1.1", "admin", "Пароль", "—", "14.09.26")
+];
+const ssProps = [
+{ label: "Ключ", value: "~/.ssh/deploy_ed25519", mono: true, note: "Ed25519 · фразу-пароль спросит при входе" },
+{ label: "Ключ сервера", value: "ED25519 SHA256:q7Kc9mR2…Lw4f3Ua", mono: true, note: "совпадает с known_hosts" },
+{ label: "Начальная папка", value: "/var/www/portal", mono: true, note: "панель sftp:// и терминал откроются здесь" },
+{ label: "Закладки", value: "/var/log/nginx · /etc/nginx", mono: true, note: "в панели sftp:// этого профиля" }
+].map((r) => Object.assign({ plain: !r.mono }, r));
+return { ssOn: sec === "ssh" && screen === "settings", ssConnOn: sec === "conn" && screen === "settings", ssForm, ssConn, ssProps,
+ssMono, ssTok: "height: 20px; box-sizing: border-box; padding: 0 6px; display: inline-flex; align-items: center; border: 1px solid " + t.b + "; border-radius: 4px; background: " + t.h + "; color: " + t.s + "; font-family: 'Cascadia Mono', Consolas, monospace; font-size: 11.5px",
+ssSrc: "padding: 0 5px; border: 1px solid " + t.b + "; border-radius: 3px; color: " + t.s + "; font-size: 10.5px; line-height: 15px",
+ssBtnS: "height: 26px; padding: 0 10px; border: 1px solid " + t.b + "; border-radius: 4px; background: " + t.p + "; color: " + (t.bt || t.t) + "; font: inherit; font-size: 12px; display: flex; gap: 8px; align-items: center" };
+})();
 const keybarStyle = "height: 26px; display: flex; align-items: center; justify-content: " + (keys.length >= 10 ? "space-between" : "flex-start") + "; gap: 28px; padding: 0 12px; color: " + t.s + "; font-size: 12px";
 const nwNarrow = nwW <= 800, nwMid = nwW < 1280;
 const pkVals = (() => {
@@ -3138,7 +3894,7 @@ ddOn, ddTo: ddFolder ? "templates" : "presale",
 ddPtr: "position: absolute; left: " + ddPx + "px; top: " + ddPy + "px; z-index: 21; display: flex; pointer-events: none",
 ddGhost: "position: absolute; left: " + (ddPx + 14) + "px; top: " + (ddPy + 22) + "px; z-index: 20; display: flex; align-items: center; gap: 10px; padding: 7px 12px 7px 9px; background: " + t.p + "; border: 1px solid " + t.b + "; border-radius: 6px; box-shadow: 0 4px 14px " + t.b + "; white-space: nowrap; font-size: 12.5px; pointer-events: none",
 status: STATUS[screen] || STATUS.panels,
-isPanels: ["panels","dumap","dutypes","dudups","dutemp","utilmenu","duscan","dulist","ducached","dunoaccess","pkgsearch","pkgmgrpick","pkginstall","pkginstalled","pkgupdates","pkgbanner","a11yfocus","zoomind","link","touch","linkview","syncplan","syncmirror","syncrun","clipcut","clippaste","extract","extractpw","tabsmany","tabsdrag","operror","opbusy","toasterror","termsearch","termshell","searchpanel","searchgrep","cmdcomplete","cmdhistory","firstrun","whatsnew","columns","columnswide","usermenu","usermenuedit","jobslist","dragpanel","dragfolder","pack","pack-pw","bookmarks","history","sort","filter","filtered","attrs","mkdir","mkdirtree","move","rename","journal","multirename","compare","terminal","termhalf","menu","context","select","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress"].indexOf(screen) >= 0,
+isPanels: ["panels","sftppanel","sftpcopy","sftplost","sftpsync","sshdrives","sshnew","sshhostkey","sshhostchanged","sshpass","dumap","dutypes","dudups","dutemp","utilmenu","duscan","dulist","ducached","dunoaccess","pkgsearch","pkgmgrpick","pkginstall","pkginstalled","pkgupdates","pkgbanner","a11yfocus","zoomind","link","touch","linkview","syncplan","syncmirror","syncrun","clipcut","clippaste","extract","extractpw","tabsmany","tabsdrag","operror","opbusy","toasterror","termsearch","termshell","searchpanel","searchgrep","cmdcomplete","cmdhistory","firstrun","whatsnew","columns","columnswide","usermenu","usermenuedit","jobslist","dragpanel","dragfolder","pack","pack-pw","bookmarks","history","sort","filter","filtered","attrs","mkdir","mkdirtree","move","rename","journal","multirename","compare","terminal","termhalf","menu","context","select","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress"].indexOf(screen) >= 0,
 showTerm: screen === "terminal" || screen === "termhalf",
 cliCmd: screen === "terminal" || screen === "termhalf" ? "" : "cargo build --release",
 oneSet: screen === "help" || screen === "viewerhex" || screen === "viewerenc" || ["viewer","editor","settings","search"].indexOf(screen) >= 0 || ["editreplace","editgoto"].indexOf(screen) >= 0,
@@ -3276,9 +4032,9 @@ infoStyle: "width: 250px; flex: none; display: flex; align-items: center; justif
 bar: "height: 100%; width: " + pct + "%; background: " + col })) : []
 } : { psBarOn: false, psOpen: false, psInst: false, psJobs: [] }),
 ...erVals,
-...pkVals,
-showCli: ["panels","dumap","dutypes","dudups","dutemp","utilmenu","duscan","dulist","ducached","dunoaccess","pkgsearch","pkgmgrpick","pkginstall","pkginstalled","pkgupdates","pkgbanner","a11yfocus","zoomind","link","touch","linkview","syncplan","syncmirror","syncrun","clipcut","clippaste","tabsmany","tabsdrag","operror","opbusy","toasterror","termsearch","termshell","searchpanel","searchgrep","firstrun","whatsnew","columns","columnswide","usermenu","usermenuedit","jobslist","dragpanel","dragfolder","pack","pack-pw","bookmarks","history","sort","filter","filtered","attrs","mkdir","mkdirtree","move","rename","journal","multirename","compare","terminal","termhalf","menu","context","select","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress","search"].indexOf(screen) >= 0,
-showToast: screen === "panels", isCmp: screen === "compare", ...syVals,
+...pkVals, ...ssVals,
+showCli: ["panels","sftppanel","sftpcopy","sftplost","sftpsync","sshdrives","sshnew","sshhostkey","sshhostchanged","sshpass","dumap","dutypes","dudups","dutemp","utilmenu","duscan","dulist","ducached","dunoaccess","pkgsearch","pkgmgrpick","pkginstall","pkginstalled","pkgupdates","pkgbanner","a11yfocus","zoomind","link","touch","linkview","syncplan","syncmirror","syncrun","clipcut","clippaste","tabsmany","tabsdrag","operror","opbusy","toasterror","termsearch","termshell","searchpanel","searchgrep","firstrun","whatsnew","columns","columnswide","usermenu","usermenuedit","jobslist","dragpanel","dragfolder","pack","pack-pw","bookmarks","history","sort","filter","filtered","attrs","mkdir","mkdirtree","move","rename","journal","multirename","compare","terminal","termhalf","menu","context","select","quick","archive","errors","brief","tree","info","quickview","drives","copy","delete","conflict","progress","search"].indexOf(screen) >= 0,
+...scVals(), showToast: screen === "panels", isCmp: screen === "compare", ...syVals,
 toastPos: "bottom: " + (82 + 12 + (screen === "progress" ? 64 : (screen === "conflict" ? 34 : 0))) + "px;",
 toast: screen === "compare" ? { title: "Сравнение папок", text: "только слева 2 · только справа 1 · новее слева 1", act: true, acts: ["Синхронизировать →", "Синхронизировать ←"] } : { title: "Копирование завершено", text: "48 файлов · 1,9 ГБ · 6,2 с", act: false, acts: [] },
 showBanner: screen === "journal", frFirst: screen === "firstrun", frNews: screen === "whatsnew", isRename: screen === "multirename",
@@ -3300,6 +4056,7 @@ style: "height: 28px; display: flex; align-items: center; gap: 10px; padding: 0 
 ...kitVals,
 ...moVals,
 ...tsVals,
+...stVals,
 ...clVals,
 btnDanger: "height: 30px; padding: 0 14px; border: 1px solid " + t.k + "; border-radius: 4px; background: " + t.k + "; color: " + t.p + "; font: inherit; display: flex; gap: 8px; align-items: center", hcOn, hcNote: "display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 1px solid " + t.b + "; border-radius: 4px; background: " + t.p + "; color: " + t.t + "; font-size: 12.5px",
 ...(() => {
@@ -3314,6 +4071,7 @@ zmHint: "Ctrl+0 — сбросить",
 zmToast: "position: absolute; bottom: " + (82 + 12) + "px; right: 16px; height: 36px; box-sizing: border-box; padding: 0 14px 0 12px; display: flex; align-items: center; gap: 8px; white-space: nowrap; background: " + t.p + "; border: 1px solid " + t.b + "; border-radius: 6px; font-size: 12.5px; " + popShadow
 };
 })(),
+...sqV.vals,
 ...duVals,
 ...nwOver
 };
