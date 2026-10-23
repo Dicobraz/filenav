@@ -2,7 +2,7 @@
 
 Текст задач — `specs/S5.md` §8, здесь не дублируется. «Дельты» — правки из S0-contracts-v2…v5, S0-decisions и ADR; они главнее текста задачи (CLAUDE.md «Где правда»). «Следствие» — вывод сборщика пакета; расходится с ADR — прав ADR, вопрос владельцу.
 
-Ветки `s5/NN-кратко`, заголовок PR — Conventional Commits. Видимое в окне — с меткой `win-manual` и разделом в `docs/MANUAL-TESTS.md`.
+Ветки `s5/NN-кратко`, заголовок PR — Conventional Commits. Видимое в окне — с меткой `win-manual` и файлом `docs/manual-tests/<ID>.md`.
 
 **Платформа:** только Windows (S0-decisions №57). S5-17 (macOS) и S5-18 (Linux) не делаем; unix-ветки в задачах (`unlinkat`, `getdents`, `statx`, mode) — не писать, на них хватает `cfg`-заглушки `std`.
 

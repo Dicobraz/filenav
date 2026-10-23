@@ -45,7 +45,7 @@
 - Тесты: cargo-nextest; бенчи: criterion + `urfin --bench`.
 - Clippy pedantic = warn (в CI `-D warnings`), rustfmt по умолчанию.
 - Ветки `sX/<задача>`, PR на задачу или пачку связанных задач; мерж — после зелёного CI, без отставания от `main`.
-- Документы в репо: `docs/specs/Sx.md`, `docs/adr/NNNN-*.md`, задачи `docs/TASKS-*.md`, ручные проверки `docs/MANUAL-TESTS.md`.
+- Документы в репо: `docs/specs/Sx.md`, `docs/adr/NNNN-*.md`, задачи `docs/TASKS-*.md`, ручные проверки `docs/manual-tests/<ID>.md`.
 
 ## Стенд
 Windows 11 владельца, сборка нативно (MSVC). Проверка лестницей: L0 на стенде (fmt, clippy, nextest, release) → L1 CI (только windows) → L2 ручная приёмка владельцем (метка `win-manual`). Перф-бюджеты меряются на стенде в release. WSL Ubuntu — только для проверки интеграции shell в WSL.
