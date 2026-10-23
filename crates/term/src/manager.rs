@@ -22,7 +22,7 @@ use urfin_core::{
 
 use crate::TermState;
 use crate::config::TermConfig;
-use crate::session::{CoreSink, OscEvent, Session, SessionEvent, SessionId, SessionOpts};
+use crate::session::{CoreSink, Mark, OscEvent, Session, SessionEvent, SessionId, SessionOpts};
 use crate::shells::{self, ShellSpec, SystemProbe};
 use crate::sys::conpty::{PtySize, SpawnSpec};
 use crate::vt::input::{self, Mods};
@@ -30,6 +30,9 @@ use crate::vt::shared::TermShared;
 
 /// Через сколько после первого pump прогреть shell по умолчанию.
 pub const WARMUP: Duration = Duration::from_millis(500);
+
+/// Ждать маркеров интеграции после старта (S6-12: Clink перетёр `PROMPT`).
+pub const INTEG_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Размер PTY до первой раскладки окна (S6-08 ресайзит под область терминала).
 const START_SIZE: PtySize = PtySize {
@@ -48,6 +51,7 @@ pub enum SlotState {
 }
 
 /// Сеанс в пуле.
+#[allow(clippy::struct_excessive_bools, reason = "независимые признаки сеанса")]
 #[derive(Debug)]
 pub struct Slot {
     pub id: SessionId,
@@ -65,6 +69,20 @@ pub struct Slot {
     pub integrated: bool,
     /// Команда выполняется: отправлена или `C`, до `D` (S6 §3.3).
     pub running: bool,
+    /// Каталог shell (путь Windows) по последнему `FnCwd` (S6 §5.1).
+    pub cwd: Option<PathBuf>,
+    /// Тихие хуки работают; `633;P;FnHook=0` (CLM, нет `PSReadLine`) — видимый cd.
+    pub hooks: bool,
+    /// Корень автомонтирования WSL (`633;P;FnMountRoot`).
+    pub mount_root: Option<String>,
+    /// Промпт на экране: метки `A` и `B` (S6 §3.2); `None` — команда идёт.
+    pub prompt: Option<(Mark, Option<Mark>)>,
+    path_style: crate::shells::PathStyle,
+    started: Instant,
+    /// Запущен с инъекцией интеграции: маркеры ждутся (cmd с Clink — нет, S6 §5).
+    expects_marks: bool,
+    /// Код последней команды из `D` (`Some(None)` — shell его не сообщает, cmd).
+    pub last_exit: Option<Option<i32>>,
 }
 
 impl Slot {
@@ -100,6 +118,8 @@ pub struct Manager {
     usage: BTreeMap<CompactString, u32>,
     term_dir: Option<PathBuf>,
     born: Option<Instant>,
+    /// Каталог активной панели на последнем pump.
+    home: Option<PathBuf>,
     /// Размер области терминала окна (S6-08); `None` — окно ещё не разложено.
     area: Option<PtySize>,
     discovering: bool,
@@ -161,7 +181,9 @@ impl Manager {
     /// Каждый pump: в первый — таймер прогрева, через [`WARMUP`] — поиск shells и старт shell по умолчанию. Без каталога
     /// состояния (тесты, `--smoke`, `--screens`) — ничего: shells ищутся по первой
     /// команде, прогрева нет.
-    pub(crate) fn pump(&mut self, cfg: &TermConfig, rt: &Runtime) {
+    pub(crate) fn pump(&mut self, cfg: &TermConfig, rt: &Runtime, home: Option<PathBuf>) {
+        // Прогрев — в каталоге активной панели (S6 §4.2), не процесса.
+        self.home = home;
         if self.term_dir.is_none() {
             return;
         }
@@ -193,7 +215,7 @@ impl Manager {
         if self.slots.is_empty()
             && let Some(id) = self.default_shell(cfg).map(|s| s.id.clone())
         {
-            let _ = self.start(cfg, rt, &id, None, true);
+            let _ = self.start(cfg, rt, &id, self.home.clone(), true);
         }
     }
 
@@ -286,12 +308,41 @@ impl Manager {
             queued: Vec::new(),
             integrated: false,
             running: false,
+            cwd: None,
+            hooks: true,
+            mount_root: None,
+            prompt: None,
+            path_style: spec.path_style.clone(),
+            started: Instant::now(),
+            expects_marks: false,
+            last_exit: None,
         });
         if activate {
             self.set_active(cfg, id);
         }
         let nonce = nonce();
-        let spawn = spawn_spec(&spec, cwd, id, &nonce);
+        let dirs = self
+            .term_dir
+            .as_deref()
+            .map(|d| crate::integ::Dirs::new(d, id));
+        let launch = if cfg.integration {
+            crate::integ::launch(&spec, dirs.as_ref(), &nonce)
+        } else {
+            None
+        };
+        if let Some(slot) = self.slot_mut(id) {
+            slot.expects_marks = launch.is_some();
+        }
+        let files = launch
+            .as_ref()
+            .filter(|l| l.needs_files)
+            .and(dirs.as_ref())
+            .map(|d| d.shell.clone());
+        let cwd_dir = dirs
+            .as_ref()
+            .filter(|_| launch.is_some())
+            .and_then(|d| d.cwd_file.parent().map(Path::to_path_buf));
+        let spawn = spawn_spec(&spec, cwd, id, &nonce, launch);
         let opts = SessionOpts {
             size: self.area.unwrap_or(START_SIZE),
             scrollback: if activate {
@@ -303,6 +354,15 @@ impl Manager {
             nonce: Some(nonce),
         };
         rt.spawn(Lane::Interactive, "term.start", rt.token(), move |t| {
+            // Скрипты интеграции и каталог файла тихого cd — до запуска shell.
+            if let Some(dir) = &files
+                && let Err(e) = crate::integ::ensure_files(dir)
+            {
+                tracing::warn!(error = %e, dir = %dir.display(), "term: integration scripts");
+            }
+            if let Some(dir) = &cwd_dir {
+                let _ = std::fs::create_dir_all(dir);
+            }
             let sink = Arc::new(CoreSink {
                 id,
                 sink: t.sink.clone(),
@@ -451,7 +511,91 @@ impl Manager {
             && let Some(s) = self.slot_mut(id)
         {
             s.running = true;
+            s.prompt = None;
         }
+    }
+
+    /// Сеансы с инъекцией, от которых за [`INTEG_TIMEOUT`] не пришло ни одного
+    /// маркера (cmd с Clink, перетёртый `PROMPT`): дальше — без интеграции, shell
+    /// для тоста. Каждый — один раз.
+    pub(crate) fn silent_integrations(&mut self) -> Vec<CompactString> {
+        let mut out = Vec::new();
+        for s in &mut self.slots {
+            if s.expects_marks
+                && !s.integrated
+                && s.state == SlotState::Running
+                && s.started.elapsed() >= INTEG_TIMEOUT
+            {
+                s.expects_marks = false;
+                out.push(s.shell.clone());
+            }
+        }
+        out
+    }
+
+    /// Submit (S6 §6): сначала ленивая синхронизация cwd (S6 §5.1) — каталог панели
+    /// `want` отличается от каталога shell: тихий cd (путь — в файл сеанса, затем
+    /// аккорд Ctrl+Alt+Shift+F12 для хука shell: без эха и следа в истории) или, без
+    /// хуков (cmd, CLM), видимый cd; затем `bytes`. Всё — одним порядком через writer.
+    pub(crate) fn submit(
+        &mut self,
+        cfg: &TermConfig,
+        rt: &Runtime,
+        bytes: Vec<u8>,
+        want: Option<PathBuf>,
+    ) -> Result<(), CmdError> {
+        let sync = matches!(cfg.sync_cwd.as_str(), "both" | "panel_to_shell");
+        let kind = self
+            .active()
+            .and_then(|s| self.shells().iter().find(|k| k.id == s.shell))
+            .map(|k| k.kind.clone());
+        let term_dir = self.term_dir.clone();
+        let cd = self.active().and_then(|slot| {
+            let want = want.filter(|_| sync && slot.integrated)?;
+            let have = slot.cwd.as_ref()?;
+            if same_path(have, &want) {
+                return None;
+            }
+            Some((
+                slot.id,
+                slot.hooks,
+                want,
+                slot.path_style.clone(),
+                slot.mount_root.clone(),
+            ))
+        });
+        let Some((id, hooks, want, style, root)) = cd else {
+            return self.write(cfg, rt, bytes, false);
+        };
+        let text = crate::integ::to_shell(&want, &style, root.as_deref());
+        let quiet =
+            hooks && !matches!(kind, Some(shells::ShellKind::Cmd) | None) && term_dir.is_some();
+        if !quiet {
+            let line = visible_cd(kind.as_ref(), &text);
+            self.write(cfg, rt, line.into_bytes(), false)?;
+            return self.write(cfg, rt, bytes, false);
+        }
+        let Some(tx) = self
+            .slots
+            .iter()
+            .find(|s| s.id == id)
+            .and_then(|s| s.session.as_ref())
+            .map(Session::writer)
+        else {
+            return self.write(cfg, rt, bytes, false);
+        };
+        let file = crate::integ::Dirs::new(&term_dir.unwrap_or_default(), id).cwd_file;
+        rt.spawn(Lane::Interactive, "term.cd", rt.token(), move |_| {
+            let tmp = file.with_extension("tmp~");
+            if std::fs::write(&tmp, text.as_bytes())
+                .and_then(|()| std::fs::rename(&tmp, &file))
+                .is_ok()
+            {
+                let _ = tx.send(crate::session::WriterCmd::Bytes(b"\x1b[24;8~".to_vec()));
+            }
+            let _ = tx.send(crate::session::WriterCmd::Bytes(bytes));
+        });
+        Ok(())
     }
 
     /// Режимы ввода активного сеанса.
@@ -483,6 +627,7 @@ impl Manager {
                 slot.shared = Some(s.shared().clone());
                 slot.session = Some(s);
                 slot.state = SlotState::Running;
+                slot.started = Instant::now();
                 None
             }
             Err(e) => {
@@ -512,19 +657,45 @@ impl Manager {
                 }
             }
             SessionEvent::Title(t) => slot.title = t,
-            SessionEvent::Osc { event, .. } => match event {
+            SessionEvent::Osc { event, at } => match event {
                 OscEvent::PromptStart => {
                     slot.integrated = true;
                     slot.running = false;
+                    slot.prompt = Some((at, None));
                 }
-                OscEvent::Executed => slot.running = true,
-                OscEvent::Finished(_) => {
+                OscEvent::CommandStart => {
+                    if let Some((a, _)) = slot.prompt {
+                        slot.prompt = Some((a, Some(at)));
+                    }
+                }
+                OscEvent::Executed => {
+                    slot.running = true;
+                    slot.prompt = None;
+                }
+                OscEvent::Finished(code) => {
+                    slot.last_exit = Some(code);
                     let was = slot.running;
                     slot.running = false;
                     return active && was;
                 }
-                // Cwd, история, свойства — S6-11…S6-16.
-                _ => {}
+                // С интеграцией верим только своему маркеру (nonce проверен
+                // сканером); без неё — OSC 7 / 9;9 / iTerm (S6 §5.1).
+                OscEvent::Cwd { path, source } => {
+                    if source == crate::session::CwdSource::FnCwd || !slot.expects_marks {
+                        slot.cwd = crate::integ::to_windows(
+                            &path,
+                            &slot.path_style,
+                            slot.mount_root.as_deref(),
+                        );
+                    }
+                }
+                OscEvent::Prop(k, v) => match k.as_str() {
+                    "FnHook" => slot.hooks = v != "0",
+                    "FnMountRoot" if v.starts_with('/') => slot.mount_root = Some(v),
+                    _ => {}
+                },
+                // История — S6-16.
+                OscEvent::CommandLine(_) => {}
             },
             // Буфер обмена — S6-07.
             SessionEvent::Clipboard(_) | SessionEvent::Bell => {}
@@ -625,7 +796,13 @@ fn spawn_discovery(rt: &Runtime, cfg: &TermConfig, term_dir: Option<PathBuf>) {
 }
 
 /// Что запустить: shell, cwd и окружение ребёнка (S6 §4.2).
-fn spawn_spec(spec: &ShellSpec, cwd: Option<PathBuf>, id: SessionId, nonce: &str) -> SpawnSpec {
+fn spawn_spec(
+    spec: &ShellSpec,
+    cwd: Option<PathBuf>,
+    id: SessionId,
+    nonce: &str,
+    launch: Option<crate::integ::Launch>,
+) -> SpawnSpec {
     let mut env: Vec<(OsString, OsString)> = vec![
         ("TERM_PROGRAM".into(), "Urfin".into()),
         ("TERM_PROGRAM_VERSION".into(), crate::version().into()),
@@ -633,10 +810,17 @@ fn spawn_spec(spec: &ShellSpec, cwd: Option<PathBuf>, id: SessionId, nonce: &str
         ("URFIN_SESSION".into(), id.to_string().into()),
         ("URFIN_NONCE".into(), nonce.into()),
     ];
+    let args = match launch {
+        Some(l) => {
+            env.extend(l.env);
+            l.args
+        }
+        None => spec.args.iter().map(OsString::from).collect(),
+    };
     env.extend(spec.env.iter().map(|(k, v)| (k.into(), v.into())));
     SpawnSpec {
         program: spec.program.clone(),
-        args: spec.args.iter().map(OsString::from).collect(),
+        args,
         cwd,
         env,
     }
@@ -649,6 +833,31 @@ fn nonce() -> String {
     let a = s.hash_one((t, 0u8));
     let b = s.hash_one((t, 1u8));
     format!("{a:016x}{b:016x}")
+}
+
+/// Один и тот же каталог (Windows: без учёта регистра и `\` в конце).
+fn same_path(a: &Path, b: &Path) -> bool {
+    let norm = |p: &Path| {
+        p.display()
+            .to_string()
+            .trim_end_matches(['\\', '/'])
+            .to_lowercase()
+    };
+    norm(a) == norm(b)
+}
+
+/// Видимый cd перед командой (S6 §5: cmd и PowerShell без хуков): cmd — `cd /d`,
+/// UNC — `pushd`; PowerShell — `Set-Location -LiteralPath`; posix — `cd --`.
+fn visible_cd(kind: Option<&shells::ShellKind>, path: &str) -> String {
+    use shells::ShellKind as K;
+    match kind {
+        Some(K::Cmd) if path.starts_with(r"\\") => format!("pushd \"{path}\"\r"),
+        Some(K::Cmd) => format!("cd /d \"{path}\"\r"),
+        Some(K::Pwsh | K::WinPowerShell) => {
+            format!("Set-Location -LiteralPath '{}'\r", path.replace('\'', "''"))
+        }
+        _ => format!("cd -- '{}'\r", path.replace('\'', r"'\''")),
+    }
 }
 
 /// Каталог сеанса: локальный путь вкладки или ближайший локальный предок
@@ -721,6 +930,8 @@ impl Msg for StartedMsg {
         if let Some(err) = sessions.on_started(config, self.id, self.result) {
             cx.toast(Level::Error, err);
         }
+        // Проверить, ответила ли интеграция.
+        cx.rt.waker().wake_after(INTEG_TIMEOUT);
     }
 }
 

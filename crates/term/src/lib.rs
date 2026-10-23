@@ -6,6 +6,7 @@
 //! S6-02…S6-22 (`docs/TASKS-M3.md`).
 
 pub mod config;
+pub mod integ;
 pub mod line;
 pub mod manager;
 pub mod session;
@@ -271,6 +272,8 @@ pub struct TermState {
     pub(crate) submitted: Option<Instant>,
     /// Альтернативный экран активного сеанса на прошлом pump.
     pub(crate) alt: bool,
+    /// Вид «экран» на прошлом pump ([`TermState::screen_view`]).
+    pub(crate) screen: bool,
     /// Размер области терминала ждёт дебаунса (S6 §3.1).
     pub(crate) resize: Option<(sys::conpty::PtySize, Instant)>,
     /// Многострочная вставка ждёт ответа «Вставить?» (shell без bracketed paste).
@@ -287,10 +290,30 @@ impl TermState {
     /// сетка (`preview`) — тоже экран.
     pub fn screen_view(&self) -> bool {
         self.preview.is_some()
-            || self
-                .sessions
-                .active()
-                .is_some_and(|s| !s.integrated || s.shared().is_some_and(|sh| sh.alt_screen()))
+            || self.sessions.active().is_some_and(|s| {
+                !s.integrated || s.running || s.shared().is_some_and(|sh| sh.alt_screen())
+            })
+    }
+
+    /// Промпт shell для cmdline (S6 §3.2): последняя строка промпта — ячейки от `A`
+    /// (или начала строки) до `B`; `None` — нет интеграции или команда идёт.
+    pub fn prompt_cells(&self, d: &vt::grid::Defaults) -> Option<Vec<vt::grid::Cell>> {
+        let slot = self
+            .sessions
+            .active()
+            .filter(|s| s.integrated && !s.running)?;
+        let (a, b) = slot.prompt?;
+        slot.shared()?.prompt_cells(a, b?, d)
+    }
+
+    /// Строка начала промпта на экране: transcript рисует строки выше неё (S6 §3.2).
+    pub fn prompt_row(&self) -> Option<usize> {
+        let slot = self
+            .sessions
+            .active()
+            .filter(|s| s.integrated && !s.running)?;
+        let (a, _) = slot.prompt?;
+        a.screen_row(slot.shared()?.history_size())
     }
 }
 
@@ -349,10 +372,11 @@ impl Handler for TermHandler {
         }
         let rt = cx.rt;
         let now = Instant::now();
+        let home = manager::session_cwd(&cx.state.active_tab().loc);
         let Some(st) = cx.state.ext.get_mut::<TermState>() else {
             return;
         };
-        st.sessions.pump(&st.config, rt);
+        st.sessions.pump(&st.config, rt, home);
         if let Some((size, at)) = st.resize
             && now >= at
         {
@@ -398,6 +422,30 @@ impl Handler for TermHandler {
                 panels(cx, true);
             }
             _ => {}
+        }
+        // Вид сменился (команда пошла или кончилась, alt-screen, интеграция ответила):
+        // окно переоценит фокус (экран — ввод в терминал, transcript — в cmdline).
+        if let Some(st) = cx.state.ext.get_mut::<TermState>() {
+            let screen = st.screen_view();
+            if screen != st.screen {
+                st.screen = screen;
+                cx.ui(UiEvent::Ext {
+                    id: CommandId::from_static("term.panels"),
+                    args: Args::default().with("refocus", true),
+                });
+            }
+        }
+        let silent = cx
+            .state
+            .ext
+            .get_mut::<TermState>()
+            .map(|st| st.sessions.silent_integrations())
+            .unwrap_or_default();
+        for shell in silent {
+            cx.toast(
+                urfin_core::Level::Warn,
+                manager::tr("term-integ-silent", &[("shell", &shell)]),
+            );
         }
         poll_paste(cx);
     }
@@ -512,6 +560,8 @@ impl Handler for CmdlineHandler {
             "cmdline.insert_selection" => Some(insert_selection(cx.state)),
             _ => None,
         };
+        // Каталог активной панели — для ленивой синхронизации cwd при submit.
+        let want = manager::session_cwd(&cx.state.active_tab().loc);
         let rt = cx.rt;
         let Some(st) = cx.state.ext.get_mut::<TermState>() else {
             return Err(not_yet(cmd));
@@ -576,7 +626,7 @@ impl Handler for CmdlineHandler {
                 } = st;
                 // Нет сеанса — строка остаётся набранной.
                 let bytes = submit_bytes(line.text(), sessions.input_modes());
-                sessions.write(config, rt, bytes, false)?;
+                sessions.submit(config, rt, bytes, want)?;
                 line.take();
                 sessions.mark_running();
                 *submitted = Some(Instant::now());

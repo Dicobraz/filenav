@@ -703,20 +703,7 @@ impl CoreHost {
             Some((k, snap)) if *k == key && !dirty => Some(snap.clone()),
             _ => {
                 let t = std::time::Instant::now();
-                let d = if dark {
-                    urfin_term::vt::grid::Defaults {
-                        fg: [0xcc, 0xcc, 0xcc],
-                        bg: [0x0c, 0x0c, 0x0c],
-                        cursor: [0xff, 0xff, 0xff],
-                    }
-                } else {
-                    urfin_term::vt::grid::Defaults {
-                        fg: [0x1f, 0x1f, 0x1f],
-                        bg: [0xfa, 0xfa, 0xfa],
-                        cursor: [0x1f, 0x1f, 0x1f],
-                    }
-                };
-                let snap = Rc::new(shared.snapshot(&d));
+                let snap = Rc::new(shared.snapshot(&term_view::defaults(dark)));
                 crate::bench::GRID_NS.fetch_add(
                     u64::try_from(t.elapsed().as_nanos()).unwrap_or(u64::MAX),
                     std::sync::atomic::Ordering::Relaxed,
@@ -893,6 +880,11 @@ impl CoreHost {
             .filter
             .as_ref()
             .map(|m| m.as_str().to_owned());
+        let hidden = core
+            .state()
+            .ext
+            .get::<crate::UiState>()
+            .is_some_and(|u| u.panels_hidden);
         for ev in core.take_ui_events() {
             match ev {
                 urfin_core::UiEvent::Toast { level, text } => {
@@ -902,7 +894,7 @@ impl CoreHost {
                 urfin_core::UiEvent::Ext { id, args }
                     if matches!(id.as_str(), "term.panels" | "clip.write" | "clip.read") =>
                 {
-                    drafts.extend(term_ext(id.as_str(), &args, cx));
+                    drafts.extend(term_ext(id.as_str(), &args, hidden, cx));
                 }
                 // Черновик операции (F5/F6/F7/F8): строка с полем или кнопками (S2-15).
                 urfin_core::UiEvent::Ext { id, args }
@@ -1597,12 +1589,20 @@ fn in_window(
 /// Просьбы терминала к окну: `term.panels` — спрятать или вернуть панели (автопоказ
 /// S6-08, `term.toggle`); `clip.write` — строку в буфер обмена, `clip.read` — текст
 /// буфера в команду `then` (S6-15). Итог — команды Core.
-fn term_ext(id: &str, args: &urfin_core::Args, cx: &mut Context<CoreHost>) -> Option<Command> {
+fn term_ext(
+    id: &str,
+    args: &urfin_core::Args,
+    hidden: bool,
+    cx: &mut Context<CoreHost>,
+) -> Option<Command> {
     match id {
         "term.panels" => {
             let mut c = Command::new("ui.panels.toggle_all");
             if let Some(show) = args.bool("show") {
                 c = c.arg("show", show);
+            } else if args.bool("refocus").is_some() {
+                // Вид терминала сменился: то же состояние панелей, фокус — заново.
+                c = c.arg("show", !hidden);
             }
             Some(c)
         }
@@ -2104,7 +2104,34 @@ impl Render for CoreHost {
             .map(str::to_owned);
         // Панели спрятаны (Ctrl+O) — за ними сетка терминала (S6-06).
         let term_el = if widths == [None, None] {
-            Self::term_snapshot(&mut self.term, self.theme.tokens.dark(), s)
+            Self::term_snapshot(&mut self.term, self.theme.tokens.dark(), s).map(|snap| {
+                // С интеграцией, у промпта — transcript над cmdline (S6 §3.2).
+                let row = s
+                    .ext
+                    .get::<urfin_term::TermState>()
+                    .filter(|t| !t.screen_view())
+                    .and_then(urfin_term::TermState::prompt_row);
+                match row {
+                    Some(row) => {
+                        let tm = self.theme.m(Metric::TypeMono);
+                        let (_, ch) = term_view::metrics(tm, window);
+                        let h = f32::from(window.viewport_size().height)
+                            - self.theme.m(Metric::HTitlebar)
+                            - self.theme.m(Metric::HCmdline)
+                            - self.theme.m(Metric::HStatus)
+                            - self.theme.m(Metric::HKeybar)
+                            - 2.0 * term_view::PAD_Y;
+                        #[allow(
+                            clippy::cast_possible_truncation,
+                            clippy::cast_sign_loss,
+                            reason = "строк в окне"
+                        )]
+                        let fit = (h / f32::from(ch)).floor().max(1.0) as usize;
+                        Rc::new(term_view::transcript(&snap, row, fit))
+                    }
+                    None => snap,
+                }
+            })
         } else {
             self.term = None;
             None

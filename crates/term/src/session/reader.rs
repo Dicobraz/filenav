@@ -61,6 +61,7 @@ impl Ctx<'_> {
                 let at = Mark {
                     line: term.grid().cursor.point.line.0,
                     history: u32::try_from(term.grid().history_size()).unwrap_or(u32::MAX),
+                    col: u16::try_from(term.grid().cursor.point.column.0).unwrap_or(u16::MAX),
                 };
                 events.push(SessionEvent::Osc { event, at });
             }

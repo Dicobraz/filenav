@@ -127,7 +127,73 @@ fn resolve(c: Color, colors: &Colors, d: &Defaults, bold: bool) -> [u8; 3] {
     }
 }
 
+/// Ячейка эмулятора → ячейка снапшота: цвета в RGB, инверсия, тусклый, скрытый.
+fn cell(c: &alacritty_terminal::term::cell::Cell, colors: &Colors, d: &Defaults) -> Cell {
+    let f = c.flags;
+    let bold = f.contains(Flags::BOLD);
+    let mut fg = resolve(c.fg, colors, d, bold);
+    let mut bg = resolve(c.bg, colors, d, false);
+    if f.contains(Flags::INVERSE) {
+        std::mem::swap(&mut fg, &mut bg);
+    }
+    if f.contains(Flags::DIM) {
+        fg = fg.map(|v| (u16::from(v) * 2 / 3) as u8);
+    }
+    if f.contains(Flags::HIDDEN) {
+        fg = bg;
+    }
+    Cell {
+        ch: c.c,
+        fg,
+        bg,
+        bold,
+        italic: f.contains(Flags::ITALIC),
+        underline: f.intersects(Flags::ALL_UNDERLINES),
+        strike: f.contains(Flags::STRIKEOUT),
+        wide: f.contains(Flags::WIDE_CHAR),
+        spacer: f.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER),
+    }
+}
+
 impl TermShared {
+    /// Строк в истории сейчас (для перевода меток в строки экрана).
+    pub fn history_size(&self) -> usize {
+        self.vt.lock().term.grid().history_size()
+    }
+
+    /// Последняя строка промпта между метками `a` (`A`) и `b` (`B`): от колонки `A`
+    /// (если промпт в одну строку) до колонки `B`. `None` — строка ушла из истории.
+    pub fn prompt_cells(
+        &self,
+        a: crate::session::Mark,
+        b: crate::session::Mark,
+        d: &Defaults,
+    ) -> Option<Vec<Cell>> {
+        use alacritty_terminal::index::{Column, Line};
+        let vt = self.vt.lock();
+        let term = &vt.term;
+        let g = term.grid();
+        let hist = i64::try_from(g.history_size()).ok()?;
+        let line = i64::from(b.history) + i64::from(b.line) - hist;
+        let top = -hist;
+        if line < top || line >= i64::try_from(g.screen_lines()).ok()? {
+            return None;
+        }
+        let from = if (a.history, a.line) == (b.history, b.line) {
+            usize::from(a.col)
+        } else {
+            0
+        };
+        let to = usize::from(b.col).min(g.columns());
+        let row = &g[Line(i32::try_from(line).ok()?)];
+        let colors = term.colors();
+        Some(
+            (from..to)
+                .map(|c| cell(&row[Column(c)], colors, d))
+                .collect(),
+        )
+    }
+
     /// Снапшот видимого экрана (с учётом прокрутки истории).
     pub fn snapshot(&self, d: &Defaults) -> Snapshot {
         let vt = self.vt.lock();
@@ -145,30 +211,7 @@ impl TermShared {
             if r >= rows {
                 continue;
             }
-            let f = ic.cell.flags;
-            let bold = f.contains(Flags::BOLD);
-            let mut fg = resolve(ic.cell.fg, colors, d, bold);
-            let mut bg = resolve(ic.cell.bg, colors, d, false);
-            if f.contains(Flags::INVERSE) {
-                std::mem::swap(&mut fg, &mut bg);
-            }
-            if f.contains(Flags::DIM) {
-                fg = fg.map(|v| (u16::from(v) * 2 / 3) as u8);
-            }
-            if f.contains(Flags::HIDDEN) {
-                fg = bg;
-            }
-            cells[r].push(Cell {
-                ch: ic.cell.c,
-                fg,
-                bg,
-                bold,
-                italic: f.contains(Flags::ITALIC),
-                underline: f.intersects(Flags::ALL_UNDERLINES),
-                strike: f.contains(Flags::STRIKEOUT),
-                wide: f.contains(Flags::WIDE_CHAR),
-                spacer: f.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER),
-            });
+            cells[r].push(cell(ic.cell, colors, d));
         }
         let cur = content.cursor;
         let cursor_kind = match cur.shape {

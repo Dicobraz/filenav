@@ -1,0 +1,16 @@
+# Urfin: обёртка ZDOTDIR для zsh (S6-13). Наши .zshenv/.zprofile/.zshrc/.zlogin
+# подключают одноимённые файлы пользователя из URFIN_USER_ZDOTDIR (или $HOME);
+# .zshrc в конце — интеграцию, .zlogin возвращает ZDOTDIR пользователя.
+__urfin_dir=${ZDOTDIR}
+__urfin_file=${${(%):-%N}:t}
+ZDOTDIR=${URFIN_USER_ZDOTDIR:-$HOME}
+[[ -r $ZDOTDIR/$__urfin_file ]] && source $ZDOTDIR/$__urfin_file
+__urfin_user=$ZDOTDIR
+if [[ $__urfin_file == .zshrc ]]; then
+    source $__urfin_dir/../urfin.zsh
+fi
+if [[ $__urfin_file == .zlogin || ( $__urfin_file == .zshrc && ! -o login ) ]]; then
+    ZDOTDIR=$__urfin_user
+else
+    ZDOTDIR=$__urfin_dir
+fi
