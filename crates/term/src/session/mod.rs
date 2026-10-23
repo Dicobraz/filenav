@@ -30,6 +30,17 @@ pub type SessionId = u32;
 pub struct Mark {
     pub line: i32,
     pub history: u32,
+    /// Колонка курсора (конец промпта у `B`).
+    pub col: u16,
+}
+
+impl Mark {
+    /// Строка на экране сейчас (история выросла — строка ушла вверх); `None` — ушла
+    /// за верх экрана.
+    pub fn screen_row(self, history_now: usize) -> Option<usize> {
+        let abs = i64::from(self.history) + i64::from(self.line);
+        usize::try_from(abs - i64::try_from(history_now).ok()?).ok()
+    }
 }
 
 /// Событие сеанса для UI (редкие; вывод — через `dirty` и `poke`).
@@ -246,6 +257,11 @@ impl Session {
 
     pub fn shared(&self) -> &Arc<TermShared> {
         &self.shared
+    }
+
+    /// Канал writer: писать из фоновой задачи (тихий cd — после записи файла).
+    pub(crate) fn writer(&self) -> Sender<WriterCmd> {
+        self.tx.clone()
     }
 
     /// Байты в PTY (через writer).

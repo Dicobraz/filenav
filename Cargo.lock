@@ -7522,6 +7522,7 @@ name = "urfin-term"
 version = "0.1.0"
 dependencies = [
  "alacritty_terminal",
+ "base64 0.22.1",
  "compact_str",
  "criterion",
  "crossbeam-channel",

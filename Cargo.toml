@@ -25,6 +25,8 @@ urfin-arc = { path = "crates/arc", version = "0.1.0" }
 urfin-testdata = { path = "crates/testdata" }
 
 # Внешние зависимости (S1 §3).
+# -EncodedCommand интеграции PowerShell (S6-11); MIT/Apache-2.0, уже в дереве (gpui).
+base64 = "0.22.1"
 ecolor = { version = "0.37.0", default-features = false }
 # UI на GPUI (ADR-0018): gpui-kit = снимок Zed `gpui-pre`, версия фиксирована.
 gpui-kit = "=0.7.3"

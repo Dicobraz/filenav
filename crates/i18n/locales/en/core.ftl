@@ -148,3 +148,4 @@ term-paste-title = Paste { $n } lines into { $shell }
 term-paste-body = { $shell } runs every line at once, without a review
 term-paste-insert = Paste
 term-paste-cancel = Cancel
+term-integ-silent = { $shell }: shell integration did not answer (Clink or a custom prompt?) — the terminal works without it

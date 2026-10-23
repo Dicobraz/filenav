@@ -125,27 +125,52 @@ impl Waker for NoWake {
 
 struct H {
     core: Core,
-    _dir: tempfile::TempDir,
+    /// Каталог панели: полное имя (`TEMP` бывает с короткими 8.3, shell — с длинными).
+    home: PathBuf,
+    _tmp: tempfile::TempDir,
 }
 
 impl H {
     fn new() -> H {
+        H::with(TermConfig::default())
+    }
+
+    fn with(cfg: TermConfig) -> H {
         let dir = tempfile::Builder::new()
             .prefix("urfin-term-")
             .tempdir()
             .unwrap();
-        let root = Location::local(dir.path());
+        let full = std::fs::canonicalize(dir.path()).unwrap();
+        let home = full
+            .to_str()
+            .and_then(|s| s.strip_prefix(r"\\?\"))
+            .map_or(full.clone(), PathBuf::from);
+        let root = Location::local(&home);
         let mut core = Core::new(
             Boot::new(root.clone(), root),
             Services::null(),
             Arc::new(NoWake),
         );
-        crate::register_with(
-            &mut core,
-            TermConfig::default(),
-            Some(dir.path().join("term")),
-        );
-        H { core, _dir: dir }
+        crate::register_with(&mut core, cfg, Some(home.join("term")));
+        H {
+            core,
+            home,
+            _tmp: dir,
+        }
+    }
+
+    fn dir(&self) -> PathBuf {
+        self.home.clone()
+    }
+
+    fn slot(&self) -> &Slot {
+        self.mgr().active().unwrap()
+    }
+
+    /// Набрать в cmdline и выполнить (submit S6-15 с ленивым cd).
+    fn submit(&mut self, text: &str) {
+        self.run(Command::new("cmdline.insert").arg("text", text));
+        self.run(Command::new("cmdline.exec"));
     }
 
     fn mgr(&self) -> &Manager {
@@ -159,7 +184,14 @@ impl H {
             if self.core.state().ext.get::<TermState>().is_some() && done(self.mgr()) {
                 return;
             }
-            assert!(t0.elapsed() < Duration::from_secs(30), "timeout: {what}");
+            if t0.elapsed() > Duration::from_secs(30) {
+                let a = self.mgr().active();
+                panic!(
+                    "timeout: {what}; cwd {:?}; screen:\n{}",
+                    a.and_then(|s| s.cwd.clone()),
+                    a.map(screen).unwrap_or_default().trim_end()
+                );
+            }
             std::thread::sleep(Duration::from_millis(10));
         }
     }
@@ -281,7 +313,10 @@ fn panels_events(core: &mut Core) -> Vec<Option<bool>> {
     core.take_ui_events()
         .into_iter()
         .filter_map(|e| match e {
-            urfin_core::UiEvent::Ext { id, args } if id.as_str() == "term.panels" => {
+            // Переоценка фокуса (`refocus`) — не просьба спрятать или показать.
+            urfin_core::UiEvent::Ext { id, args }
+                if id.as_str() == "term.panels" && args.bool("refocus").is_none() =>
+            {
                 Some(args.bool("show"))
             }
             _ => None,
@@ -369,4 +404,177 @@ fn submit_area_and_alt_screen_autoshow() {
         h.core.state().ext.get::<TermState>().unwrap().line.text(),
         "dir"
     );
+}
+
+fn is_dir(m: &Manager, p: &Path) -> bool {
+    m.active()
+        .and_then(|s| s.cwd.as_deref())
+        .is_some_and(|c| same_path(c, p))
+}
+
+fn prompt_ready(m: &Manager) -> bool {
+    m.active()
+        .is_some_and(|s| s.integrated && !s.running && s.prompt.is_some_and(|(_, b)| b.is_some()))
+}
+
+fn exit_is(m: &Manager, code: Option<i32>) -> bool {
+    m.active().is_some_and(|s| s.last_exit == Some(code))
+}
+
+/// Приёмка S6-11 на Windows PowerShell 5.1 (pwsh 7 — тот же скрипт): маркеры и cwd,
+/// коды выхода в `D`, поддельный `FnCwd` без nonce не действует, промпт для cmdline,
+/// тихий cd из панели без следа в выводе; с `-ExecutionPolicy AllSigned` интеграция
+/// тоже работает.
+#[test]
+fn powershell_integration() {
+    let mut h = H::new();
+    h.until("warm-up session", running);
+    h.run(Command::new("term.shell").arg("id", "powershell"));
+    h.until("powershell prompt", prompt_ready);
+    let home = h.dir();
+    h.until("start cwd", |m| is_dir(m, &home));
+    assert!(h.slot().hooks, "PSReadLine hooks available");
+
+    h.input("cd C:\\Windows\r");
+    h.until("cwd C:\\Windows", |m| is_dir(m, Path::new(r"C:\Windows")));
+    h.input("cmd /c exit 3\r");
+    h.until("exit code 3", |m| exit_is(m, Some(3)));
+    h.input("Write-Output ok\r");
+    h.until("exit code 0", |m| exit_is(m, Some(0)));
+    h.input("Write-Host \"$([char]27)]633;P;FnCwd=bad;D:\\$([char]7)\"; cmd /c exit 5\r");
+    h.until("prompt after forged marker", |m| {
+        prompt_ready(m) && exit_is(m, Some(5))
+    });
+    assert!(
+        is_dir(h.mgr(), Path::new(r"C:\Windows")),
+        "forged FnCwd ignored"
+    );
+
+    let d = crate::vt::grid::Defaults {
+        fg: [200; 3],
+        bg: [0; 3],
+        cursor: [255; 3],
+    };
+    let st = h.core.state().ext.get::<TermState>().unwrap();
+    let prompt: String = st.prompt_cells(&d).unwrap().iter().map(|c| c.ch).collect();
+    assert!(prompt.starts_with(r"PS C:\Windows>"), "{prompt:?}");
+    assert!(st.prompt_row().is_some());
+
+    // Панель — в своём каталоге: submit сначала тихо переходит туда.
+    h.submit("Write-Output \"URFIN_Q=$PWD\"");
+    let want = format!("URFIN_Q={}", home.display());
+    h.until("quiet cd before command", |m| active_has(m, &want));
+    h.until("cwd follows the panel", |m| is_dir(m, &home));
+    assert!(
+        !active_has(h.mgr(), "Set-Location"),
+        "quiet cd leaves no trace"
+    );
+
+    // AllSigned: -EncodedCommand политике не подчиняется.
+    let ps = h
+        .mgr()
+        .shells()
+        .iter()
+        .find(|s| s.id == "powershell")
+        .unwrap()
+        .program
+        .display()
+        .to_string();
+    let mut cfg = TermConfig::default();
+    cfg.shells.push(crate::config::ShellConfig {
+        id: "ps-signed".into(),
+        title: "ps-signed".into(),
+        program: ps.as_str().into(),
+        args: vec![
+            "-NoLogo".into(),
+            "-ExecutionPolicy".into(),
+            "AllSigned".into(),
+        ],
+        kind: "powershell".into(),
+        integration: true,
+    });
+    let mut h2 = H::with(cfg);
+    h2.until("warm-up session", running);
+    h2.run(Command::new("term.shell").arg("id", "ps-signed"));
+    h2.until("AllSigned prompt", prompt_ready);
+}
+
+/// Приёмка S6-12: cmd с `PROMPT`-инъекцией — cwd из `$P`, видимый `cd /d` перед
+/// командой, когда панель в другом каталоге; перетёртый `PROMPT` (как Clink) —
+/// через 5 с без интеграции, с тостом.
+#[test]
+fn cmd_integration_and_silent_fallback() {
+    let comspec =
+        std::env::var("ComSpec").unwrap_or_else(|_| r"C:\Windows\System32\cmd.exe".into());
+    let mut cfg = TermConfig::default();
+    cfg.shells.push(crate::config::ShellConfig {
+        id: "cmd-clink".into(),
+        title: "cmd-clink".into(),
+        program: comspec.as_str().into(),
+        args: vec!["/k".into(), "prompt $P$G".into()],
+        kind: "cmd".into(),
+        integration: true,
+    });
+    let mut h = H::with(cfg);
+    h.until("warm-up session", running);
+    h.run(Command::new("term.shell").arg("id", "cmd"));
+    h.until("cmd prompt", prompt_ready);
+    let home = h.dir();
+    // Сеанс прогрева — в каталоге процесса; cwd приходит с первым промптом.
+    h.until("cwd reported", |m| {
+        m.active().is_some_and(|s| s.cwd.is_some())
+    });
+    h.input("cd /d C:\\Windows\r");
+    h.until("cwd C:\\Windows", |m| is_dir(m, Path::new(r"C:\Windows")));
+    h.submit("echo URFIN_C=%CD%");
+    let want = format!("URFIN_C={}", home.display());
+    h.until("visible cd before command", |m| active_has(m, &want));
+    assert!(active_has(h.mgr(), "cd /d \""), "visible cd");
+    assert_eq!(h.slot().last_exit, Some(None), "cmd reports no exit code");
+
+    let _ = h.core.take_ui_events();
+    h.run(Command::new("term.shell").arg("id", "cmd-clink"));
+    h.until("custom prompt cmd running", running);
+    let t0 = Instant::now();
+    let mut toast = false;
+    while !toast && t0.elapsed() < Duration::from_secs(15) {
+        h.core.pump(Duration::from_millis(1));
+        toast = h.core.take_ui_events().iter().any(
+            |e| matches!(e, urfin_core::UiEvent::Toast { text, .. } if text.contains("cmd-clink")),
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert!(toast, "no-integration toast");
+    assert!(!h.slot().integrated);
+}
+
+/// Приёмка S6-13 (Git Bash; WSL — ручная проверка): rcfile подключил
+/// login-окружение (`/etc/profile` задаёт `MSYSTEM`), cwd `/c/Windows` →
+/// `C:\Windows`, коды выхода, тихий cd из панели через `bind -x`. Без Git Bash на
+/// стенде — пропуск.
+#[test]
+fn git_bash_integration() {
+    let mut h = H::new();
+    h.until("shells found", |m| !m.shells().is_empty());
+    if !h.mgr().shells().iter().any(|s| s.id == "gitbash") {
+        eprintln!("no Git Bash: skipped");
+        return;
+    }
+    h.run(Command::new("term.shell").arg("id", "gitbash"));
+    h.until("bash prompt", prompt_ready);
+    h.input("echo URFIN_ENV=$MSYSTEM\r");
+    // MSYSTEM задаёт /etc/profile: MINGW64 у установщика, UCRT64 у раннеров CI.
+    h.until("login environment", |m| {
+        ["MINGW", "UCRT", "CLANG", "MSYS"]
+            .iter()
+            .any(|v| active_has(m, &format!("URFIN_ENV={v}")))
+    });
+    h.input("cd /c/Windows\r");
+    h.until("cwd C:\\Windows", |m| is_dir(m, Path::new(r"C:\Windows")));
+    h.input("(exit 4)\r");
+    h.until("exit code 4", |m| exit_is(m, Some(4)));
+    let home = h.dir();
+    h.submit("echo URFIN_B=done");
+    h.until("command after quiet cd", |m| active_has(m, "URFIN_B=done"));
+    h.until("cwd back to the panel", |m| is_dir(m, &home));
 }

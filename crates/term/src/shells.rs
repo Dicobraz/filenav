@@ -286,18 +286,21 @@ pub fn discover(p: &dyn Probe, user: &[ShellConfig]) -> Vec<ShellSpec> {
             &["-NoLogo"],
         ));
     }
-    let git = p
-        .reg_string(
-            RegRoot::LocalMachine,
-            r"SOFTWARE\GitForWindows",
-            "InstallPath",
-        )
+    // Git for Windows: для всех (HKLM, Program Files) или для пользователя (HKCU,
+    // `%LOCALAPPDATA%\Programs\Git`).
+    let git = [RegRoot::LocalMachine, RegRoot::CurrentUser]
+        .into_iter()
+        .filter_map(|root| p.reg_string(root, r"SOFTWARE\GitForWindows", "InstallPath"))
         .map(|d| Path::new(&d).join(r"bin\bash.exe"))
-        .filter(|b| p.is_file(b))
-        .or_else(|| {
-            let b = Path::new(&p.env("ProgramFiles")?).join(r"Git\bin\bash.exe");
-            p.is_file(&b).then_some(b)
-        });
+        .chain(
+            [
+                ("ProgramFiles", r"Git\bin\bash.exe"),
+                ("LOCALAPPDATA", r"Programs\Git\bin\bash.exe"),
+            ]
+            .into_iter()
+            .filter_map(|(var, rel)| Some(Path::new(&p.env(var)?).join(rel))),
+        )
+        .find(|b| p.is_file(b));
     if let Some(bash) = git {
         out.push(ShellSpec::new(
             "gitbash",

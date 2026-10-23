@@ -513,11 +513,51 @@ pub(super) fn cmdline_hidden(s: &AppState) -> bool {
             .is_some_and(urfin_term::TermState::screen_view)
 }
 
-/// Командная строка (D-02, S6-15): `путь>` активной панели, набранная строка и
-/// каретка-блок `accent` на символе под курсором (на нём — текст цвета фона); фон
-/// `panel`, линия сверху, моно 12,5.
+/// Промпт shell для cmdline (S6 §3.2): ячейки последней строки промпта; цвета — как
+/// в терминале (oh-my-posh, starship), фон терминала по умолчанию — прозрачный.
+pub(super) fn prompt_cells(s: &AppState, dark: bool) -> Option<Vec<urfin_term::vt::grid::Cell>> {
+    s.ext
+        .get::<urfin_term::TermState>()?
+        .prompt_cells(&super::term_view::defaults(dark))
+        .filter(|c| c.iter().any(|c| c.ch != ' '))
+}
+
+fn prompt_el(cells: &[urfin_term::vt::grid::Cell], dark: bool) -> Div {
+    let bg = super::term_view::defaults(dark).bg;
+    let mut row = div().flex().items_center();
+    let mut i = 0;
+    while i < cells.len() {
+        let c = cells[i];
+        let mut j = i + 1;
+        while j < cells.len() && (cells[j].fg, cells[j].bg, cells[j].bold) == (c.fg, c.bg, c.bold) {
+            j += 1;
+        }
+        let text: String = cells[i..j]
+            .iter()
+            .filter(|x| !x.spacer)
+            .map(|x| x.ch)
+            .collect();
+        let mut run = div()
+            .text_color(super::term_view::hsla(c.fg))
+            .child(SharedString::from(text));
+        if c.bg != bg {
+            run = run.bg(super::term_view::hsla(c.bg));
+        }
+        if c.bold {
+            run = run.font_weight(gpui_kit::FontWeight::BOLD);
+        }
+        row = row.child(run);
+        i = j;
+    }
+    row
+}
+
+/// Командная строка (D-02, S6-15): промпт shell (с интеграцией) или `путь>` активной
+/// панели, набранная строка и каретка-блок `accent` на символе под курсором (на нём
+/// — текст цвета фона); фон `panel`, линия сверху, моно 12,5.
 pub(super) fn cmdline(s: &AppState, theme: &Theme) -> Div {
     let path = s.panel(s.active).tab().loc.path.display().to_string();
+    let prompt = prompt_cells(s, theme.tokens.dark());
     let (text, cursor) = s
         .ext
         .get::<urfin_term::TermState>()
@@ -544,7 +584,6 @@ pub(super) fn cmdline(s: &AppState, theme: &Theme) -> Div {
         .flex_none()
         .flex()
         .items_center()
-        .gap(px(6.0))
         .px(px(theme.m(Metric::PadRowX)))
         .bg(theme.c(Role::LayerPanel))
         .border_t_1()
@@ -554,7 +593,12 @@ pub(super) fn cmdline(s: &AppState, theme: &Theme) -> Div {
         .text_color(theme.c(Role::TextPrimary))
         .overflow_hidden()
         .whitespace_nowrap()
-        .child(SharedString::from(format!("{path}>")))
+        .child(match &prompt {
+            Some(cells) => prompt_el(cells, theme.tokens.dark()),
+            None => div()
+                .mr(px(6.0))
+                .child(SharedString::from(format!("{path}>"))),
+        })
         .child(
             div()
                 .flex()
@@ -845,6 +889,8 @@ pub(super) fn bottom_print(
         (t.line.text(), t.line.cursor()).hash(&mut h);
     }
     cmdline_hidden(s).hash(&mut h);
+    // Промпт shell (тема — в `look`).
+    prompt_cells(s, true).hash(&mut h);
     for it in items {
         (it.n, &it.label, it.enabled).hash(&mut h);
     }

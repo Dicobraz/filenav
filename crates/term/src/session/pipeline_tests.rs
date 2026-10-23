@@ -223,6 +223,7 @@ fn replies_events_and_exit_over_pipe() {
     let zero = Mark {
         line: 0,
         history: 0,
+        col: 0,
     };
     assert_eq!(
         ev[0],
@@ -236,7 +237,8 @@ fn replies_events_and_exit_over_pipe() {
             path: "C:\\w".into(),
             source: CwdSource::FnCwd
         },
-        at: zero
+        // После «hi»: колонка курсора — 2.
+        at: Mark { col: 2, ..zero }
     }));
     assert!(text(&p.shared).starts_with("hi "));
 }

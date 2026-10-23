@@ -21,7 +21,7 @@ const MONO: &str = "Cascadia Mono";
 pub(super) const PAD_X: f32 = 8.0;
 pub(super) const PAD_Y: f32 = 4.0;
 
-fn hsla([r, g, b]: [u8; 3]) -> Hsla {
+pub(super) fn hsla([r, g, b]: [u8; 3]) -> Hsla {
     gpui_kit::Rgba {
         r: f32::from(r) / 255.0,
         g: f32::from(g) / 255.0,
@@ -29,6 +29,40 @@ fn hsla([r, g, b]: [u8; 3]) -> Hsla {
         a: 1.0,
     }
     .into()
+}
+
+/// Цвета терминала по умолчанию под тему (тёмная — Campbell).
+pub(super) fn defaults(dark: bool) -> urfin_term::vt::grid::Defaults {
+    if dark {
+        urfin_term::vt::grid::Defaults {
+            fg: [0xcc, 0xcc, 0xcc],
+            bg: [0x0c, 0x0c, 0x0c],
+            cursor: [0xff, 0xff, 0xff],
+        }
+    } else {
+        urfin_term::vt::grid::Defaults {
+            fg: [0x1f, 0x1f, 0x1f],
+            bg: [0xfa, 0xfa, 0xfa],
+            cursor: [0x1f, 0x1f, 0x1f],
+        }
+    }
+}
+
+/// Вид transcript (S6 §3.2): строки выше текущего промпта (`prompt_row`), прижатые к
+/// низу области в `fit` строк, — прямо над cmdline; сам промпт и курсор — в cmdline.
+/// После `cls` промпт в первой строке — область пуста, строка ввода внизу.
+pub(super) fn transcript(snap: &Snapshot, prompt_row: usize, fit: usize) -> Snapshot {
+    let n = prompt_row.min(snap.cells.len());
+    let first = n.saturating_sub(fit);
+    // Пустые строки сверху — прижать вывод к низу.
+    let mut cells = vec![Vec::new(); fit - (n - first)];
+    cells.extend(snap.cells[first..n].iter().cloned());
+    Snapshot {
+        rows: u16::try_from(cells.len()).unwrap_or(u16::MAX),
+        cells,
+        cursor_kind: CursorKind::Hidden,
+        ..snap.clone()
+    }
 }
 
 /// Глиф рисуется процедурно (рамки, блоки, стрелки Powerline).

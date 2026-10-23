@@ -155,3 +155,4 @@ term-paste-title = Вставка в { $shell }: строк — { $n }
 term-paste-body = { $shell } выполнит каждую строку сразу, без проверки
 term-paste-insert = Вставить
 term-paste-cancel = Отмена
+term-integ-silent = { $shell }: интеграция shell не ответила (Clink или свой промпт?) — терминал работает без неё
