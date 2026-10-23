@@ -552,7 +552,7 @@ impl KeyInput {
             {
                 "keymap.qs.start"
             }
-            Focus::Panel => "cmdline.insert",
+            Focus::Panel | Focus::Cmdline => "cmdline.insert",
             Focus::Terminal => "term.input",
             _ => return true,
         };

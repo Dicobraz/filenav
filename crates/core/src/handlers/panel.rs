@@ -347,17 +347,23 @@ fn viewport(cx: &mut Cx<'_>, cmd: &Command) {
         .unwrap_or(1)
         .max(1);
     let page = rows.saturating_mul(cols);
-    let top = a
-        .int("top")
+    let scroll = a.int("top");
+    let mut next = t.cursor;
+    next.page = page;
+    next.top = scroll
         .map_or(t.cursor.top, |v| u32::try_from(v).unwrap_or(0))
         .min(t.rows().saturating_sub(page.max(1)));
-    if (t.cursor.page, t.cols, t.cursor.top) == (page, cols, top) {
+    // Окно уменьшилось: страница короче — курсор остаётся видимым (иначе он за
+    // нижним краем, и PgDn уводит его дальше). Прокрутка колесом (`top`) — как есть.
+    if scroll.is_none() {
+        next.clamp(t.rows());
+    }
+    if (t.cursor.page, t.cols, t.cursor.top) == (next.page, cols, next.top) {
         cx.keep_rev();
         return;
     }
-    t.cursor.page = page;
+    t.cursor = next;
     t.cols = cols;
-    t.cursor.top = top;
     t.touch();
 }
 

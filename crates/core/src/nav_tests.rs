@@ -523,6 +523,12 @@ fn cursor_motion_and_viewport() {
     assert_eq!(h.cur().as_deref(), Some("f10"));
     h.cmd("panel.cursor.match mask=zz");
     assert_eq!(h.toasts(), [(Level::Warn, "Nothing matches zz".to_owned())]);
+    // Окно стало ниже: страница короче — курсор не остаётся за нижним краем.
+    h.cmd("panel.viewport rows=20 cols=1");
+    h.cmd("panel.cursor.to name=f30");
+    h.cmd("panel.viewport rows=5 cols=1");
+    let c = h.tab().cursor;
+    assert!(c.row >= c.top && c.row < c.top + 5, "{c:?}");
 }
 
 #[test]
@@ -565,6 +571,15 @@ fn selection_commands() {
     h.cmd("sel.move motion=up");
     assert_eq!(h.selected(), ["a.rs", "c.txt"]);
     assert_eq!(h.cur().as_deref(), Some("a.rs"));
+    // Shift+End: до конца списка, последний — тоже (дальше шагать некуда).
+    h.cmd("sel.none");
+    h.cmd("panel.cursor.to name=c.txt");
+    h.cmd("sel.move motion=end");
+    let all: Vec<_> = h.selected();
+    assert_eq!(all.first().map(String::as_str), Some("c.txt"));
+    assert_eq!(all.last().map(String::as_str), Some("e.txt"), "{all:?}");
+    h.cmd("sel.none");
+    h.cmd("sel.add mask=a.rs;c.txt");
     h.cmd("panel.cursor.home");
     h.cmd("sel.toggle advance=true");
     assert_eq!(h.selected(), ["a.rs", "c.txt"], "`..` cannot be selected");

@@ -180,6 +180,12 @@ static COMMANDS: &[CommandMeta] = &[
     ),
     // «О программе» (S0-decisions №49): имя Úrfionn и пасхалка — тостом, пока нет окна.
     meta("ui.about", "About", &[]),
+    // Имена выделенных (или под курсором) — в буфер обмена, по строке (Far).
+    meta(
+        "ui.copy_names",
+        "Copy names",
+        &[arg("full", ValueKind::Bool, false)],
+    ),
     // Дерево в панели (S2-18): клавиши — контекст keymap `panel && tree`.
     repeat("ui.tree.up", "Tree: up", &[]),
     repeat("ui.tree.down", "Tree: down", &[]),
@@ -420,9 +426,15 @@ impl Handler for UiHandler {
                     .ext
                     .get::<urfin_term::TermState>()
                     .is_some_and(urfin_term::TermState::screen_view);
-                if hidden && screen {
-                    cx.state.focus = Focus::Terminal;
-                } else if cx.state.focus == Focus::Terminal {
+                // Transcript — в командную строку: стрелки правят её, а не ходят по
+                // невидимой панели.
+                if hidden {
+                    cx.state.focus = if screen {
+                        Focus::Terminal
+                    } else {
+                        Focus::Cmdline
+                    };
+                } else if matches!(cx.state.focus, Focus::Terminal | Focus::Cmdline) {
                     cx.state.focus = Focus::Panel;
                 }
             }
@@ -431,6 +443,31 @@ impl Handler for UiHandler {
             }
             // «О программе» — раздел настроек (D-08).
             "ui.about" => ui_state(cx).settings = Some("about".into()),
+            "ui.copy_names" => {
+                let t = cx.state.active_tab();
+                let mut names: Vec<String> = t
+                    .selection
+                    .names(&t.listing)
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect();
+                if names.is_empty()
+                    && let Some(Row::Entry { entry, .. }) = t.current()
+                {
+                    names.push(entry.name.to_string());
+                }
+                if a.bool("full").unwrap_or(false) {
+                    for n in &mut names {
+                        *n = t.loc.path.join(&*n).display().to_string();
+                    }
+                }
+                if !names.is_empty() {
+                    cx.ui(UiEvent::Ext {
+                        id: urfin_core::CommandId::from_static("clip.write"),
+                        args: Args::default().with("text", names.join("\r\n")),
+                    });
+                }
+            }
             "ui.columns" => {
                 let set = a.str("set").unwrap_or_default();
                 ui_state(cx).columns = Some(set.into());

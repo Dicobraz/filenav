@@ -38,6 +38,8 @@ use crate::tokens::{Metric, Role};
 
 /// Бюджет `pump` за один проход (как у egui-окна, S1 §1).
 const PUMP_BUDGET: Duration = Duration::from_millis(4);
+/// Сколько держать прежний кадр панели, пока грузится каталог (мануал 4.8: мигание).
+const HOLD_LOADING: Duration = Duration::from_millis(250);
 enum Wake {
     Now,
     After(Duration),
@@ -1712,6 +1714,9 @@ impl Render for CoreHost {
             tracing::trace!(target: "urfin::frame", row = t.cursor.row, top = t.cursor.top, "render");
         }
         self.sync_field(window, cx);
+        // Размер окна мог смениться без события границ (или до него): сетка панели — по
+        // кадру, иначе PgDn уводит курсор за видимый край.
+        self.sync_viewport(window);
         self.sync_theme(window);
         self.track_slide(window);
         self.drive_bench(window, cx);
@@ -1927,6 +1932,21 @@ impl Render for CoreHost {
                     panel::Piece::List => div().flex_1().min_h_0(),
                     _ => continue,
                 };
+                // Каталог грузится (до `HOLD_LOADING`): прежний кадр панели, как в Far —
+                // без пустого кадра и перестановок строк, пока подходят порции.
+                if let urfin_core::ListingStatus::Loading { since } = t.listing.status
+                    && since.elapsed() < HOLD_LOADING
+                    && self.prints[i][k] != 0
+                {
+                    window.request_animation_frame();
+                    let held = self.prints[i][k];
+                    card = card.child(slot.flex().child(cached(
+                        &self.panels[i][k],
+                        held,
+                        &mut self.prints[i][k],
+                    )));
+                    continue;
+                }
                 let anim = self.slide[i].map_or(0, |sl| sl.at.elapsed().as_micros() as u64 + 1);
                 let print = panel::fingerprint(
                     s,
