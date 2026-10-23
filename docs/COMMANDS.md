@@ -140,7 +140,7 @@
 | `ui.split` | `delta?:int`, `reset?:bool` | Panel split | Раздел панелей | — | — |
 | `ui.lang` | `lang:str` | Language | Язык | — | options |
 | `ui.columns` | `set:str` | Columns | Колонки | — | — |
-| `ui.panels.toggle_all` | — | Hide or show panels | Скрыть или показать панели | Ctrl+O | commands |
+| `ui.panels.toggle_all` | `show?:bool` | Hide or show panels | Скрыть или показать панели | Ctrl+O | commands |
 | `ui.about` | — | About | О программе | — | options |
 | `ui.tree.up` | — | Tree: up | Дерево: вверх | — | — |
 | `ui.tree.down` | — | Tree: down | Дерево: вниз | — | — |
@@ -190,7 +190,7 @@
 | `file.clip.cut` | — | Cut to clipboard | Вырезать в буфер | — | — |
 | `file.clip.paste` | `move?:bool` | Paste from clipboard | Вставить из буфера | — | — |
 
-## `term` (19)
+## `term` (20)
 
 | Команда | Аргументы | EN | RU | Клавиши (Far) | Меню F9 |
 |---|---|---|---|---|---|
@@ -213,6 +213,7 @@
 | `term.clear` | — | Clear output | Очистить вывод | — | — |
 | `term.open` | `path:str`, `verb?:str` | Open file | Открыть файл | — | — |
 | `term.exec` | `cmd:str`, `cwd?:str` | Run command | Выполнить команду | — | — |
+| `term.resize` | `cols:int`, `rows:int` | Terminal area size | Terminal area size | — | — |
 
 ## `cmdline` (26)
 

@@ -500,10 +500,45 @@ pub(super) fn titlebar(
         )
 }
 
-/// Командная строка (D-02): `путь>` активной панели и каретка-блок `accent`; фон `panel`,
-/// линия сверху, моно 12,5. Ввод команд — S6.
+/// Cmdline скрыт: открыты настройки (D-08) или терминал в виде «экран» за спрятанными
+/// панелями (S6 §3.2: сетка во всю область, ввод — в PTY).
+pub(super) fn cmdline_hidden(s: &AppState) -> bool {
+    let u = s.ext.get::<crate::UiState>();
+    if u.is_some_and(|u| u.settings.is_some()) {
+        return true;
+    }
+    u.is_some_and(|u| u.panels_hidden)
+        && s.ext
+            .get::<urfin_term::TermState>()
+            .is_some_and(urfin_term::TermState::screen_view)
+}
+
+/// Командная строка (D-02, S6-15): `путь>` активной панели, набранная строка и
+/// каретка-блок `accent` на символе под курсором (на нём — текст цвета фона); фон
+/// `panel`, линия сверху, моно 12,5.
 pub(super) fn cmdline(s: &AppState, theme: &Theme) -> Div {
     let path = s.panel(s.active).tab().loc.path.display().to_string();
+    let (text, cursor) = s
+        .ext
+        .get::<urfin_term::TermState>()
+        .map_or((String::new(), 0), |t| {
+            (t.line.text().to_owned(), t.line.cursor())
+        });
+    let (before, rest) = text.split_at(cursor.min(text.len()));
+    let mut chars = rest.chars();
+    let at = chars.next();
+    let after: String = chars.collect();
+    let caret = div()
+        .h(px(16.0))
+        .flex()
+        .items_center()
+        .bg(theme.c(Role::AccentFill));
+    let caret = match at {
+        Some(c) => caret
+            .text_color(theme.c(Role::LayerPanel))
+            .child(SharedString::from(c.to_string())),
+        None => caret.w(px(8.0)),
+    };
     div()
         .h(px(theme.m(Metric::HCmdline)))
         .flex_none()
@@ -517,8 +552,17 @@ pub(super) fn cmdline(s: &AppState, theme: &Theme) -> Div {
         .font_family("Cascadia Mono")
         .text_size(px(CLI_TEXT))
         .text_color(theme.c(Role::TextPrimary))
+        .overflow_hidden()
+        .whitespace_nowrap()
         .child(SharedString::from(format!("{path}>")))
-        .child(div().w(px(8.0)).h(px(16.0)).bg(theme.c(Role::AccentFill)))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .child(SharedString::from(before.to_owned()))
+                .child(caret)
+                .child(SharedString::from(after)),
+        )
 }
 
 /// Статус-строка (D-02, №61): свойства файла · выделение · свободно; фон `header`.
@@ -761,12 +805,7 @@ impl Render for ChromeView {
             .size_full()
             .flex()
             .flex_col()
-            .when(
-                s.ext
-                    .get::<crate::UiState>()
-                    .is_none_or(|u| u.settings.is_none()),
-                |d| d.child(cmdline(s, &h.theme)),
-            )
+            .when(!cmdline_hidden(s), |d| d.child(cmdline(s, &h.theme)))
             .child(status(&zones, narrow, &h.theme))
             .child(keybar(
                 h.keybar.items(h.mods),
@@ -801,6 +840,11 @@ pub(super) fn bottom_print(
         .hash(&mut h);
     strip_keys(s).hash(&mut h);
     s.panel(s.active).tab().loc.path.hash(&mut h);
+    // Строка ввода (S6-15) и вид «экран» терминала (cmdline скрыт).
+    if let Some(t) = s.ext.get::<urfin_term::TermState>() {
+        (t.line.text(), t.line.cursor()).hash(&mut h);
+    }
+    cmdline_hidden(s).hash(&mut h);
     for it in items {
         (it.n, &it.label, it.enabled).hash(&mut h);
     }

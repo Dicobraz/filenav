@@ -6,6 +6,7 @@
 //! S6-02…S6-22 (`docs/TASKS-M3.md`).
 
 pub mod config;
+pub mod line;
 pub mod manager;
 pub mod session;
 pub mod shells;
@@ -15,9 +16,11 @@ pub mod vt;
 pub use config::{CompleteConfig, HistoryConfig, ShellConfig, TermConfig};
 
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use urfin_core::{
-    ArgSpec, CmdError, Command, CommandMeta, Core, Cx, Handler, QuitDecision, ValueKind,
+    AppState, ArgSpec, Args, CmdError, Command, CommandId, CommandMeta, Core, Cx, Handler,
+    QuitDecision, SideRef, UiEvent, ValueKind,
 };
 
 const fn arg(name: &'static str, kind: ValueKind, required: bool) -> ArgSpec {
@@ -47,7 +50,7 @@ const fn meta(
 const NONE: &[ArgSpec] = &[];
 
 /// `term.*` (S6 §9).
-static TERM_COMMANDS: [CommandMeta; 19] = [
+static TERM_COMMANDS: [CommandMeta; 20] = [
     meta("term.toggle", "Show or hide panels", "term", NONE, false),
     meta(
         "term.shell",
@@ -124,6 +127,17 @@ static TERM_COMMANDS: [CommandMeta; 19] = [
         &[
             arg("cmd", ValueKind::Str, true),
             arg("cwd", ValueKind::Str, false),
+        ],
+        false,
+    ),
+    // Область терминала окна (S6-08): шлёт окно при раскладке, не пользователь.
+    meta(
+        "term.resize",
+        "Terminal area size",
+        "term",
+        &[
+            arg("cols", ValueKind::Int, true),
+            arg("rows", ValueKind::Int, true),
         ],
         false,
     ),
@@ -248,7 +262,54 @@ pub struct TermState {
     pub sessions: manager::Manager,
     /// Сетка, показанная явно вместо активного сеанса (сцены `--screens`, S6-06).
     pub preview: Option<std::sync::Arc<vt::shared::TermShared>>,
+    /// Строка ввода (S6-15).
+    pub line: line::LineEditor,
+    /// Панели спрятал автопоказ (S6-08): по концу команды или выходу из alt-screen —
+    /// вернуть.
+    pub(crate) auto_hidden: bool,
+    /// Отправленная команда ждёт автопоказа (S6 §3.3): момент submit.
+    pub(crate) submitted: Option<Instant>,
+    /// Альтернативный экран активного сеанса на прошлом pump.
+    pub(crate) alt: bool,
+    /// Размер области терминала ждёт дебаунса (S6 §3.1).
+    pub(crate) resize: Option<(sys::conpty::PtySize, Instant)>,
+    /// Многострочная вставка ждёт ответа «Вставить?» (shell без bracketed paste).
+    pub(crate) paste: Option<(
+        urfin_core::PromptId,
+        crossbeam_channel::Receiver<urfin_core::Reply>,
+        String,
+    )>,
 }
+
+impl TermState {
+    /// Вид «экран» за спрятанными панелями (S6 §3.2): alt-screen или сеанс без
+    /// интеграции — сетка во всю область, cmdline скрыт, ввод raw. Показанная явно
+    /// сетка (`preview`) — тоже экран.
+    pub fn screen_view(&self) -> bool {
+        self.preview.is_some()
+            || self
+                .sessions
+                .active()
+                .is_some_and(|s| !s.integrated || s.shared().is_some_and(|sh| sh.alt_screen()))
+    }
+}
+
+/// Флаг keymap `cmdline_empty` (S3: Enter на пустой строке — `panel.enter`).
+pub fn cmdline_empty(st: &AppState) -> bool {
+    st.ext.get::<TermState>().is_none_or(|t| t.line.is_empty())
+}
+
+/// Просьба к окну показать (`true`) или спрятать панели (`term.panels`): видимость
+/// панелей — состояние UI.
+pub(crate) fn panels(cx: &mut Cx<'_>, show: bool) {
+    cx.ui(UiEvent::Ext {
+        id: CommandId::from_static("term.panels"),
+        args: Args::default().with("show", show),
+    });
+}
+
+/// Дебаунс ресайза (S6 §3.1): `ConPTY` перерисовывает экран на каждый.
+const RESIZE_DEBOUNCE: Duration = Duration::from_millis(50);
 
 fn not_yet(cmd: &Command) -> CmdError {
     let mut a = urfin_i18n::FluentArgs::new();
@@ -283,13 +344,62 @@ impl Handler for TermHandler {
             cx.state.ext.insert(TermState {
                 config,
                 sessions: manager::Manager::new(dir),
-                preview: None,
+                ..TermState::default()
             });
         }
         let rt = cx.rt;
-        if let Some(st) = cx.state.ext.get_mut::<TermState>() {
-            st.sessions.pump(&st.config, rt);
+        let now = Instant::now();
+        let Some(st) = cx.state.ext.get_mut::<TermState>() else {
+            return;
+        };
+        st.sessions.pump(&st.config, rt);
+        if let Some((size, at)) = st.resize
+            && now >= at
+        {
+            st.resize = None;
+            st.sessions.resize(size);
         }
+        // Автопоказ (S6 §3.3): команда идёт дольше `auto_show_ms` (видно только с
+        // интеграцией) или включила alt-screen — панели прячутся; alt-screen выключен —
+        // спрятанные им панели возвращаются.
+        let mut show = None;
+        if let Some(at) = st.submitted
+            && now.duration_since(at) >= Duration::from_millis(u64::from(st.config.auto_show_ms))
+        {
+            st.submitted = None;
+            if st
+                .sessions
+                .active()
+                .is_some_and(|s| s.integrated && s.running)
+            {
+                show = Some(false);
+            }
+        }
+        let alt = st
+            .sessions
+            .active()
+            .and_then(manager::Slot::shared)
+            .is_some_and(|s| s.alt_screen());
+        if alt != st.alt {
+            st.alt = alt;
+            if alt {
+                show = Some(false);
+            } else if st.auto_hidden && st.config.return_to_panels {
+                show = Some(true);
+            }
+        }
+        match show {
+            Some(false) if !st.auto_hidden => {
+                st.auto_hidden = true;
+                panels(cx, false);
+            }
+            Some(true) => {
+                st.auto_hidden = false;
+                panels(cx, true);
+            }
+            _ => {}
+        }
+        poll_paste(cx);
     }
 
     fn on_quit(&mut self, cx: &mut Cx<'_>) -> QuitDecision {
@@ -310,7 +420,10 @@ impl Handler for TermHandler {
             return Err(not_yet(cmd));
         };
         let TermState {
-            config, sessions, ..
+            config,
+            sessions,
+            resize,
+            ..
         } = st;
         let a = &cmd.args;
         match cmd.id.as_str() {
@@ -340,6 +453,39 @@ impl Handler for TermHandler {
                 // Enter после «процесс завершён» только перезапускает.
                 sessions.write(config, rt, bytes, key.eq_ignore_ascii_case("enter"))
             }
+            "term.resize" => {
+                let dim = |k: &str| {
+                    a.int(k)
+                        .and_then(|v| u16::try_from(v).ok())
+                        .filter(|v| *v >= 2)
+                        .ok_or_else(|| CmdError::Arg {
+                            name: k.into(),
+                            msg: "2..65535".into(),
+                        })
+                };
+                let size = sys::conpty::PtySize {
+                    cols: dim("cols")?,
+                    rows: dim("rows")?,
+                };
+                if sessions.area() == Some(size) {
+                    *resize = None;
+                } else if sessions.area().is_none() {
+                    // Первая раскладка окна — сразу: сеанс прогрева стартует уже в
+                    // своём размере.
+                    sessions.resize(size);
+                } else {
+                    *resize = Some((size, Instant::now() + RESIZE_DEBOUNCE));
+                    rt.waker().wake_after(RESIZE_DEBOUNCE);
+                }
+                Ok(())
+            }
+            "term.toggle" => {
+                cx.ui(UiEvent::Ext {
+                    id: CommandId::from_static("term.panels"),
+                    args: Args::default().with("toggle", true),
+                });
+                Ok(())
+            }
             _ => Err(not_yet(cmd)),
         }
     }
@@ -358,9 +504,271 @@ impl Handler for CmdlineHandler {
         &CMDLINE_COMMANDS
     }
 
-    fn handle(&mut self, cmd: &Command, _cx: &mut Cx<'_>) -> Result<(), CmdError> {
-        Err(not_yet(cmd))
+    fn handle(&mut self, cmd: &Command, cx: &mut Cx<'_>) -> Result<(), CmdError> {
+        let a = &cmd.args;
+        // Имена из панелей — до заимствования состояния терминала.
+        let names = match cmd.id.as_str() {
+            "cmdline.insert_name" => Some(insert_name(cx.state, a)?),
+            "cmdline.insert_selection" => Some(insert_selection(cx.state)),
+            _ => None,
+        };
+        let rt = cx.rt;
+        let Some(st) = cx.state.ext.get_mut::<TermState>() else {
+            return Err(not_yet(cmd));
+        };
+        let line = &mut st.line;
+        match cmd.id.as_str() {
+            "cmdline.insert" => line.insert(&printable(a.str("text").unwrap_or_default())),
+            "cmdline.cursor.left" => line.left(),
+            "cmdline.cursor.right" => line.right(),
+            "cmdline.word.left" => line.word_left(),
+            "cmdline.word.right" => line.word_right(),
+            "cmdline.home" => line.home(),
+            "cmdline.end" => line.end(),
+            "cmdline.backspace" => line.backspace(),
+            "cmdline.delete" => line.delete(),
+            "cmdline.del.word_left" => line.delete_word_left(),
+            "cmdline.del.word_right" => line.delete_word_right(),
+            "cmdline.del.to_end" => line.delete_to_end(),
+            "cmdline.clear" => line.clear(),
+            "cmdline.undo" => line.undo(),
+            "cmdline.redo" => line.redo(),
+            "cmdline.insert_name" | "cmdline.insert_selection" => {
+                let text = names.unwrap_or_default();
+                if !text.is_empty() {
+                    // Как в Far: имя и пробел после него.
+                    line.insert(&format!("{text} "));
+                }
+            }
+            "cmdline.paste" => match a.str("text") {
+                Some(t) => {
+                    let t = t.trim_end_matches(['\r', '\n']);
+                    if t.contains('\n') {
+                        return paste_lines(cx, t);
+                    }
+                    line.insert(&printable(t));
+                }
+                None => cx.ui(UiEvent::Ext {
+                    id: CommandId::from_static("clip.read"),
+                    args: Args::default().with("then", "cmdline.paste"),
+                }),
+            },
+            "cmdline.copy" => {
+                let text = line.text().to_owned();
+                cx.ui(UiEvent::Ext {
+                    id: CommandId::from_static("clip.write"),
+                    args: Args::default().with("text", text),
+                });
+            }
+            "cmdline.exec" => {
+                if a.bool("detached").unwrap_or(false) {
+                    return Err(not_yet(cmd));
+                }
+                if line.is_empty() {
+                    return Ok(());
+                }
+                let TermState {
+                    config,
+                    sessions,
+                    submitted,
+                    line,
+                    ..
+                } = st;
+                // Нет сеанса — строка остаётся набранной.
+                let bytes = submit_bytes(line.text(), sessions.input_modes());
+                sessions.write(config, rt, bytes, false)?;
+                line.take();
+                sessions.mark_running();
+                *submitted = Some(Instant::now());
+                rt.waker()
+                    .wake_after(Duration::from_millis(u64::from(config.auto_show_ms)));
+            }
+            _ => return Err(not_yet(cmd)),
+        }
+        Ok(())
     }
+}
+
+/// Многострочная вставка (S6 §3.4): не в однострочную cmdline, а в терминал — панели
+/// гаснут, текст показывает и правит сам shell. Shell без bracketed paste (cmd)
+/// выполнил бы каждую строку сразу — сначала вопрос.
+fn paste_lines(cx: &mut Cx<'_>, text: &str) -> Result<(), CmdError> {
+    let Some(st) = cx.state.ext.get_mut::<TermState>() else {
+        return Ok(());
+    };
+    let shell = st
+        .sessions
+        .active()
+        .map(|s| s.shell.to_string())
+        .ok_or_else(|| CmdError::Rejected(manager::tr("term-no-session", &[]).into()))?;
+    if st.sessions.input_modes().bracketed_paste {
+        return paste_now(cx, text);
+    }
+    if let Some((id, ..)) = st.paste.take() {
+        cx.state.prompts.cancel(id);
+    }
+    let i18n = urfin_i18n::current();
+    let n = text.lines().count().to_string();
+    let choice = |id: &str, key: &str, k: char| urfin_core::Choice {
+        id: id.into(),
+        label: i18n.get(key).into(),
+        key: k,
+    };
+    let spec = urfin_core::PromptSpec {
+        anchor: urfin_core::Anchor::Cmdline,
+        title: manager::tr("term-paste-title", &[("n", &n), ("shell", &shell)]),
+        body: manager::tr("term-paste-body", &[("shell", &shell)]),
+        choices: [
+            choice("paste", "term-paste-insert", 'p'),
+            choice("cancel", "term-paste-cancel", 'c'),
+        ]
+        .into_iter()
+        .collect(),
+        default: 0,
+        input: None,
+        allow_all: false,
+        detail: None,
+        secret: false,
+    };
+    let (id, rx) = cx.state.prompts.open(spec, None);
+    if let Some(st) = cx.state.ext.get_mut::<TermState>() {
+        st.paste = Some((id, rx, text.to_owned()));
+    }
+    Ok(())
+}
+
+/// Вставить строки в PTY (в скобках вставки, если shell их включил) и показать
+/// терминал.
+fn paste_now(cx: &mut Cx<'_>, text: &str) -> Result<(), CmdError> {
+    let rt = cx.rt;
+    let Some(st) = cx.state.ext.get_mut::<TermState>() else {
+        return Ok(());
+    };
+    let modes = st.sessions.input_modes();
+    let body = text.replace("\r\n", "\n").replace('\n', "\r");
+    let mut bytes = Vec::with_capacity(body.len() + 12);
+    if modes.bracketed_paste {
+        bytes.extend_from_slice(b"\x1b[200~");
+        bytes.extend_from_slice(body.as_bytes());
+        bytes.extend_from_slice(b"\x1b[201~");
+    } else {
+        bytes.extend_from_slice(body.as_bytes());
+    }
+    st.sessions.write(&st.config, rt, bytes, false)?;
+    panels(cx, false);
+    Ok(())
+}
+
+/// Ответ на «Вставить строки?»: да — в терминал, нет или закрыто — забыть.
+fn poll_paste(cx: &mut Cx<'_>) {
+    let Some(st) = cx.state.ext.get_mut::<TermState>() else {
+        return;
+    };
+    let Some((_, rx, _)) = &st.paste else {
+        return;
+    };
+    let reply = match rx.try_recv() {
+        Ok(r) => Some(r),
+        Err(crossbeam_channel::TryRecvError::Empty) => return,
+        Err(crossbeam_channel::TryRecvError::Disconnected) => None,
+    };
+    let Some((_, _, text)) = st.paste.take() else {
+        return;
+    };
+    if reply.is_some_and(|r| r.choice == "paste")
+        && let Err(e) = paste_now(cx, &text)
+    {
+        cx.toast(urfin_core::Level::Error, e.to_string());
+    }
+}
+
+/// Байты submit (S6 §6): текст и `\r`; многострочный при `BRACKETED_PASTE` —
+/// в скобках вставки, чтобы shell не выполнял строки по одной.
+fn submit_bytes(text: &str, modes: vt::input::Modes) -> Vec<u8> {
+    let multi = text.contains('\n');
+    let body = text.replace("\r\n", "\n");
+    let mut out = Vec::with_capacity(body.len() + 16);
+    if multi && modes.bracketed_paste {
+        out.extend_from_slice(b"\x1b[200~");
+        out.extend_from_slice(body.replace('\n', "\r").as_bytes());
+        out.extend_from_slice(b"\x1b[201~");
+    } else {
+        out.extend_from_slice(body.replace('\n', "\r").as_bytes());
+    }
+    out.push(b'\r');
+    out
+}
+
+/// Набранный текст без управляющих символов (Tab и переводы строк — пробел).
+fn printable(t: &str) -> String {
+    t.chars()
+        .filter_map(|c| match c {
+            '\t' | '\n' | '\r' => Some(' '),
+            c if c.is_control() => None,
+            c => Some(c),
+        })
+        .collect()
+}
+
+fn side_of(st: &AppState, a: &Args) -> urfin_core::Side {
+    match a.side("side") {
+        Some(SideRef::Left) => urfin_core::Side::Left,
+        Some(SideRef::Right) => urfin_core::Side::Right,
+        Some(SideRef::Passive) => st.active.other(),
+        Some(SideRef::Active) | None => st.active,
+    }
+}
+
+/// `cmdline.insert_name what=name|full|path` (S6 §6.3): имя под курсором, полный путь
+/// к нему или путь панели — в кавычках, если нужно.
+fn insert_name(st: &AppState, a: &Args) -> Result<String, CmdError> {
+    let tab = st.panel(side_of(st, a)).tab();
+    let entry = match tab.current() {
+        Some(urfin_core::Row::Entry { entry, .. }) => Some(entry.name.as_str()),
+        _ => None,
+    };
+    let path = tab.loc.path.display().to_string();
+    let text = match a.str("what").unwrap_or("name") {
+        "name" => entry.map(str::to_owned).unwrap_or_default(),
+        "full" => entry.map_or(path, |n| tab.loc.path.join(n).display().to_string()),
+        "path" => {
+            // Как в Far: путь каталога с разделителем на конце.
+            if path.ends_with(['\\', '/']) {
+                path
+            } else {
+                format!("{path}{}", std::path::MAIN_SEPARATOR)
+            }
+        }
+        other => {
+            return Err(CmdError::Arg {
+                name: "what".into(),
+                msg: format!("name|full|path, not {other}").into(),
+            });
+        }
+    };
+    Ok(if text.is_empty() {
+        text
+    } else {
+        line::quote(&text)
+    })
+}
+
+/// `cmdline.insert_selection`: выделенные имена через пробел; без выделения — имя
+/// под курсором.
+fn insert_selection(st: &AppState) -> String {
+    let tab = st.active_tab();
+    let names = tab.selection.names(&tab.listing);
+    if names.is_empty() {
+        return match tab.current() {
+            Some(urfin_core::Row::Entry { entry, .. }) => line::quote(&entry.name),
+            _ => String::new(),
+        };
+    }
+    names
+        .iter()
+        .map(|n| line::quote(n))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Регистрирует handlers `term` и `cmdline`, состояние — в `AppState.ext`.
@@ -383,6 +791,19 @@ pub fn version() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn submit_wraps_multiline_in_bracketed_paste() {
+        let plain = vt::input::Modes::default();
+        assert_eq!(submit_bytes("dir /b", plain), b"dir /b\r");
+        assert_eq!(submit_bytes("a\nb", plain), b"a\rb\r");
+        let bp = vt::input::Modes {
+            bracketed_paste: true,
+            ..plain
+        };
+        assert_eq!(submit_bytes("a\r\nb", bp), b"\x1b[200~a\rb\x1b[201~\r");
+        assert_eq!(printable("a\tb\u{7}c"), "a bc");
+    }
 
     #[test]
     fn version_smoke() {

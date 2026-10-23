@@ -282,11 +282,23 @@ URFIN_UPDATE_DOCS=1 cargo nextest run -p urfin-keymap keys_doc -->
 | `Ctrl+Left` | `cmdline.word.left` | W L |
 | `Ctrl+Right` | `cmdline.word.right` | W L |
 | `Ctrl+Insert` | `cmdline.copy` | W M L |
+| `Backspace` | `cmdline.backspace` | W M L |
+| `Delete` | `cmdline.delete` | W M L |
+| `Ctrl+S` | `cmdline.cursor.left` | W M L |
+| `Ctrl+D` | `cmdline.cursor.right` | W M L |
+| `Ctrl+Z` | `cmdline.undo` | W M L |
+| `Ctrl+Shift+Z` | `cmdline.redo` | W M L |
 | `Alt+Left` | `cmdline.word.left` | M |
 | `Alt+Right` | `cmdline.word.right` | M |
 | `Cmd+V` | `cmdline.paste` | M |
 | `Cmd+C` | `cmdline.copy` | M |
 | `Alt+Backspace` | `cmdline.del.word_left` | M |
+
+### `terminal`
+
+| Сочетание | Команда | ОС |
+|---|---|---|
+| `Ctrl+O` | `ui.panels.toggle_all` | W M L |
 
 ### `overlay && qs`
 
@@ -617,12 +629,24 @@ URFIN_UPDATE_DOCS=1 cargo nextest run -p urfin-keymap keys_doc -->
 | `Ctrl+Left` | `cmdline.word.left` | W L |
 | `Ctrl+Right` | `cmdline.word.right` | W L |
 | `Ctrl+Insert` | `cmdline.copy` | W M L |
+| `Backspace` | `cmdline.backspace` | W M L |
+| `Delete` | `cmdline.delete` | W M L |
+| `Ctrl+S` | `cmdline.cursor.left` | W M L |
+| `Ctrl+D` | `cmdline.cursor.right` | W M L |
+| `Ctrl+Z` | `cmdline.undo` | W M L |
+| `Ctrl+Shift+Z` | `cmdline.redo` | W M L |
 | `Left` | `cmdline.cursor.left` | W M L |
 | `Right` | `cmdline.cursor.right` | W M L |
 | `Alt+Left` | `cmdline.word.left` | M |
 | `Alt+Right` | `cmdline.word.right` | M |
 | `Cmd+V` | `cmdline.paste` | M |
 | `Cmd+C` | `cmdline.copy` | M |
+
+### `terminal`
+
+| Сочетание | Команда | ОС |
+|---|---|---|
+| `Ctrl+O` | `ui.panels.toggle_all` | W M L |
 
 ### `overlay && qs`
 

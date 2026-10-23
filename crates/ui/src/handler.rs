@@ -172,7 +172,12 @@ static COMMANDS: &[CommandMeta] = &[
     meta("ui.lang", "Language", &[arg("lang", ValueKind::Str, true)]),
     meta("ui.columns", "Columns", &[arg("set", ValueKind::Str, true)]),
     // Имя — из S3 §3 (Ctrl+O), чтобы keymap не расходился с S2.
-    meta("ui.panels.toggle_all", "Hide or show panels", &[]),
+    // `show` — явно (автопоказ терминала S6-08), без него — переключить.
+    meta(
+        "ui.panels.toggle_all",
+        "Hide or show panels",
+        &[arg("show", ValueKind::Bool, false)],
+    ),
     // «О программе» (S0-decisions №49): имя Úrfionn и пасхалка — тостом, пока нет окна.
     meta("ui.about", "About", &[]),
     // Дерево в панели (S2-18): клавиши — контекст keymap `panel && tree`.
@@ -402,7 +407,19 @@ impl Handler for UiHandler {
             "ui.lang" => lang(cx, a.str("lang").unwrap_or_default()),
             "ui.panels.toggle_all" => {
                 let st = ui_state(cx);
-                st.panels_hidden = !st.panels_hidden;
+                let hidden = a.bool("show").map_or(!st.panels_hidden, |show| !show);
+                st.panels_hidden = hidden;
+                // Вид «экран» (S6 §3.2): ввод — в терминал; панели вернулись — в панель.
+                let screen = cx
+                    .state
+                    .ext
+                    .get::<urfin_term::TermState>()
+                    .is_some_and(urfin_term::TermState::screen_view);
+                if hidden && screen {
+                    cx.state.focus = Focus::Terminal;
+                } else if cx.state.focus == Focus::Terminal {
+                    cx.state.focus = Focus::Panel;
+                }
             }
             id if id.starts_with("ui.tree.") => {
                 crate::views::tree_command(cx, &self.vfs, &mut self.views, id, a.int("n"));
