@@ -232,7 +232,8 @@ fn watches_are_independent() {
 }
 
 /// Рваный поток (пишущий тормозит, flush'и по тишине), но по многу имён — шторм
-/// с третьего тяжёлого flush'а; одиночные файлы раз в 120 мс — нет.
+/// со второго тяжёлого flush'а (по темпу: 80 имён за 120 мс); одиночные файлы раз в
+/// 120 мс — нет.
 #[test]
 fn heavy_bursts_are_a_storm_single_files_are_not() {
     let t0 = Instant::now();
@@ -251,11 +252,7 @@ fn heavy_bursts_are_a_storm_single_files_are_not() {
                 .map(|(_, c)| c == DirChange::Rescan),
         );
     }
-    assert_eq!(
-        kinds,
-        [false, false, true],
-        "storm on the third heavy flush"
-    );
+    assert_eq!(kinds, [false, true], "storm on the second heavy flush");
 
     let mut d = deb();
     let mut flushes = 0;
@@ -268,6 +265,29 @@ fn heavy_bursts_are_a_storm_single_files_are_not() {
         }
     }
     assert_eq!(flushes, 20);
+}
+
+/// Медленный пишущий (~200 файлов/с, раннер CI под нагрузкой): порции мелкие, flush'и
+/// по тишине — шторм по темпу (`STORM_RATE` за секунду), не больше ~1 перечитывания
+/// в секунду после него.
+#[test]
+fn slow_steady_writer_is_a_storm() {
+    let t0 = Instant::now();
+    let mut d = deb();
+    let mut flushes = 0;
+    let mut rescans = 0;
+    for k in 0..600u64 {
+        let at = t0 + ms(k * 5);
+        d.push(W, added(&format!("s{k}")), at);
+        // Пишущий запинается: каждые 20 файлов — пауза дольше debounce.
+        let now = if k % 20 == 19 { at + DEB } else { at };
+        for (_, c) in d.take_due(now) {
+            flushes += 1;
+            rescans += usize::from(c == DirChange::Rescan);
+        }
+    }
+    assert!(rescans > 0, "slow storm detected");
+    assert!(flushes <= 6, "{flushes} flushes in 3 s");
 }
 
 /// Пауза пишущего (один flush по тишине) не сбрасывает подсчёт шторма. Поток
@@ -283,7 +303,8 @@ fn storm_survives_a_short_pause() {
         while t < to {
             d.push(W, added(&format!("f{i}")), t0 + t);
             i += 1;
-            t += ms(10);
+            // 50 имён/с — ниже `STORM_RATE`: шторм только по счёту `max_latency`.
+            t += ms(20);
         }
     };
     let mut kinds = Vec::new();
