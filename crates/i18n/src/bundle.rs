@@ -16,19 +16,79 @@ type Bundle = FluentBundle<Arc<FluentResource>>;
 pub const FALLBACK: &str = "en";
 
 /// Вшитые ресурсы: (язык, файл, текст). Каждый файл `locales/` должен быть здесь (lint).
+/// Строки интерфейса — файл на часть экрана (`ui-panel`, `ui-strip`, …): правки разных
+/// частей не сталкиваются (скилл pets-dev).
 pub const EMBEDDED: &[(&str, &str, &str)] = &[
     ("en", "cmd.ftl", include_str!("../locales/en/cmd.ftl")),
     ("en", "core.ftl", include_str!("../locales/en/core.ftl")),
     ("en", "fmt.ftl", include_str!("../locales/en/fmt.ftl")),
     ("en", "keybar.ftl", include_str!("../locales/en/keybar.ftl")),
     ("en", "keymap.ftl", include_str!("../locales/en/keymap.ftl")),
-    ("en", "ui.ftl", include_str!("../locales/en/ui.ftl")),
+    (
+        "en",
+        "ui-jobs.ftl",
+        include_str!("../locales/en/ui-jobs.ftl"),
+    ),
+    (
+        "en",
+        "ui-menu.ftl",
+        include_str!("../locales/en/ui-menu.ftl"),
+    ),
+    (
+        "en",
+        "ui-panel.ftl",
+        include_str!("../locales/en/ui-panel.ftl"),
+    ),
+    (
+        "en",
+        "ui-settings.ftl",
+        include_str!("../locales/en/ui-settings.ftl"),
+    ),
+    (
+        "en",
+        "ui-strip.ftl",
+        include_str!("../locales/en/ui-strip.ftl"),
+    ),
+    (
+        "en",
+        "ui-window.ftl",
+        include_str!("../locales/en/ui-window.ftl"),
+    ),
     ("ru", "cmd.ftl", include_str!("../locales/ru/cmd.ftl")),
     ("ru", "core.ftl", include_str!("../locales/ru/core.ftl")),
     ("ru", "fmt.ftl", include_str!("../locales/ru/fmt.ftl")),
     ("ru", "keybar.ftl", include_str!("../locales/ru/keybar.ftl")),
     ("ru", "keymap.ftl", include_str!("../locales/ru/keymap.ftl")),
-    ("ru", "ui.ftl", include_str!("../locales/ru/ui.ftl")),
+    (
+        "ru",
+        "ui-jobs.ftl",
+        include_str!("../locales/ru/ui-jobs.ftl"),
+    ),
+    (
+        "ru",
+        "ui-menu.ftl",
+        include_str!("../locales/ru/ui-menu.ftl"),
+    ),
+    (
+        "ru",
+        "ui-panel.ftl",
+        include_str!("../locales/ru/ui-panel.ftl"),
+    ),
+    (
+        "ru",
+        "ui-settings.ftl",
+        include_str!("../locales/ru/ui-settings.ftl"),
+    ),
+    (
+        "ru",
+        "ui-strip.ftl",
+        include_str!("../locales/ru/ui-strip.ftl"),
+    ),
+    (
+        "ru",
+        "ui-window.ftl",
+        include_str!("../locales/ru/ui-window.ftl"),
+    ),
 ];
 
 /// Неприятность при загрузке ресурсов. Не фатальна: битые сообщения пропускаются,

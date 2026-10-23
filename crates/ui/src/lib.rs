@@ -125,9 +125,12 @@ pub(crate) mod tests {
         let on_disk = std::fs::read_to_string(&path)
             .unwrap_or_default()
             .replace("\r\n", "\n");
-        assert!(
-            on_disk == doc,
-            "docs/COMMANDS.md устарел: URFIN_UPDATE_DOCS=1 cargo nextest run -p urfin-ui commands_doc"
-        );
+        // Генерируемый документ обновляет полоса docs-gen раз в день (скилл pets-dev):
+        // устаревший не блокирует PR; строго — с `URFIN_DOCS_STRICT=1`.
+        if on_disk != doc {
+            let msg = "docs/COMMANDS.md устарел: URFIN_UPDATE_DOCS=1 cargo nextest run -p urfin-ui commands_doc";
+            assert!(std::env::var_os("URFIN_DOCS_STRICT").is_none(), "{msg}");
+            eprintln!("{msg}");
+        }
     }
 }
