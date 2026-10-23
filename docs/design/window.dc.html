@@ -865,16 +865,17 @@ body{margin:0}
 <div style="flex: 1; min-width: 0; padding: 20px 32px; display: flex; flex-direction: column; gap: 14px; overflow: hidden">
 <div style="display: flex; align-items: center; gap: 8px">
 <input aria-label="Найти подключение" placeholder="Имя, хост или пользователь" style="width: 260px; {{inputStyle}}">
-<button type="button" style="margin-left: 8px; {{btn}}; width: 120px; display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; text-align: left"><span>Добавить</span><span style="color: {{t.s}}; font-size: 11px">Ins</span></button>
-<button type="button" style="{{btn}}; width: 120px; display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; text-align: left"><span>Изменить</span><span style="color: {{t.s}}; font-size: 11px">F4</span></button>
-<button type="button" style="{{btn}}; width: 120px; display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; text-align: left"><span>Удалить</span><span style="color: {{t.s}}; font-size: 11px">Del</span></button>
-<button type="button" style="{{btn}}; width: 120px; display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; text-align: left"><span>Импорт…</span></button>
+<button type="button" style="margin-left: 8px; {{btn}}">Добавить <span style="color: {{t.s}}; font-size: 11px">Ins</span></button>
+<button type="button" style="{{btn}}">Изменить <span style="color: {{t.s}}; font-size: 11px">F4</span></button>
+<button type="button" style="{{btn}}">Удалить <span style="color: {{t.s}}; font-size: 11px">Del</span></button>
+<button type="button" style="{{btn}}">Импорт…</button>
 </div>
 <div role="table" aria-label="Профили подключений" style="display: flex; flex-direction: column; border: 1px solid {{t.b}}; border-radius: 6px; overflow: hidden">
-<div role="row" style="height: 28px; display: flex; align-items: center; gap: 12px; padding: 0 12px; background: {{t.h}}; border-bottom: 1px solid {{t.b}}; color: {{t.s}}; font-size: 11.5px"><span style="flex: 1">Имя</span><span style="width: 170px; flex: none">Хост</span><span style="width: 100px; flex: none">Пользователь</span><span style="width: 130px; flex: none">Вход</span><span style="width: 110px; flex: none">Через</span><span style="width: 112px; flex: none">Последнее</span></div>
+<div role="row" style="height: 28px; display: flex; align-items: center; gap: 12px; padding: 0 12px; background: {{t.h}}; border-bottom: 1px solid {{t.b}}; color: {{t.s}}; font-size: 11.5px"><span style="width: 64px; flex: none">Источник</span><span style="flex: 1">Имя</span><span style="width: 170px; flex: none">Хост</span><span style="width: 100px; flex: none">Пользователь</span><span style="width: 130px; flex: none">Вход</span><span style="width: 110px; flex: none">Через</span><span style="width: 112px; flex: none">Последнее</span></div>
 <sc-for list="{{ssConn}}" as="c" hint-placeholder-count="8">
 <div role="row" style="{{c.style}}">
-<span style="flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px"><span style="font-weight: 500">{{c.name}}</span><sc-if value="{{c.src}}" hint-placeholder-val="{{ false }}"><span style="{{ssSrc}}">{{c.src}}</span></sc-if></span>
+<span style="width: 64px; flex: none; display: flex"><sc-if value="{{c.src}}" hint-placeholder-val="{{ false }}"><span style="{{ssSrc}}; width: 56px; box-sizing: border-box; text-align: center">{{c.src}}</span></sc-if></span>
+<span style="flex: 1; min-width: 0; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{c.name}}</span>
 <span style="width: 170px; flex: none; {{ssMono}}">{{c.host}}</span>
 <span style="width: 100px; flex: none">{{c.user}}</span>
 <span style="width: 130px; flex: none">{{c.auth}}</span>
